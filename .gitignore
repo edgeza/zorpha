@@ -6,6 +6,9 @@ node_modules/
 .env
 .env.local
 .env.*.local
+# deploy-and-verify.sh copies .env.local here before rewriting it, so this file
+# exists after every deploy and holds the same Supabase and WalletConnect keys.
+.env.local.bak
 *.pem
 *.key
 

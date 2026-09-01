@@ -218,25 +218,55 @@ if [[ "${DEPLOYER_BAL%% *}" != "0" ]]; then
 fi
 echo "    verified: deployer holds 0 ZOR"
 
-echo "==> [6/7] verify token-layer contracts"
-verify() {
-  local path=$1 addr=$2
-  [[ -z "$addr" ]] && return 0
-  forge verify-contract "$addr" "$path" \
-    --chain-id "$CHAIN_ID" \
-    --verifier blockscout \
-    --verifier-url "${RH_EXPLORER_URL:-}" \
-    --etherscan-api-key "${RH_EXPLORER_API_KEY:-}" \
-    --watch || echo "    verify failed for $path ($addr) — retry manually"
+# Verify every contract in a broadcast artifact.
+#
+# Note the "/api". RH_EXPLORER_URL is the explorer's base URL, and forge appends
+# its query string to whatever it is given, so passing the base sends
+# ?module=contract&action=... to the Blockscout *frontend*, which answers with a
+# Next.js HTML page and fails as "expected value at line 1 column 1". That is
+# what happened on the first testnet run: all seven contracts reported a
+# verification failure when nothing was wrong with any of them.
+#
+# The contract list comes from the broadcast artifact rather than from a list
+# maintained here, because the list maintained here was wrong: it named ten
+# contracts and the deploy created nineteen. The oracle, both adapters and all
+# three vaults were never verified because nobody had added a line for them.
+# Constructor arguments are recovered from the same artifact.
+# See script/broadcast-contracts.js.
+verify_broadcast() {
+  local artifact=$1
+  [[ -f "$artifact" ]] || { echo "    no artifact at $artifact, skipping verify"; return 0; }
+
+  local key_args=()
+  [[ -n "${RH_EXPLORER_API_KEY:-}" ]] && key_args=(--etherscan-api-key "$RH_EXPLORER_API_KEY")
+
+  local addr target args ok=0 bad=0
+  while read -r addr target args; do
+    [[ -z "$addr" ]] && continue
+    if forge verify-contract "$addr" "$target" \
+         --chain-id "$CHAIN_ID" \
+         --verifier blockscout \
+         --verifier-url "${RH_EXPLORER_URL:-}/api" \
+         "${key_args[@]}" \
+         ${args:+--constructor-args "$args"} \
+         --watch >/dev/null 2>&1; then
+      echo "    verified  ${target##*:}  $addr"
+      ok=$((ok + 1))
+    else
+      echo "    FAILED    ${target##*:}  $addr  (retry manually)"
+      bad=$((bad + 1))
+    fi
+  done < <(node script/broadcast-contracts.js "$artifact")
+
+  echo "    $ok verified, $bad failed"
+  # Deliberately not fatal. Verification is a block-explorer convenience; the
+  # contracts are on chain either way, and aborting here would leave a
+  # half-deployed protocol over a cosmetic problem.
+  return 0
 }
 
-verify src/Zorpha.sol:Zorpha                       "$ZOR_ADDR"
-verify src/governance/Timelock.sol:Timelock        "$TIMELOCK_ADDR"
-verify src/ProtocolTreasury.sol:ProtocolTreasury   "$TREASURY_ADDR"
-verify src/ZorphaBuyback.sol:ZorphaBuyback         "$BUYBACK_ADDR"
-verify src/InsuranceFund.sol:InsuranceFund         "$INSURANCE_ADDR"
-verify src/MerkleDistributor.sol:MerkleDistributor "$DISTRIBUTOR_ADDR"
-verify src/ZorphaVesting.sol:ZorphaVesting         "$VESTING_ADDR"
+echo "==> [6/7] verify token-layer contracts"
+verify_broadcast "$BROADCAST"
 
 echo "==> [7/7] Phase B — vault layer"
 FACTORY_ADDR=""
@@ -295,9 +325,9 @@ else
   fi
   VAULTS_DEPLOYED=true
 
-  verify src/VaultFactory.sol:VaultFactory                       "$FACTORY_ADDR"
-  verify src/executor/StrategyExecutor.sol:StrategyExecutor      "$EXECUTOR_ADDR"
-  verify src/reputation/ReputationRegistry.sol:ReputationRegistry "$REPUTATION_ADDR"
+  # Covers the oracle, both adapters and the three CREATE2 vaults as well as
+  # these three, none of which the old hardcoded list mentioned.
+  verify_broadcast "$VAULT_BROADCAST"
 fi
 
 echo "==> writing $WEB_ENV"
