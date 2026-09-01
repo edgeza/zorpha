@@ -45,7 +45,7 @@ SideQuest/
 │  │  │  ├─ vaults/               ERC-4626 vaults. Capital routes to adapters.
 │  │  │  ├─ executor/             EIP-712 rebalance verifier, rate-limited
 │  │  │  └─ oracle/, reputation/, adapters/, governance/
-│  │  ├─ test/                    97 tests: unit, fuzz, invariant, generator parity
+│  │  ├─ test/                    158 tests: unit, fuzz, invariant, generator parity
 │  │  └─ script/
 │  │     ├─ DeployZorphaToken.s.sol   Phase A: token + atomic distribution
 │  │     ├─ DeployVaultsV1.s.sol      Phase B: vaults (gated on green tests)

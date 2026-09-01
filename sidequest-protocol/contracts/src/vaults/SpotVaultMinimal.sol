@@ -174,6 +174,8 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
     }
 
     function _oraclePrice() internal view returns (uint256) {
+        // Only startedAt is dropped; every other field is checked just below.
+        // slither-disable-next-line unused-return
         (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound) =
             oracle.latestRoundData();
         if (answer <= 0) revert InvalidOraclePrice(answer);

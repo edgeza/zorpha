@@ -127,9 +127,14 @@ contract ERC4626YieldAdapter is IYieldAdapter, AccessControl, ReentrancyGuard {
                 // for an asset amount: `withdraw()` rounds the share cost UP and
                 // can demand one more share than exists, which reverts on
                 // exactly the full-exit path migration depends on.
+                // slither-disable-next-line unused-return
                 if (shares > 0) target.redeem(shares, address(this), address(this));
             } else {
                 uint256 liquid = target.maxWithdraw(address(this));
+                // Both branches ignore the return on purpose: what actually
+                // arrived is measured by balance delta afterwards, which is the
+                // only number a miscounting target cannot lie about.
+                // slither-disable-next-line unused-return
                 target.withdraw(need < liquid ? need : liquid, address(this), address(this));
             }
         }

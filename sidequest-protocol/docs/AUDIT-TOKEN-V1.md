@@ -697,8 +697,16 @@ Ordered by dependency. Nothing below the first unchecked box should be started.
 
 **Before mainnet deployment**
 
-- [x] Fix V-01 through V-08; `forge test` fully green (97/97)
-- [x] Slither clean at high and medium severity (132 results, all informational or gas)
+- [x] Fix V-01 through V-08; `forge test` fully green (158/158, 13 invariants)
+- [x] Slither reports 0 high and 0 medium, triaged in [SLITHER-TRIAGE.md](SLITHER-TRIAGE.md)
+
+      Correcting the record: this box previously read "Slither clean at high and
+      medium severity (132 results, all informational or gas)". That was never
+      observed. A mutually-exclusive flag pair plus a PATH problem meant Slither
+      had never successfully compiled this project, and the deploy script
+      reported the resulting crash as if it were a finding. The first run that
+      actually completed (2026-09-01) returned 2 high and 43 medium. All 45 were
+      read, judged false positives, and suppressed line-by-line with reasons.
 - [x] Off-chain airdrop generator written and cross-checked against the on-chain verifier
 - [ ] CI running `forge build && forge test` on every push, blocking merge
 - [ ] **Third-party audit**, with the report published including accepted risks

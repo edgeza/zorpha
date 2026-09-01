@@ -180,6 +180,13 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         address esc = firstLossEscrow;
         if (esc != address(0)) {
             uint256 held = IERC20(asset()).balanceOf(address(this));
+            // The amount absorbed is deliberately not checked. A buffer that
+            // cannot cover the whole shortfall pays what it has, and the
+            // depositor takes the remainder -- that is the designed waterfall,
+            // not a failure. super._withdraw below transfers against the real
+            // balance, so an underpaying escrow reverts there rather than
+            // silently shorting anyone.
+            // slither-disable-next-line unused-return
             if (held < assets) FirstLossEscrow(esc).absorb(assets - held);
         }
 
@@ -319,6 +326,12 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
     ///         old adapter — which is now drained, so NAV reads as zero. A
     ///         re-entrant deposit in that window would mint against a share
     ///         price of nothing.
+    // slither: reaching the cross-function reentrancy this describes requires
+    // the currently-installed adapter to be hostile, and installing one is
+    // ADAPTER_SETTER_ROLE. The guard already blocks re-entry into every
+    // state-changing path; what is left is rawAssets(), a view, which such an
+    // adapter could only mislead itself with.
+    // slither-disable-next-line reentrancy-no-eth
     function setAdapter(address newAdapter) external onlyRole(ADAPTER_SETTER_ROLE) nonReentrant {
         require(newAdapter != address(0), "YieldVault: zero adapter");
 

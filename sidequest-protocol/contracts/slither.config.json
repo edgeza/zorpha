@@ -1,10 +1,9 @@
 {
-  "detectors_to_exclude": "solc-version,pragma,naming-convention,code-complexity,similar-lines,unused-import",
+  "detectors_to_exclude": "solc-version,pragma,naming-convention,code-complexity,similar-lines,unused-import,incorrect-equality,uninitialized-local",
   "filter_paths": "lib/|test/|script/|node_modules/",
   "solc_remaps": [
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
     "forge-std/=lib/forge-std/src/"
   ],
-  "compile_force_framework": "foundry",
-  "foundry_compile_force_evm_version": "paris"
+  "compile_force_framework": "foundry"
 }

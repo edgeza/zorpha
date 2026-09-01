@@ -18,8 +18,12 @@ threat model assumes:
   Slither, invariants). Mainnet is **out of scope** for V1.
 - An internal audit of the whole protocol is complete: see
   [AUDIT-TOKEN-V1.md](AUDIT-TOKEN-V1.md). 24 findings, all fixed and covered by
-  regression tests. Suite green at 97/97 including 7 stateful invariants.
-  Slither clean at high and medium severity.
+  regression tests. Suite green at 158/158 including 13 stateful invariants
+  across two handlers.
+- Slither reports 0 high and 0 medium as of 2026-09-01. Every suppression is
+  written down in [SLITHER-TRIAGE.md](SLITHER-TRIAGE.md) — read that before
+  quoting this line. The earlier claim here was unverified: Slither had never
+  actually run, and the deploy script was reporting its crash as a finding.
 - Still outstanding: a THIRD-PARTY audit. That is a gate before mainnet, not
   something to arrange afterwards.
 

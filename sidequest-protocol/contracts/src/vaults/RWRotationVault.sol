@@ -169,6 +169,8 @@ contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
 
     function _readPrice(uint256 i) internal view returns (uint256) {
         AggregatorV3Interface o = oracles[i];
+        // Only startedAt is dropped; every other field is checked just below.
+        // slither-disable-next-line unused-return
         (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound) =
             o.latestRoundData();
         if (answer <= 0) revert InvalidOraclePrice(answer);

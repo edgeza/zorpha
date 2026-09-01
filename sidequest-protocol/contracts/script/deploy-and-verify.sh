@@ -98,10 +98,71 @@ else
 fi
 
 echo "==> [4/7] slither"
-slither . --config-file slither.config.json --fail-high --fail-medium || {
-  echo "slither found high/medium issues; not deploying" >&2
+
+# Slither shells out to `forge`, and it does so through the OS rather than
+# through this shell -- which on Windows means the system PATH, not ours.
+# foundryup installs into ~/.foundry/bin, which is usually only on the shell's,
+# so slither died in crytic-compile before reading a line of Solidity. Hand the
+# child the same forge we are already using.
+command -v forge >/dev/null || { echo "ERROR: forge not on PATH" >&2; exit 1; }
+FORGE_DIR="$(cd "$(dirname "$(command -v forge)")" && pwd)"
+case ":$PATH:" in
+  *":$FORGE_DIR:"*) ;;
+  *) PATH="$FORGE_DIR:$PATH"; export PATH ;;
+esac
+
+SLITHER_JSON="slither-report.json"
+SLITHER_LOG="slither-run.log"
+rm -f "$SLITHER_JSON" "$SLITHER_LOG"
+
+# --fail-none on purpose. It makes the exit code mean "slither ran", so a crash
+# and a finding stop being the same signal -- previously a compile failure was
+# reported as "found high/medium issues", which is the most misleading way this
+# step could possibly fail. What it found is read out of the report below.
+#
+# (--fail-high and --fail-medium are also mutually exclusive in argparse, and
+# --fail-medium already covers high. Passing both aborted the run outright.)
+if ! slither . --config-file slither.config.json --fail-none        --json "$SLITHER_JSON" > "$SLITHER_LOG" 2>&1 || [[ ! -s "$SLITHER_JSON" ]]; then
+  echo "" >&2
+  echo "ERROR: slither could not run. This is a tooling failure, not a finding." >&2
+  echo "       Nothing has been deployed. Last 20 lines of $SLITHER_LOG:" >&2
+  echo "" >&2
+  tail -20 "$SLITHER_LOG" >&2
   exit 1
-}
+fi
+
+if ! node -e '
+  const fs = require("fs");
+  const file = process.argv[1];
+  const all = (JSON.parse(fs.readFileSync(file, "utf8")).results || {}).detectors || [];
+  const tally = {};
+  for (const d of all) tally[d.impact] = (tally[d.impact] || 0) + 1;
+  const summary = Object.entries(tally).map(([k, v]) => k + ": " + v).join(", ");
+  console.log("    " + (summary || "no findings"));
+
+  const blocking = all.filter(d => d.impact === "High" || d.impact === "Medium");
+  if (blocking.length === 0) {
+    console.log("    nothing high or medium");
+    process.exit(0);
+  }
+  console.error("");
+  console.error("slither found " + blocking.length + " high/medium finding(s):");
+  for (const d of blocking) {
+    const el = (d.elements || [])[0] || {};
+    const sm = el.source_mapping || {};
+    console.error("  [" + d.impact + "] " + d.check + "  " +
+      (sm.filename_relative || "?") + ":" + ((sm.lines || [])[0] || "?"));
+  }
+  console.error("");
+  console.error("Full detail is in " + file + ".");
+  console.error("Read each one. If it is genuinely a false positive, put the reason");
+  console.error("on the line it concerns with a // slither-disable-next-line <check>");
+  console.error("comment, so the detector stays live for code written later.");
+  process.exit(1);
+' "$SLITHER_JSON"; then
+  echo "not deploying" >&2
+  exit 1
+fi
 
 echo "==> [5/7] Phase A — token layer deploy"
 forge script "$TOKEN_SCRIPT" \

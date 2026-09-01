@@ -74,6 +74,14 @@ contract ZorphaBuyback is Ownable2Step, ReentrancyGuard {
     ///        should quote offchain and apply their own slippage tolerance.
     /// @return usdcSpent USDC actually consumed by the swap.
     /// @return zorBurned ZOR actually burned.
+    // slither: the balance snapshots either side of the swap ARE the defence,
+    // not a stale read. execute() is nonReentrant, every other entrypoint here
+    // is Timelock-only, and the router itself is set by the Timelock, so there
+    // is no path for a swap callee to re-enter and move these balances. Both
+    // deltas are also floored by the post-call balance, so a router that
+    // donates tokens mid-swap can only revert the call, never inflate a burn.
+    // The ignored swap() return is the point: see the comment below it.
+    // slither-disable-next-line reentrancy-balance,unused-return
     function execute(uint256 minZorOut)
         external
         nonReentrant
