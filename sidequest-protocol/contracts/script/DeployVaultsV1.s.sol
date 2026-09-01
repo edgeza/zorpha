@@ -12,7 +12,8 @@ import {SpotVaultMinimal} from "../src/vaults/SpotVaultMinimal.sol";
 import {RWRotationVault} from "../src/vaults/RWRotationVault.sol";
 import {YieldVault} from "../src/vaults/YieldVault.sol";
 import {StubYieldAdapter} from "../src/adapters/StubYieldAdapter.sol";
-import {StubSwapAdapter} from "../src/adapters/RobinhoodChainRouterAdapter.sol";
+import {StubSwapAdapter, RobinhoodChainRouterAdapter} from "../src/adapters/RobinhoodChainRouterAdapter.sol";
+import {ERC4626YieldAdapter} from "../src/adapters/ERC4626YieldAdapter.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 /// @title DeployVaultsV1
@@ -48,8 +49,10 @@ contract DeployVaultsV1 is Script {
         SpotVaultMinimal spotVault;
         RWRotationVault rotationVault;
         YieldVault yieldVault;
-        StubYieldAdapter yieldAdapter;
-        StubSwapAdapter swapAdapter;
+        address yieldAdapter;
+        address swapAdapter;
+        bool yieldIsReal;
+        bool swapIsReal;
     }
 
     function run() external returns (Deployed memory r) {
@@ -59,7 +62,18 @@ contract DeployVaultsV1 is Script {
         address gov = vm.envAddress("GOVERNANCE");
         address timelock = vm.envAddress("TIMELOCK");
         address treasury = vm.envAddress("TREASURY");
-        address usdc = vm.envAddress("USDC_TOKEN");
+        // Robinhood Chain's stablecoin is Paxos USDG, not USDC: the canonical
+        // USDC addresses have no code on 4663. USDC_TOKEN is still honoured so
+        // an in-flight runbook keeps working.
+        address usdc = vm.envOr("USDG_TOKEN", address(0));
+        if (usdc == address(0)) usdc = vm.envAddress("USDC_TOKEN");
+
+        // Optional venues. Set on mainnet, left unset on testnet, where none of
+        // this is deployed and the stubs stand in instead.
+        address yieldTarget = vm.envOr("YIELD_TARGET", address(0));
+        address swapRouter = vm.envOr("SWAP_ROUTER", address(0));
+        uint24 swapFeeTier = uint24(vm.envOr("SWAP_FEE_TIER", uint256(500)));
+
         address stockToken1 = vm.envAddress("STOCK_TOKEN_1");
         address stockToken2 = vm.envOr("STOCK_TOKEN_2", address(0));
         address stockFeed1 = vm.envOr("STOCK_FEED_1", address(0));
@@ -92,8 +106,31 @@ contract DeployVaultsV1 is Script {
         // ─── Registry, executor, adapters.
         r.reputation = new ReputationRegistry(gov);
         r.executor = new StrategyExecutor(deployer);
-        r.yieldAdapter = new StubYieldAdapter(usdc, gov);
-        r.swapAdapter = new StubSwapAdapter(stockToken1, usdc, deployer);
+
+        // ─── Yield adapter ──────────────────────────────────────────────────
+        // With a target set, deposits route into a real ERC-4626 vault and the
+        // yield vault earns something. Without one it falls back to the stub,
+        // whose own comment concedes "zero yield, zero risk" -- fine for
+        // exercising accounting on testnet, not a product.
+        if (yieldTarget != address(0)) {
+            r.yieldAdapter = address(new ERC4626YieldAdapter(usdc, yieldTarget, deployer));
+            r.yieldIsReal = true;
+        } else {
+            r.yieldAdapter = address(new StubYieldAdapter(usdc, gov));
+        }
+
+        // ─── Swap adapter ───────────────────────────────────────────────────
+        // The stub swaps 1:1 ignoring price and decimals. That is survivable on
+        // a testnet with mock tokens and catastrophic anywhere else, which is
+        // why the real router is used the moment one is configured.
+        if (swapRouter != address(0)) {
+            r.swapAdapter = address(
+                new RobinhoodChainRouterAdapter(swapRouter, stockToken1, usdc, swapFeeTier, deployer)
+            );
+            r.swapIsReal = true;
+        } else {
+            r.swapAdapter = address(new StubSwapAdapter(stockToken1, usdc, deployer));
+        }
 
         // ─── Factory owned by the deployer for the duration of this script.
         r.factory = new VaultFactory(deployer);
@@ -120,9 +157,9 @@ contract DeployVaultsV1 is Script {
                 keccak256("zorpha-spot-vault-v1")
             )
         );
-        r.spotVault.setSwapAdapter(address(r.swapAdapter));
+        r.spotVault.setSwapAdapter(r.swapAdapter);
         r.spotVault.grantRole(r.spotVault.KEEPER_ROLE(), address(r.executor));
-        r.swapAdapter.grantRole(r.swapAdapter.VAULT_ROLE(), address(r.spotVault));
+        IAccessControl(r.swapAdapter).grantRole(keccak256("VAULT_ROLE"), address(r.spotVault));
 
         // ─── Vault 2: RWA rotation basket (optional second leg).
         if (stockToken2 != address(0)) {
@@ -161,7 +198,7 @@ contract DeployVaultsV1 is Script {
             r.factory.deployYieldVault(
                 YieldVaultParams({
                     asset: usdc,
-                    adapter: address(r.yieldAdapter),
+                    adapter: r.yieldAdapter,
                     name: "Zorpha USDC Yield Vault",
                     symbol: "zqUSD",
                     performanceFeeBps: 1000,
@@ -173,12 +210,20 @@ contract DeployVaultsV1 is Script {
         );
         r.yieldVault.grantRole(r.yieldVault.KEEPER_ROLE(), address(r.executor));
 
+        // ERC4626YieldAdapter gates deposit/withdraw on VAULT_ROLE, which the
+        // stub never did. Granted after the vault exists, since the factory
+        // creates it and its address is not known before that.
+        if (r.yieldIsReal) {
+            IAccessControl(r.yieldAdapter).grantRole(keccak256("VAULT_ROLE"), address(r.yieldVault));
+        }
+
         // ─── Handover. Every privileged role moves to governance or the
         //     timelock, and the deployer renounces its own.
         _handOver(address(r.oracle), gov, deployer);
         _handOver(address(r.factory), gov, deployer);
         _handOver(address(r.executor), gov, deployer);
-        _handOver(address(r.swapAdapter), gov, deployer);
+        _handOver(r.swapAdapter, gov, deployer);
+        if (r.yieldIsReal) _handOver(r.yieldAdapter, gov, deployer);
 
         r.spotVault.grantRole(r.spotVault.RISK_COUNCIL_ROLE(), gov);
         _handOver(address(r.spotVault), gov, deployer);
@@ -211,6 +256,19 @@ contract DeployVaultsV1 is Script {
         console2.log("Spot vault     ", address(r.spotVault));
         console2.log("Rotation vault ", address(r.rotationVault));
         console2.log("Yield vault    ", address(r.yieldVault));
+        console2.log("Yield adapter  ", r.yieldAdapter);
+        console2.log("Swap adapter   ", r.swapAdapter);
+        console2.log("");
+        if (!r.yieldIsReal) {
+            console2.log("WARNING: yield adapter is the STUB. The yield vault");
+            console2.log("earns exactly nothing. Set YIELD_TARGET to a real");
+            console2.log("ERC-4626 vault before this holds anyone's money.");
+        }
+        if (!r.swapIsReal) {
+            console2.log("WARNING: swap adapter is the STUB. It swaps 1:1");
+            console2.log("ignoring price and decimals, and must be pre-funded.");
+            console2.log("Set SWAP_ROUTER before this touches real assets.");
+        }
         console2.log("");
         console2.log("ACTION REQUIRED: seat the real oracle updater set and");
         console2.log("raise ORACLE_QUORUM before accepting live deposits. A");
