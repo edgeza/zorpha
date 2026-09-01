@@ -175,6 +175,8 @@ async function main() {
   // that emits an unverifiable proof produces a claim page that fails for a
   // real recipient with no explanation, which is the worst kind of launch bug.
   let written = 0;
+  const combined: Record<string, { index: number; amount: string; proof: string[] }> = {};
+
   for (const e of entries) {
     const proof = proofFor(levels, e.index);
     const leaf = leafOf(e);
@@ -182,14 +184,34 @@ async function main() {
       throw new Error(`generated proof for ${e.address} (index ${e.index}) does not verify`);
     }
 
-    const file = path.join(OUT_DIR, `${e.address.slice(2).toLowerCase()}.json`);
+    const key = e.address.slice(2).toLowerCase();
+    const record = { index: e.index, amount: e.amount.toString(), proof };
+
     await fs.writeFile(
-      file,
-      `${JSON.stringify({ index: e.index, amount: e.amount.toString(), proof }, null, 2)}\n`,
+      path.join(OUT_DIR, `${key}.json`),
+      `${JSON.stringify(record, null, 2)}\n`,
       'utf-8',
     );
+    combined[key] = record;
     written++;
   }
+
+  // One combined file, as well as the per-recipient ones.
+  //
+  // The per-recipient files are gitignored, on the reasoning that thousands of
+  // tiny files are not worth committing. That reasoning is sound, but the claim
+  // API reads proofs off disk at runtime -- so on a deployment that has only
+  // what git tracked, every claim would 404 with "not eligible" and nothing
+  // anywhere would explain why.
+  //
+  // This file is what git tracks instead. One artefact rather than thousands,
+  // and a Merkle proof is logarithmic in the recipient count, so even a large
+  // snapshot stays a few megabytes.
+  await fs.writeFile(
+    path.join(OUT_DIR, 'proofs.json'),
+    `${JSON.stringify(combined, null, 2)}\n`,
+    'utf-8',
+  );
 
   const manifest = {
     generatedFrom: path.basename(SNAPSHOT),
@@ -212,6 +234,7 @@ async function main() {
   console.log(`total allocation  ${manifest.totalAllocationZor} ZOR`);
   console.log(`snapshot sha256   ${manifest.snapshotSha256}`);
   console.log(`proofs written    ${written} -> ${OUT_DIR}`);
+  console.log(`combined          proofs.json (the one git tracks)`);
   console.log('');
   console.log(`AIRDROP_MERKLE_ROOT=${root}`);
   console.log('');

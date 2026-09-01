@@ -23,10 +23,14 @@ sidequest-protocol/contracts/broadcast/
 # Indexer build
 sidequest-protocol/indexer/dist/
 
-# Airdrop proofs are generated from a snapshot; the snapshot + manifest are the
-# artefacts worth committing, not thousands of per-recipient files.
+# Airdrop proofs are generated from a snapshot. The per-recipient files are not
+# worth committing -- thousands of tiny files -- but proofs.json and the
+# manifest are, because the claim API reads proofs off disk at runtime and a
+# deployment only ever has what git tracked. Without proofs.json every claim
+# 404s in production while working fine locally.
 zorpha-web/data/airdrop/*.json
 !zorpha-web/data/airdrop/manifest.json
+!zorpha-web/data/airdrop/proofs.json
 
 # Tooling / OS
 .DS_Store

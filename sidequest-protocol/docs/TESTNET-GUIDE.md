@@ -166,9 +166,14 @@ until accepted. Queue `acceptOwnership()` through the Timelock.
 cd ../../zorpha-web && npm run dev
 ```
 
-Open http://localhost:3000/portal. The orange "not configured" banner should be
-**gone** — the deploy filled every address in. If a name is still listed there,
-that contract did not deploy.
+**Watch the port it prints.** Another project on this machine already listens on
+3000 (Autonama AI Fund), so Next will fall through to 3001 or higher. Opening
+3000 out of habit shows you a different site's 404 and looks like Zorpha is
+broken when it is running perfectly on the next port up.
+
+Open `/portal` on whatever port it printed. The orange "not configured" banner
+should be **gone** — the deploy filled every address in. If a name is still
+listed there, that contract did not deploy.
 
 ---
 
