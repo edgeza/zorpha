@@ -80,18 +80,30 @@ why the rest of the guide happens in the same window.
 ## Step 2 — Generate the airdrop root
 
 The distributor commits to a Merkle root at deploy time, so it has to exist
-first.
+first. This runs from `sidequest-protocol/`, one level up from the contracts:
 
 ```bash
-npx tsx scripts/generate-airdrop.ts
+cd .. && npm install && npm run airdrop:testnet
 ```
 
-It prints a root. Then:
+It reads `data/snapshot-testnet.csv`, which already contains your two accounts
+so you can actually test claiming, writes each recipient's proof into
+`zorpha-web/data/airdrop/`, and prints a line you can copy verbatim:
+
+```
+AIRDROP_MERKLE_ROOT=0x...
+```
+
+Paste that line into your terminal, then add the deadline and go back:
 
 ```bash
-export AIRDROP_MERKLE_ROOT=<THE_ROOT_IT_PRINTED>
 export AIRDROP_CLAIM_DEADLINE=$(date -d '+90 days' +%s)
+cd contracts
 ```
+
+That snapshot is a testnet fixture, not the real allocation. The real one is a
+separate file, published with its sha256 **before** claims open so anyone can
+rebuild the root and confirm nothing changed afterwards.
 
 ---
 

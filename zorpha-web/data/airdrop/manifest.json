@@ -1,0 +1,8 @@
+{
+  "generatedFrom": "snapshot-testnet.csv",
+  "snapshotSha256": "159d496127bf75709549a54e71e9939b0daa5c6bf5946b27635e80940eeeccaf",
+  "merkleRoot": "0xa0ca411e2333dcf4cb30ab4eb2d39895b0f6f82fa8beedb14ecf9f152054d161",
+  "recipients": 5,
+  "totalAllocationWei": "285000000000000000000000",
+  "totalAllocationZor": "285000"
+}

@@ -31,7 +31,8 @@ real venues correctly.
 - [ ] `git config user.email juan@autonama.co.za` — Vercel blocks deployments
       whose commit author is not associated with the account.
 - [ ] Toolchain: `forge --version` (1.8.1), `cast`, `jq`, `slither`.
-- [ ] Airdrop root generated: `npx tsx scripts/generate-airdrop.ts`
+- [ ] Airdrop root generated, from `sidequest-protocol/` not `contracts/`:
+      `npm install && npm run airdrop -- --snapshot data/<file>.csv`
 - [ ] `AIRDROP_CLAIM_DEADLINE` set to a future unix timestamp:
       `date -d '+90 days' +%s`
 

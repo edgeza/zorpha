@@ -1,0 +1,17 @@
+# Zorpha Season 1 — TESTNET snapshot.
+#
+# Not the real allocation. This exists so the claim flow can be exercised end
+# to end on testnet with addresses you actually control, which is the only way
+# to find out whether claiming works before it matters.
+#
+# The real snapshot is a separate file, published with its sha256 BEFORE
+# claims open, so anyone can rebuild the root and confirm the allocation was
+# not changed after the fact.
+#
+# address,amount (whole ZOR)
+address,amount
+0xB4a7C2DeebB5EaDC34e120bC8a5708508DC17f4b,125000
+0x613ab528E46fCeD27350465E338354776B2a790a,75000
+0x000000000000000000000000000000000000dEaD,50000
+0x00000000000000000000000000000000000B0b01,25000
+0x00000000000000000000000000000000000A1CE1,10000

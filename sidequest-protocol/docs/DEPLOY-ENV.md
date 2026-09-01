@@ -63,7 +63,7 @@ On testnet, deploy a mock 6-decimal ERC-20 and point `USDC_TOKEN` at it.
 `AIRDROP_MERKLE_ROOT` comes from the generator, not from you:
 
 ```bash
-cd sidequest-protocol/contracts && npx tsx scripts/generate-airdrop.ts
+cd sidequest-protocol && npm install && npm run airdrop -- --snapshot data/<your-snapshot>.csv
 ```
 
 It prints the root and writes the proof file the portal serves. The script

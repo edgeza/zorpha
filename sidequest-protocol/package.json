@@ -1,0 +1,17 @@
+{
+  "name": "zorpha-protocol-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offchain tooling for the Zorpha protocol: the Season 1 airdrop Merkle generator.",
+  "//": "This exists because node resolves modules from the SCRIPT's directory, not the working directory. Without it, generate-airdrop.ts cannot find viem no matter where it is invoked from, and the failure lands at the exact moment someone is trying to produce the root a deploy is waiting on.",
+  "scripts": {
+    "airdrop": "tsx scripts/generate-airdrop.ts",
+    "airdrop:testnet": "tsx scripts/generate-airdrop.ts --snapshot data/snapshot-testnet.csv"
+  },
+  "dependencies": {
+    "viem": "^2.56.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
+}
