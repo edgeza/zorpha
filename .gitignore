@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Secrets — never commit
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Next.js
+.next/
+out/
+.vercel/
+
+# Foundry
+sidequest-protocol/contracts/out/
+sidequest-protocol/contracts/cache/
+sidequest-protocol/contracts/broadcast/
+!sidequest-protocol/contracts/broadcast/**/run-latest.json
+
+# Indexer build
+sidequest-protocol/indexer/dist/
+
+# Airdrop proofs are generated from a snapshot; the snapshot + manifest are the
+# artefacts worth committing, not thousands of per-recipient files.
+zorpha-web/data/airdrop/*.json
+!zorpha-web/data/airdrop/manifest.json
+
+# Tooling / OS
+.DS_Store
+Thumbs.db
+*.log
+.turbo/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Agent skills are installed to .agents/skills (canonical). On Windows the
+# installer copies rather than symlinks, so .claude/skills is a duplicate.
+.claude/skills/

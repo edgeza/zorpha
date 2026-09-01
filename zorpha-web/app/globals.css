@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+
+    /* Chart colours, mirrored from tailwind.config.mjs so lib/tokenomics.ts
+       can reference them as plain CSS custom properties. */
+    --zor-500: #8b6dff;
+    --verified-500: #a8ee2b;
+    --cyan-500: #22d3ee;
+    --amber-500: #f59e0b;
+    --magenta-500: #e849c0;
+    --danger-500: #f2555a;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-void-950 text-ink-200 font-sans antialiased;
+    /* Tabular figures everywhere: this is a numbers product and digits that
+       change width make a dashboard twitch on every re-render. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background: rgba(139, 109, 255, 0.35);
+    color: #f6f6fb;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-zor-500 ring-offset-2 ring-offset-void-950;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display text-ink-100;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* Respect the OS setting rather than animating regardless. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* ─── Layout ──────────────────────────────────────────────────────────── */
+  .shell {
+    @apply mx-auto w-full max-w-[76rem] px-5 sm:px-8;
+  }
+  .shell-narrow {
+    @apply mx-auto w-full max-w-[52rem] px-5 sm:px-8;
+  }
+
+  /* ─── Surfaces ────────────────────────────────────────────────────────── */
+  .card {
+    @apply rounded-card border border-void-700 bg-void-900/80 shadow-panel;
+  }
+  .card-pad {
+    @apply card p-5 sm:p-6;
+  }
+  .card-hover {
+    @apply transition-colors duration-200 hover:border-zor-600/70 hover:bg-void-850/90;
+  }
+
+  /* ─── Type ────────────────────────────────────────────────────────────── */
+  .eyebrow {
+    @apply text-2xs font-medium uppercase tracking-[0.16em] text-ink-400;
+  }
+  .stat-value {
+    @apply font-mono text-2xl text-ink-100 sm:text-3xl;
+  }
+  .stat-label {
+    @apply text-2xs uppercase tracking-[0.14em] text-ink-400;
+  }
+  .lede {
+    @apply text-base leading-relaxed text-ink-300 sm:text-lg;
+  }
+
+  /* ─── Controls ────────────────────────────────────────────────────────── */
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-lg border border-void-600
+           bg-void-800 px-4 py-2.5 text-sm font-medium text-ink-100
+           transition-all duration-150 hover:border-void-500 hover:bg-void-700
+           disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-void-800;
+  }
+  .btn-primary {
+    @apply btn border-transparent bg-zor-600 text-white
+           hover:bg-zor-500 hover:shadow-glow disabled:hover:bg-zor-600 disabled:hover:shadow-none;
+  }
+  .btn-ghost {
+    @apply btn border-transparent bg-transparent hover:bg-void-800;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-void-600 bg-void-950 px-3.5 py-2.5 font-mono text-sm
+           text-ink-100 placeholder:font-sans placeholder:text-ink-500
+           focus:border-zor-500 focus:outline-none focus:ring-1 focus:ring-zor-500;
+  }
+
+  /* ─── Badges ──────────────────────────────────────────────────────────── */
+  .badge {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-void-600 bg-void-800
+           px-2.5 py-1 font-mono text-2xs text-ink-300;
+  }
+  .badge-verified {
+    @apply badge border-verified-600/40 bg-verified-500/10 text-verified-400;
+  }
+  .badge-warn {
+    @apply badge border-amber-600/40 bg-amber-500/10 text-amber-400;
+  }
+  .badge-danger {
+    @apply badge border-danger-600/40 bg-danger-500/10 text-danger-400;
+  }
+  .badge-zor {
+    @apply badge border-zor-600/50 bg-zor-500/10 text-zor-300;
+  }
+
+  /* ─── Misc ────────────────────────────────────────────────────────────── */
+  .divide-hair {
+    @apply divide-y divide-void-700;
+  }
+  .link-quiet {
+    @apply text-ink-300 underline decoration-void-500 underline-offset-4
+           transition-colors hover:text-ink-100 hover:decoration-zor-500;
+  }
+  .hairline {
+    @apply border-t border-void-700;
+  }
+  .scroll-x {
+    @apply -mx-5 overflow-x-auto px-5 sm:mx-0 sm:px-0;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-zor-sheen bg-clip-text text-transparent;
+  }
+  /* Radial spotlight behind hero content. */
+  .spotlight {
+    background:
+      radial-gradient(60rem 32rem at 50% -8rem, rgba(139, 109, 255, 0.18), transparent 70%),
+      radial-gradient(40rem 24rem at 85% 0%, rgba(34, 211, 238, 0.10), transparent 70%);
+  }
+  .grid-lines {
+    background-image:
+      linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(48rem 28rem at 50% 0%, black, transparent 75%);
+    -webkit-mask-image: radial-gradient(48rem 28rem at 50% 0%, black, transparent 75%);
+  }
+}

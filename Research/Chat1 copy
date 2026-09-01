@@ -1,0 +1,132 @@
+My recommendation is: build Sidebag, not a Zentory token and not another staking/reflection fork.
+
+Sidebag — “One bag for the moon. One bag for the future.”
+
+It is a noncustodial split-swap router: whenever somebody buys a Robinhood Chain token, they can automatically route 0.5–5% of the trade into USDG or a supported Robinhood Stock Token.
+
+Why this is the opportunity
+
+Robinhood Chain recorded roughly $989 million in single-day DEX volume and $708 million TVL on August 31. But its early activity has been dominated by memecoins and stablecoins, while tokenized equities—the chain’s actual differentiator—remain a much smaller part of the ecosystem.
+
+Sidebag connects those two worlds:
+
+Memecoins provide attention and volume.
+Stock Tokens provide a Robinhood-specific narrative.
+The router turns every speculative trade into a visible onchain saving event.
+Every transaction can generate shareable content.
+Users retain both assets directly in their wallets.
+
+Robinhood Chain is EVM-compatible, permissionless and uses ETH for gas, so the core router can be a relatively small Solidity system rather than an oversized protocol.
+
+How it works
+
+A user:
+
+Selects any supported token they want to buy.
+Selects a Sidebag asset: initially USDG, NVDA, TSLA, SPY or QQQ, where legally available and liquid.
+Chooses 0.5%, 1%, 2%, 5% or custom.
+Signs one transaction.
+Receives both assets directly.
+
+For a $100 trade with a 2% Sidebag and a 0.30% protocol fee:
+
+$97.70 buys the memecoin.
+$2.00 buys the selected Sidebag asset.
+$0.30 is the disclosed protocol fee.
+Normal DEX costs and slippage still apply.
+
+The transaction then produces a receipt:
+
+Bought $97.70 of CASHCAT
+Sidebagged $2.00 of NVDA
+Lifetime Sidebag: $184
+Verified on Robinhood Chain
+
+The money going into the Sidebag is user-directed—not “free cashback.” That distinction must be explicit.
+
+Why I rejected the obvious alternatives
+Reference	Useful lesson	Problem
+Zentory	Real product and defensible long-term business	It is an investment-strategy vault still building its record, audit and operating structure. Turning it into a token now adds expectations before the underlying business is ready.
+Twofold	Extremely simple product story	Its documentation says no pool harvest had occurred and the staking stream was funded directly by the operator. The surrounding wrappers also lacked a third-party audit. That is not yet sustainable fee-funded yield.
+HOOD10	Automatic portfolio-building is understandable	A 5% tax on buys and sells creates approximately 10% round-trip friction before market movement and slippage.
+Marble	Spectacle and shareability matter	The public proposition is stock-token marble racing. That can attract attention, but a game alone is easier to clone and becomes legally harder if paid wagering is added.
+
+Sidebag takes the best parts—simple explanation, automatic accumulation and shareability—without fake APR, transfer taxes or pooled user capital.
+
+Token design
+
+The product should work before $SIDEBAG exists. Launching a token before users route real volume would make the token the entire product.
+
+A conservative structure:
+
+Fixed 1 billion supply.
+No mint function.
+No transfer tax.
+No blacklist.
+No rebasing or emissions.
+90% fair launch/liquidity.
+5% team allocation vested over at least 24 months.
+5% timelocked audit, security and integration treasury.
+Public multisig and disclosed wallets.
+
+Possible utility:
+
+Lock for router fee discounts.
+Burn tokens to sponsor community Sidebag campaigns.
+Pay for high-volume SDK/API integration.
+Signal new canonical Sidebag presets.
+
+Avoid revenue sharing, buybacks, dividends or “stake and earn” until counsel determines their regulatory treatment.
+
+Build architecture
+
+The MVP needs only four main pieces:
+
+An immutable split router that performs two bounded swaps.
+A canonical asset registry using official Robinhood Stock Token addresses.
+A quote/simulation service.
+An indexer for dashboards, referrals and share cards.
+
+Essential contract properties:
+
+Outputs go directly to the user.
+The contract retains no principal.
+Separate minOut protection for both swap legs.
+Whole transaction reverts if either leg fails.
+No arbitrary external-call facility.
+Fixed, reviewed router adapters.
+Deadline, reentrancy and dust protection.
+Fee-on-transfer token simulation.
+Emergency pause for new swaps only.
+External audit and public invariant/fuzz tests.
+
+Stock Token balances also need correct multiplier-adjusted display for dividends and splits. Robinhood documents these as tokenized debt securities with ERC-20 interfaces, Chainlink pricing and an onchain multiplier for corporate actions.
+
+Realistic timeline
+Days 1–2: brand clearance, legal scoping, official asset list and architecture.
+Days 3–10: testnet router, front end, dashboard and share cards.
+Days 11–18: fuzzing, tax-token simulations, oracle handling, multisig and bug bounty.
+Weeks 3–5: external review, remediation and capped mainnet beta.
+After proven volume: fair-launch $SIDEBAG.
+
+A clickable prototype is a few days. A testnet MVP is about 1–2 weeks. A responsible mainnet launch is closer to 4–6 weeks, depending on audit and legal availability.
+
+Non-negotiable legal gate
+
+Robinhood Stock Tokens are tokenized debt securities—not ordinary memecoins—and provide economic exposure without underlying shareholder rights. They cannot be offered or delivered to US persons and are restricted in other jurisdictions including Canada, the UK and Switzerland. Sidebag therefore needs an eligibility gate and a USDG-only fallback; a disclaimer alone is insufficient.
+
+If operated from South Africa, obtain a scoped opinion on whether running the router, curating asset presets and collecting routing fees constitutes advice or intermediary services under FAIS. The FSCA brought crypto-related financial services into its jurisdiction, while qualifying CASPs may also face FIC registration, AML and travel-rule obligations.
+
+Timing
+
+The current CryptoAudit snapshot showed BTC around $79,093, Fear & Greed at 77.85, RSI near 69, bullish trend strength and sharply rising volume. That is a strong attention environment but already overheated.
+
+So: build immediately, test during the current wave, but do not manufacture urgency with an unaudited token launch. Nobody can credibly guarantee that a project will “massively explode.” Sidebag gives you a legitimate shot because its growth loop is product-led rather than dependent on pretending token emissions are revenue.
+
+The complete 3,800-word research, competitor audit, contract invariants, launch sequence, kill criteria and ready-to-send pitch are here:
+
+robinhood-chain-project-research.md
+
+If helpful, I can set up “Monitor Sidebag competitors” so you catch any identical Robinhood Chain router before launch.
+
+Monitor Sidebag competitors
