@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # Zorpha V1 — Robinhood Chain deploy + verify.
 #
-# The pipeline is TWO scripts, not one. The token layer stands alone and is
-# audited green; the vault layer has open critical findings. Splitting them
-# means the token can launch without dragging the vault contracts along, and a
-# vault-layer failure can never leave a half-deployed token.
+# The pipeline is TWO scripts, not one. Splitting them means the token can
+# launch without dragging the vault contracts along, and a vault-layer failure
+# can never leave a half-deployed token.
 #
 #   Phase A  DeployZorphaToken  — token, timelock, treasury, buyback, insurance,
 #                                 airdrop distributor, vesting, and an ATOMIC
 #                                 distribution of the whole supply. Asserts the
 #                                 deployer ends with zero tokens and zero roles.
 #   Phase B  DeployVaultsV1     — oracle, factory, executor, registry, vaults.
-#                                 GATED: will not run while the vault test suite
-#                                 is failing. See docs/AUDIT-TOKEN-V1.md V-01.
+#                                 Opt-in via DEPLOY_VAULTS=true, and refuses to
+#                                 run if the test suite is red. Deploying the
+#                                 token alone first is a valid launch, so this
+#                                 stays deliberate rather than automatic.
 #
 # Required env:
 #   PRIVATE_KEY              deployer EOA (testnet ONLY — it holds nothing after)
@@ -31,7 +32,7 @@
 #   ORACLE_UPDATERS          comma-separated updater addresses (phase B)
 #   ORACLE_QUORUM            median quorum (phase B), must be <= updater count
 #   STOCK_TOKEN_1/2, STOCK_FEED_1/2                        (phase B)
-#   DEPLOY_VAULTS=true       opt in to phase B despite open findings
+#   DEPLOY_VAULTS=true       opt in to phase B (token-only is the default)
 #
 # Pre-reqs: forge, cast, slither, jq
 
@@ -70,16 +71,17 @@ forge build
 echo "==> [2/7] forge test — token layer (must be green)"
 forge test --match-path 'test/Zorpha.t.sol'
 
-echo "==> [3/7] forge test — full suite (informational)"
+echo "==> [3/7] forge test — full suite"
 if forge test; then
   FULL_SUITE_GREEN=true
   echo "    full suite green"
 else
   FULL_SUITE_GREEN=false
   echo ""
-  echo "    !! Full suite is FAILING. This is expected while the vault-layer"
-  echo "    !! findings in docs/AUDIT-TOKEN-V1.md (V-01..V-05) are open."
-  echo "    !! Phase B is skipped unless DEPLOY_VAULTS=true is set."
+  echo "    !! Full suite is FAILING. Every finding in"
+  echo "    !! docs/AUDIT-TOKEN-V1.md was closed against a green suite, so a"
+  echo "    !! red run here is a regression, not a known-open finding."
+  echo "    !! Phase B will refuse to run. Fix it before deploying vaults."
   echo ""
 fi
 
@@ -156,15 +158,24 @@ verify src/MerkleDistributor.sol:MerkleDistributor "$DISTRIBUTOR_ADDR"
 verify src/ZorphaVesting.sol:ZorphaVesting         "$VESTING_ADDR"
 
 echo "==> [7/7] Phase B — vault layer"
+FACTORY_ADDR=""
+EXECUTOR_ADDR=""
+REPUTATION_ADDR=""
+VAULTS_DEPLOYED=false
+
 if [[ "${DEPLOY_VAULTS:-false}" != "true" ]]; then
   echo "    SKIPPED. Set DEPLOY_VAULTS=true to deploy vaults."
-  echo "    Vault deposits should stay disabled in the portal until"
-  echo "    docs/AUDIT-TOKEN-V1.md V-01 is fixed and the suite is green."
+  echo "    The token layer stands alone; launching it without vaults is a"
+  echo "    valid first step, and the portal reports the vault addresses as"
+  echo "    unconfigured rather than rendering empty panels."
 elif [[ "$FULL_SUITE_GREEN" != "true" ]]; then
   echo "    REFUSING: DEPLOY_VAULTS=true but the test suite is failing." >&2
-  echo "    Fix V-01..V-05 first." >&2
+  echo "    A red suite means a regression against the closed audit. Fix it." >&2
   exit 1
 else
+  # TIMELOCK and TREASURY come from phase A. The vault script reads them from
+  # the environment and reverts if either is unset, so they are passed rather
+  # than re-derived.
   TIMELOCK="$TIMELOCK_ADDR" TREASURY="$TREASURY_ADDR" \
   forge script "$VAULT_SCRIPT" \
     --rpc-url "$RH_TESTNET_RPC_URL" \
@@ -172,31 +183,110 @@ else
     --broadcast \
     --sig "run()" \
     -vvv
+
+  VAULT_BROADCAST="broadcast/DeployVaultsV1.s.sol/$CHAIN_ID/run-latest.json"
+  if [[ ! -f "$VAULT_BROADCAST" ]]; then
+    echo "ERROR: no vault broadcast artifact at $VAULT_BROADCAST" >&2
+    exit 1
+  fi
+
+  vault_addr_of() {
+    jq -r --arg n "$1" \
+      '[.transactions[] | select(.contractName == $n) | .contractAddress] | first // ""' \
+      "$VAULT_BROADCAST"
+  }
+
+  FACTORY_ADDR=$(vault_addr_of VaultFactory)
+  EXECUTOR_ADDR=$(vault_addr_of StrategyExecutor)
+  REPUTATION_ADDR=$(vault_addr_of ReputationRegistry)
+
+  echo "    Factory      $FACTORY_ADDR"
+  echo "    Executor     $EXECUTOR_ADDR"
+  echo "    Reputation   $REPUTATION_ADDR"
+
+  if [[ -z "$FACTORY_ADDR" || -z "$EXECUTOR_ADDR" || -z "$REPUTATION_ADDR" ]]; then
+    echo "ERROR: a vault-layer address is missing from the broadcast" >&2
+    exit 1
+  fi
+  VAULTS_DEPLOYED=true
+
+  verify src/VaultFactory.sol:VaultFactory                       "$FACTORY_ADDR"
+  verify src/executor/StrategyExecutor.sol:StrategyExecutor      "$EXECUTOR_ADDR"
+  verify src/reputation/ReputationRegistry.sol:ReputationRegistry "$REPUTATION_ADDR"
 fi
 
 echo "==> writing $WEB_ENV"
 mkdir -p "$(dirname "$WEB_ENV")"
-cat > "$WEB_ENV" <<ENVEOF
-NEXT_PUBLIC_CHAIN_ID=$CHAIN_ID
-NEXT_PUBLIC_RPC_URL=$RH_TESTNET_RPC_URL
-NEXT_PUBLIC_EXPLORER_URL=${RH_EXPLORER_URL:-}
 
-NEXT_PUBLIC_ZOR_ADDRESS=$ZOR_ADDR
-NEXT_PUBLIC_TIMELOCK_ADDRESS=$TIMELOCK_ADDR
-NEXT_PUBLIC_TREASURY_ADDRESS=$TREASURY_ADDR
-NEXT_PUBLIC_BUYBACK_ADDRESS=$BUYBACK_ADDR
-NEXT_PUBLIC_INSURANCE_ADDRESS=$INSURANCE_ADDR
-NEXT_PUBLIC_MERKLE_DISTRIBUTOR_ADDRESS=$DISTRIBUTOR_ADDR
-NEXT_PUBLIC_VESTING_ADDRESS=$VESTING_ADDR
+# Merge, do not clobber. This file also holds values that no deploy can
+# reproduce: NEXT_PUBLIC_WC_PROJECT_ID comes from the Reown dashboard and the
+# Supabase pair from the Supabase project. An earlier version of this script
+# overwrote the whole file and silently destroyed all three, which shows up
+# later as "wallet connect does nothing" with no obvious cause.
+#
+# Every key this script owns is stripped from the old file first, then written
+# fresh below, so re-running is still idempotent for the values it manages.
+OWNED_KEYS=(
+  NEXT_PUBLIC_CHAIN_ID NEXT_PUBLIC_RPC_URL NEXT_PUBLIC_EXPLORER_URL
+  NEXT_PUBLIC_ZOR_ADDRESS NEXT_PUBLIC_TIMELOCK_ADDRESS
+  NEXT_PUBLIC_TREASURY_ADDRESS NEXT_PUBLIC_BUYBACK_ADDRESS
+  NEXT_PUBLIC_INSURANCE_ADDRESS NEXT_PUBLIC_MERKLE_DISTRIBUTOR_ADDRESS
+  NEXT_PUBLIC_VESTING_ADDRESS NEXT_PUBLIC_VAULT_FACTORY_ADDRESS
+  NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS NEXT_PUBLIC_REPUTATION_REGISTRY_ADDRESS
+  NEXT_PUBLIC_ENABLE_VAULT_DEPOSITS
+)
 
-# Left blank unless phase B ran. Fill from its broadcast artifact.
-NEXT_PUBLIC_VAULT_FACTORY_ADDRESS=
-NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS=
-NEXT_PUBLIC_REPUTATION_REGISTRY_ADDRESS=
+PRESERVED=""
+if [[ -f "$WEB_ENV" ]]; then
+  cp "$WEB_ENV" "$WEB_ENV.bak"
+  echo "    previous file backed up to $WEB_ENV.bak"
+  PRESERVED=$(grep -v '^[[:space:]]*#' "$WEB_ENV" | grep '=' || true)
+  for k in "${OWNED_KEYS[@]}"; do
+    PRESERVED=$(printf '%s\n' "$PRESERVED" | grep -v "^${k}=" || true)
+  done
+fi
 
-# Keep false until docs/AUDIT-TOKEN-V1.md V-01 is closed.
-NEXT_PUBLIC_ENABLE_VAULT_DEPOSITS=false
-ENVEOF
+if [[ "$VAULTS_DEPLOYED" == "true" ]]; then
+  DEPOSITS_ENABLED=true
+else
+  # No vaults deployed means no deposit surface to enable. The portal reads
+  # this as the literal string "false".
+  DEPOSITS_ENABLED=false
+fi
+
+{
+  echo "# Written by contracts/script/deploy-and-verify.sh. Values above the"
+  echo "# separator are managed by that script and will be replaced on the next"
+  echo "# run; anything below it is preserved."
+  echo ""
+  echo "NEXT_PUBLIC_CHAIN_ID=$CHAIN_ID"
+  echo "NEXT_PUBLIC_RPC_URL=$RH_TESTNET_RPC_URL"
+  echo "NEXT_PUBLIC_EXPLORER_URL=${RH_EXPLORER_URL:-}"
+  echo ""
+  echo "NEXT_PUBLIC_ZOR_ADDRESS=$ZOR_ADDR"
+  echo "NEXT_PUBLIC_TIMELOCK_ADDRESS=$TIMELOCK_ADDR"
+  echo "NEXT_PUBLIC_TREASURY_ADDRESS=$TREASURY_ADDR"
+  echo "NEXT_PUBLIC_BUYBACK_ADDRESS=$BUYBACK_ADDR"
+  echo "NEXT_PUBLIC_INSURANCE_ADDRESS=$INSURANCE_ADDR"
+  echo "NEXT_PUBLIC_MERKLE_DISTRIBUTOR_ADDRESS=$DISTRIBUTOR_ADDR"
+  echo "NEXT_PUBLIC_VESTING_ADDRESS=$VESTING_ADDR"
+  echo ""
+  echo "NEXT_PUBLIC_VAULT_FACTORY_ADDRESS=$FACTORY_ADDR"
+  echo "NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS=$EXECUTOR_ADDR"
+  echo "NEXT_PUBLIC_REPUTATION_REGISTRY_ADDRESS=$REPUTATION_ADDR"
+  echo ""
+  echo "NEXT_PUBLIC_ENABLE_VAULT_DEPOSITS=$DEPOSITS_ENABLED"
+  echo ""
+  echo "# ─── preserved from the previous file ───────────────────────────────"
+  if [[ -n "$PRESERVED" ]]; then
+    printf '%s\n' "$PRESERVED"
+  fi
+} > "$WEB_ENV"
+
+echo "    wrote $WEB_ENV"
+if [[ -n "$PRESERVED" ]]; then
+  echo "    preserved $(printf '%s\n' "$PRESERVED" | grep -c '=') existing variable(s)"
+fi
 
 cat <<'NEXTEOF'
 

@@ -161,10 +161,13 @@ To rotate the Safe itself (the most sensitive operation):
 
 ## 5. Deployment
 
-See `contracts/script/deploy-and-verify.sh`. The script is idempotent at the
-script level (re-running re-deploys everything), but the CREATE2 salts are
-hardcoded — to redeploy to the same addresses, pass the same env vars. To
-deploy to new addresses, change the salts.
+See `contracts/script/deploy-and-verify.sh`, and `docs/DEPLOY-ENV.md` for what
+to set before running it and what it writes afterwards.
+
+The script is idempotent at the script level (re-running re-deploys
+everything), but the CREATE2 salts are hardcoded — to redeploy to the same
+addresses, pass the same env vars. To deploy to new addresses, change the
+salts.
 
 ## 6. Monitoring checklist
 
@@ -172,8 +175,8 @@ deploy to new addresses, change the salts.
 - [ ] Supabase `rebalances` row count growing on each manager rebalance
 - [ ] RH testnet RPC responding (chainid 46630)
 - [ ] Vault `rebalanceCount()` matches `select count(*) from rebalances where vault_address = ...`
-- [ ] `ReputationRegistry.latest(manager)` matches `latest` row in `reputation_publishes`
-- [ ] `ZOR.totalSupply() <= ZOR.CAP()`
+- [ ] `ReputationRegistry.getLatest(manager)` matches `latest` row in `reputation_publishes`
+- [ ] `ZOR.totalSupply() <= ZOR.MAX_SUPPLY()` (it can only ever fall, via buyback burns)
 
 ## 7. Upgrade plan
 
