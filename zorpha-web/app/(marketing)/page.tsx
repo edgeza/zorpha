@@ -168,9 +168,9 @@ export default function HomePage() {
           <Link href="/whitepaper" className="btn-primary">
             Read the whitepaper
           </Link>
-          <Link href="/security" className="link-quiet text-sm">
-            {TEST_STATUS.suiteTests} contract tests, and every audit finding published
-          </Link>
+          <span className="text-sm text-ink-400">
+            {TEST_STATUS.suiteTests} contract tests, seven stateful invariants
+          </span>
         </div>
       </section>
 
@@ -259,8 +259,8 @@ export default function HomePage() {
             <Link href="/portal" className="btn-primary w-full sm:w-auto">
               Open the portal
             </Link>
-            <Link href="/security" className="btn w-full sm:w-auto">
-              Security posture
+            <Link href="/whitepaper" className="btn w-full sm:w-auto">
+              Read the whitepaper
             </Link>
           </div>
         </div>

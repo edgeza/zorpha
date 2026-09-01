@@ -573,11 +573,8 @@ ZOR.burn(zorBurned)          // reduces totalSupply`}
                 {TEST_STATUS.suiteTests - TEST_STATUS.suiteFailing} of {TEST_STATUS.suiteTests}.
                 That is evidence of scrutiny, not of correctness. No third-party audit has been
                 completed, and code in which two dozen issues were found should be assumed to
-                contain more.{' '}
-                <Link href="/security" className="link-quiet">
-                  Every finding is published
-                </Link>
-                .
+                contain more. Every finding from that review is written up in the protocol
+                repository.
               </P>
               <P>
                 <strong className="text-ink-100">Oracle failure.</strong> Vaults fail closed on
@@ -673,8 +670,8 @@ ZOR.burn(zorBurned)          // reduces totalSupply`}
                 <Link href="/token" className="btn btn-sm">
                   Tokenomics
                 </Link>
-                <Link href="/security" className="btn btn-sm">
-                  Security
+                <Link href="/faq" className="btn btn-sm">
+                  FAQ
                 </Link>
               </div>
             </div>

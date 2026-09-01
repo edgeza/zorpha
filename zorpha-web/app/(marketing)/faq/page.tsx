@@ -32,11 +32,8 @@ const GROUPS: { heading: string; items: QA[] }[] = [
             shares against a yield-adapter balance it never actually funded, so a depositor could
             have burned every share and received nothing while their principal stayed stuck in the
             contract. Deposits were disabled until it was fixed. It is now fixed and pinned by a
-            fuzz test asserting a deposit-then-redeem round trip is whole.{' '}
-            <Link href="/security#audit" className="link-quiet">
-              All {countBy('fixed')} findings are published in full
-            </Link>
-            .
+            fuzz test asserting a deposit-then-redeem round trip is whole. All {countBy('fixed')}{' '}
+            findings from that review are written up in the protocol repository.
           </>
         ),
       },
@@ -104,12 +101,9 @@ const GROUPS: { heading: string; items: QA[] }[] = [
         q: 'Has this been audited?',
         a: (
           <>
-            Not by a third party. It has had a thorough internal review, and we publish every
-            finding from it, resolved and unresolved, on the{' '}
-            <Link href="/security" className="link-quiet">
-              security page
-            </Link>
-            . An external audit is a gate before mainnet, not something to be arranged afterwards.
+            Not by a third party. It has had a thorough internal review, every finding from it is
+            written up in the protocol repository, and all of them are closed. An external audit is
+            a gate before mainnet, not something to be arranged afterwards.
           </>
         ),
       },
@@ -175,8 +169,8 @@ export default function FaqPage() {
             the protocol repository under <span className="font-mono">docs/SECURITY.md</span>.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
-            <Link href="/security" className="btn-primary">
-              Security posture
+            <Link href="/whitepaper#risk" className="btn-primary">
+              Read the risk section
             </Link>
             <Link href="/legal/disclaimer" className="btn">
               Risk disclaimer

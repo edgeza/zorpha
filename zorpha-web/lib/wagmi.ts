@@ -1,7 +1,23 @@
 'use client';
 
 import { createConfig, http, cookieStorage, createStorage, type CreateConnectorFn } from 'wagmi';
-import { injected, walletConnect, coinbaseWallet, safe, metaMask } from '@wagmi/connectors';
+// Per-connector subpath imports, NOT the '@wagmi/connectors' barrel.
+//
+// The barrel re-exports every connector, which drags in `tempoWallet` ->
+// `@wagmi/core/tempo` -> `viem/tempo/zones`, a module no published viem
+// exports yet, and the build dies on an unresolvable import from a connector
+// this app never registers. It also pulls `baseAccount` -> @base-org/account
+// -> @coinbase/cdp-sdk -> @x402/*, none of which are installed.
+//
+// v8 of the package added a subpath export per connector. Importing only the
+// five that are actually used keeps both of those subtrees out of the bundle,
+// and does so through the package's public API rather than a webpack alias
+// that has to be re-tuned every time the dependency tree shifts.
+import { injected } from '@wagmi/connectors/injected';
+import { metaMask } from '@wagmi/connectors/metaMask';
+import { coinbaseWallet } from '@wagmi/connectors/coinbaseWallet';
+import { safe } from '@wagmi/connectors/safe';
+import { walletConnect } from '@wagmi/connectors/walletConnect';
 import { robinhoodTestnet, robinhoodMainnet } from './chains';
 
 /**
@@ -36,8 +52,12 @@ function buildConnectors(): CreateConnectorFn[] {
     coinbaseWallet({
       appName,
       // Smart-wallet-first would create a fresh passkey account for people who
-      // already hold assets in their Coinbase Wallet extension.
-      preference: 'all',
+      // already hold assets in their Coinbase Wallet extension. `all` offers
+      // both and lets them choose.
+      //
+      // The object form is required from @coinbase/wallet-sdk v4: `preference`
+      // used to be a bare string and is now a config object.
+      preference: { options: 'all' },
     }),
 
     // Only connects inside a Safe App iframe, where it auto-connects. Included

@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import type { Metadata } from 'next';
 import { LegalPage, LegalSection } from '@/components/marketing/LegalPage';
 import { TOKEN } from '@/lib/tokenomics';
@@ -34,11 +33,7 @@ export default function DisclaimerPage() {
           All {countBy('fixed')} are fixed and covered by regression tests. That is not the same as
           the code being free of defects: it means the defects we were capable of finding are
           closed. Software that has had {countBy('fixed')} issues found in it has, historically, had
-          more.{' '}
-          <Link href="/security" className="link-quiet">
-            Every finding is published here
-          </Link>
-          .
+          more. Every finding from that review is written up in the protocol repository.
         </p>
       </LegalSection>
 

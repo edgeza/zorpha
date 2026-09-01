@@ -10,6 +10,7 @@ const COLUMNS: { heading: string; links: { href: string; label: string; external
         { href: '/whitepaper', label: 'Whitepaper' },
         { href: '/protocol', label: 'How it works' },
         { href: '/protocol#vaults', label: 'Vaults' },
+        { href: '/tools/bridge', label: 'Zorpha Bridging' },
         { href: '/roadmap', label: 'Roadmap' },
       ],
     },
@@ -25,9 +26,9 @@ const COLUMNS: { heading: string; links: { href: string; label: string; external
     {
       heading: 'Trust',
       links: [
-        { href: '/security', label: 'Security posture' },
-        { href: '/security#audit', label: 'Audit status' },
-        { href: '/security#roles', label: 'Admin roles' },
+        { href: '/whitepaper#risk', label: 'Risk' },
+        { href: '/whitepaper#governance', label: 'Governance' },
+        { href: '/portal/governance', label: 'Admin roles' },
         { href: '/faq', label: 'FAQ' },
       ],
     },

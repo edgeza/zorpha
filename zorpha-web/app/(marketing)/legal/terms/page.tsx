@@ -64,12 +64,8 @@ export default function TermsPage() {
           This interface and the underlying software are provided &ldquo;as is&rdquo; and &ldquo;as
           available&rdquo;, without warranty of any kind, express or implied, including
           merchantability, fitness for a particular purpose, and non-infringement. We do not warrant
-          that the interface will be uninterrupted, accurate, or free of defects. Known defects are
-          published on the{' '}
-          <Link href="/security" className="link-quiet">
-            security page
-          </Link>
-          .
+          that the interface will be uninterrupted, accurate, or free of defects. Known defects
+          are recorded in the protocol repository.
         </p>
       </LegalSection>
 

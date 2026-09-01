@@ -202,8 +202,8 @@ export default function ProtocolPage() {
               if the fuzzer never actually managed a deposit or a rebalance.
             </p>
             <p>
-              <Link href="/security" className="link-quiet">
-                Read every finding and how it was reproduced
+              <Link href="/whitepaper#receipts" className="link-quiet">
+                How the receipt scheme works
               </Link>
             </p>
           </Callout>

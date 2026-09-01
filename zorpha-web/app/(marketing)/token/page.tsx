@@ -276,8 +276,8 @@ export default function TokenPage() {
                 every address on this site as testnet until the deployment page says otherwise.
               </p>
               <p>
-                <Link href="/security#audit" className="link-quiet">
-                  Read every finding and how it was reproduced
+                <Link href="/whitepaper#risk" className="link-quiet">
+                  Read the risk section of the whitepaper
                 </Link>
               </p>
             </Callout>
