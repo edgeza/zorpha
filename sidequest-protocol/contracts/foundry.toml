@@ -16,13 +16,24 @@ block_gas_limit = 30000000
 # it inlines three vault creationCodes -- and the chain accepts it: an
 # eth_estimateGas of its deployment returns 10,450,153 gas, which is the
 # 200/byte code deposit plus execution, so the node ran the deposit step and
-# did not reject it.
+# did not reject it. Without a raised limit here, forge stops mid-deploy with
+# an interactive [y/n] prompt that a scripted run cannot answer.
 #
-# Without this, forge stops mid-deploy with an interactive [y/n] prompt, which
-# a scripted run cannot answer. Raising it here does NOT weaken any on-chain
-# check; it only stops forge applying the Ethereum L1 rule to a chain that
-# does not use it. Anything deployed under this is Robinhood-Chain-only.
-code_size_limit = 50000
+# The number is sized by the SCRIPT contract, not the factory. DeployVaultsV1
+# compiles to 85,053 bytes, because a script that says `new VaultFactory(...)`
+# carries the factory's initcode, which in turn carries all three vaults. Set
+# this below that and forge fails earlier and more confusingly, at
+# "Failed to deploy script: EvmError: CreateContractSizeLimit" -- forge
+# imposes this ceiling on its own simulation EVM, where by default there is
+# none, so too low a value is worse than not setting it at all.
+#
+#   DeployVaultsV1  85,053   <- the binding constraint
+#   VaultFactory    45,085
+#
+# This only governs forge's local EVM. The script contract is never deployed
+# to a real chain, and what VaultFactory may deploy is still decided by the
+# chain. Re-measure with `forge build --sizes` before trusting the headroom.
+code_size_limit = 120000
 
 [profile.ci]
 fuzz.runs = 1000
