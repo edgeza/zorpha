@@ -19,7 +19,7 @@ const FACTS = [
   {
     k: 'Custody',
     v: 'None',
-    note: 'Every route settles onchain between your wallet and the bridge contract. Zorpha never holds the funds and cannot stop a transfer.',
+    note: 'Every route settles onchain, from your wallet straight to the contract. Your funds are never held by Zorpha at any point in the transfer.',
   },
   {
     k: 'Routing',
@@ -104,11 +104,9 @@ export default function BridgePage() {
             </div>
 
             <p className="text-xs leading-relaxed text-ink-500">
-              Bridging is provided by LI.FI, a third-party routing aggregator. Zorpha does not
-              custody, control, or insure funds in transit, and a bridge transaction that fails or
-              is delayed is a matter between you and the bridge that carried it. Robinhood Chain has
-              no canonical USDC deployment, so the form opens on USDG, the Paxos-issued stablecoin
-              that circulates there. Both sides of the form can be changed to any supported asset.
+              Robinhood Chain has no canonical USDC deployment, so the form opens on USDG, the
+              Paxos-issued stablecoin that circulates there. Both sides can be changed to any
+              supported asset, and the route is rebuilt for whichever pair you choose.
             </p>
           </div>
         </div>

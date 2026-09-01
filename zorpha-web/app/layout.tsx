@@ -1,11 +1,24 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
-import { Inter, Instrument_Serif, JetBrains_Mono } from 'next/font/google';
+import { Schibsted_Grotesk, Newsreader, IBM_Plex_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { Providers } from './providers';
 
-const sans = Inter({
+/**
+ * Text face.
+ *
+ * Schibsted Grotesk was drawn for a news group rather than for a software UI,
+ * and it shows: it has a voice, where the neutral grotesques that ship with
+ * every product template deliberately have none. Its figures are wide and
+ * unambiguous, which is the property that actually matters on a page that is
+ * mostly numbers.
+ *
+ * Only the four weights the site uses are requested. Every extra weight is a
+ * separate file on the critical path.
+ */
+const sans = Schibsted_Grotesk({
   subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
   display: 'swap',
   variable: '--font-sans',
 });
@@ -13,22 +26,28 @@ const sans = Inter({
 /**
  * Display face.
  *
- * Instrument Serif ships a single weight (400). That is a constraint, not an
- * oversight: asking a browser to synthesise bold from a high-contrast serif
- * smears the thin strokes. So display headings are set at weight 400 and get
- * their hierarchy from size and tracking instead. See the h1/h2 rules in
- * globals.css.
+ * Newsreader is an editorial serif designed for reading on screens. It carries
+ * real weights, so headings take their hierarchy from the type itself rather
+ * than from size alone — which is what a single-weight display serif forces
+ * you into, since a synthesised bold smears its thin strokes.
  */
-const display = Instrument_Serif({
+const display = Newsreader({
   subsets: ['latin'],
-  weight: '400',
-  style: ['normal', 'italic'],
+  weight: ['400', '500', '600'],
   display: 'swap',
   variable: '--font-display',
 });
 
-const mono = JetBrains_Mono({
+/**
+ * Mono.
+ *
+ * IBM Plex Mono, for its slashed zero and its clearly distinct 1, l and I.
+ * That is the entire job on a page full of addresses and transaction hashes,
+ * where a misread character is a misread address.
+ */
+const mono = IBM_Plex_Mono({
   subsets: ['latin'],
+  weight: ['400', '500', '600'],
   display: 'swap',
   variable: '--font-mono',
 });

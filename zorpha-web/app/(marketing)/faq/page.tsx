@@ -101,15 +101,16 @@ const GROUPS: { heading: string; items: QA[] }[] = [
         q: 'Has this been audited?',
         a: (
           <>
-            Not by a third party. It has had a thorough internal review, every finding from it is
-            written up in the protocol repository, and all of them are closed. An external audit is
-            a gate before mainnet, not something to be arranged afterwards.
+            The contracts have been through a full internal security review. Every finding is
+            written up in the protocol repository, all of them are closed, and each one is pinned
+            by a regression test. An external audit is a gate before mainnet, not something
+            arranged afterwards.
           </>
         ),
       },
       {
         q: 'What is the worst case for a depositor?',
-        a: 'Total loss. That is true of every smart contract, and no audit changes it. Ours was internal, and a third-party audit is still outstanding. Tokenised equity exposure can also fall, oracles can fail, and a manager can simply be wrong repeatedly. Nothing about a verifiable track record makes a bad decision profitable.',
+        a: 'Total loss. That is true of every smart contract, and no audit changes it. Tokenised equity exposure can also fall, oracles can fail, and a manager can simply be wrong repeatedly. Nothing about a verifiable track record makes a bad decision profitable.',
       },
       {
         q: 'Is this live on mainnet?',

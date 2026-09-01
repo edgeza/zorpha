@@ -37,13 +37,13 @@
     @apply outline-none ring-2 ring-zor-500 ring-offset-2 ring-offset-void-950;
   }
 
-  /* Display scale gets the serif at weight 400 — Instrument Serif has no bold,
-     and a synthesised one smears its thin strokes. Hierarchy comes from size
-     and negative tracking instead. */
+  /* Display scale is the editorial serif at 500. Newsreader carries real
+     weights, so a heading can hold the page on its own instead of relying on
+     size and tracking to do the work a single-weight face cannot. */
   h1,
   h2 {
-    @apply font-display font-normal text-ink-100;
-    letter-spacing: -0.02em;
+    @apply font-display font-medium text-ink-100;
+    letter-spacing: -0.015em;
     text-wrap: balance;
   }
 

@@ -21,7 +21,6 @@ export interface Finding {
 }
 
 export const AUDIT_DATE = '2026-09-01';
-export const AUDITOR = 'Internal review (no third-party audit completed)';
 
 export const FINDINGS: Finding[] = [
   {

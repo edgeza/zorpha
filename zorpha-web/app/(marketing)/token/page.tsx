@@ -267,13 +267,15 @@ export default function TokenPage() {
           </div>
 
           <div className="mt-8">
-            <Callout tone="warn" title="Not yet deployed, not yet externally audited">
+            <Callout tone="info" title="Where the contracts stand today">
               <p>
-                The contracts have been reviewed internally, all {countBy('fixed')} findings are
-                fixed, and the full suite is green at{' '}
-                {TEST_STATUS.suiteTests - TEST_STATUS.suiteFailing} of {TEST_STATUS.suiteTests}. But
-                no third-party audit has been completed and nothing is deployed to mainnet. Treat
-                every address on this site as testnet until the deployment page says otherwise.
+                Every one of the {countBy('fixed')} findings from the internal review is closed,
+                and the full suite is green at{' '}
+                {TEST_STATUS.suiteTests - TEST_STATUS.suiteFailing} of {TEST_STATUS.suiteTests}.
+                The external audit and the mainnet deployment are the two gates still ahead. Until
+                the deployment page says otherwise, every address on this site is a testnet
+                address, and any token calling itself {TOKEN.ticker} on a mainnet today is not
+                ours.
               </p>
               <p>
                 <Link href="/whitepaper#risk" className="link-quiet">

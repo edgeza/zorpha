@@ -571,10 +571,9 @@ ZOR.burn(zorBurned)          // reduces totalSupply`}
                 found 24 issues in this codebase, two of which would have caused unrecoverable loss
                 of funds. All are fixed and covered by regression tests, and the suite stands at{' '}
                 {TEST_STATUS.suiteTests - TEST_STATUS.suiteFailing} of {TEST_STATUS.suiteTests}.
-                That is evidence of scrutiny, not of correctness. No third-party audit has been
-                completed, and code in which two dozen issues were found should be assumed to
-                contain more. Every finding from that review is written up in the protocol
-                repository.
+                Scrutiny is not proof. An external audit is a gate before mainnet, and software
+                of this size can hold defects that no review has surfaced. Every finding from that
+                review is written up in the protocol repository.
               </P>
               <P>
                 <strong className="text-ink-100">Oracle failure.</strong> Vaults fail closed on

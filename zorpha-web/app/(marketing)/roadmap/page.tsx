@@ -48,7 +48,7 @@ const PHASES: Phase[] = [
     label: 'Phase 2',
     state: 'next',
     title: 'Third-party audit and testnet launch',
-    body: 'An internal review is not an audit. Before any real money is involved, the contracts go to an external firm and the findings get published the same way ours were.',
+    body: 'Before any real money is involved, the contracts go to an external firm, and those findings get published in full the same way the internal ones were.',
     items: [
       'External audit of the token and vault layers',
       'Public testnet with real managers signing real rebalances',
