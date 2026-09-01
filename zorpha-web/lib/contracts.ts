@@ -54,7 +54,7 @@ export function missingContracts(): ContractKey[] {
 }
 
 export const explorerUrl =
-  process.env.NEXT_PUBLIC_EXPLORER_URL ?? 'https://testnet-explorer.robinhood.com';
+  process.env.NEXT_PUBLIC_EXPLORER_URL ?? 'https://explorer.testnet.chain.robinhood.com';
 
 export function explorerAddress(address: string): string {
   return `${explorerUrl.replace(/\/$/, '')}/address/${address}`;

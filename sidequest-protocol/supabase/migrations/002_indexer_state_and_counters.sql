@@ -39,16 +39,16 @@ language sql
 security invoker
 set search_path = ''
 as $$
-  insert into public.managers (address, first_seen_at, total_rebalances, last_active_at)
+  insert into public.managers as m (address, first_seen_at, total_rebalances, last_active_at)
   values (p_address, p_last_seen, 1, p_last_seen)
   on conflict (address) do update
-    set total_rebalances = public.managers.total_rebalances + 1,
+    set total_rebalances = m.total_rebalances + 1,
         -- Never move first_seen_at forward, and never move last_active_at
-        -- backward: blocks can arrive out of order across a reorg or a
-        -- backfill running alongside the live tail.
-        first_seen_at    = least(public.managers.first_seen_at, excluded.first_seen_at),
+        -- backward: blocks can arrive out of order across a reorg, or when a
+        -- backfill runs alongside the live tail.
+        first_seen_at    = least(m.first_seen_at, excluded.first_seen_at),
         last_active_at   = greatest(
-                             coalesce(public.managers.last_active_at, excluded.last_active_at),
+                             coalesce(m.last_active_at, excluded.last_active_at),
                              excluded.last_active_at
                            );
 $$;
@@ -92,12 +92,12 @@ language sql
 security invoker
 set search_path = ''
 as $$
-  insert into public.indexer_cursor (source_kind, source_address, last_block, last_run_at, last_error, error_count)
+  insert into public.indexer_cursor as c (source_kind, source_address, last_block, last_run_at, last_error, error_count)
   values (p_kind, p_address, p_block, now(), null, 0)
   on conflict (source_kind, source_address) do update
     -- Monotonic. A crashed run that resumes from an older block must not drag
     -- the cursor backwards and re-emit work.
-    set last_block  = greatest(public.indexer_cursor.last_block, excluded.last_block),
+    set last_block  = greatest(c.last_block, excluded.last_block),
         last_run_at = now(),
         last_error  = null,
         error_count = 0;
@@ -113,12 +113,12 @@ language sql
 security invoker
 set search_path = ''
 as $$
-  insert into public.indexer_cursor (source_kind, source_address, last_block, last_run_at, last_error, error_count)
+  insert into public.indexer_cursor as c (source_kind, source_address, last_block, last_run_at, last_error, error_count)
   values (p_kind, p_address, 0, now(), p_error, 1)
   on conflict (source_kind, source_address) do update
     set last_run_at = now(),
         last_error  = excluded.last_error,
-        error_count = public.indexer_cursor.error_count + 1;
+        error_count = c.error_count + 1;
 $$;
 
 revoke execute on function public.advance_cursor(text, text, bigint) from anon, authenticated;

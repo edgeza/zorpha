@@ -38,7 +38,7 @@ export const config = {
   rpcUrl: process.env.RPC_URL!,
   rpcFallbackUrls: list('RPC_URL_FALLBACK'),
   chainId: int('CHAIN_ID', 46630),
-  explorerUrl: process.env.EXPLORER_URL ?? 'https://testnet-explorer.robinhood.com',
+  explorerUrl: process.env.EXPLORER_URL ?? 'https://explorer.testnet.chain.robinhood.com',
 
   vaultAddresses: list('VAULT_ADDRESSES') as `0x${string}`[],
   reputationRegistryAddress: process.env.REPUTATION_REGISTRY_ADDRESS as
@@ -49,18 +49,33 @@ export const config = {
   startBlock: BigInt(process.env.START_BLOCK ?? '0'),
 
   /**
-   * Blocks per getLogs call. Most RPC providers cap the range (commonly at
-   * 10_000) and reject anything wider with an opaque error, so the scan is
-   * chunked rather than issued as one span from the deploy block to head.
+   * Blocks per getLogs call.
+   *
+   * Measured against Robinhood Chain testnet: the RPC caps on RESULT COUNT
+   * (10,000 logs), not on block range. Our queries are address- plus
+   * topic-filtered so they return far fewer, which is why the range can be
+   * generous — but a busy vault can still trip the cap, so `indexVault`
+   * halves the range and retries rather than treating it as fatal.
+   *
+   * Block time is ~0.17s, so 50k blocks is roughly 2.4 hours of history per
+   * request. At the old default of 2,000 that was 5.7 minutes per request:
+   * a one-week backfill would have needed ~3,500 sequential round trips.
    */
-  blockChunkSize: BigInt(int('BLOCK_CHUNK_SIZE', 2_000)),
+  blockChunkSize: BigInt(int('BLOCK_CHUNK_SIZE', 50_000)),
+
+  /** Smallest range to fall back to before giving up on a chunk. */
+  minBlockChunkSize: BigInt(int('MIN_BLOCK_CHUNK_SIZE', 500)),
 
   /**
-   * Blocks to stay behind head. A reorg inside this window is re-scanned on the
-   * next pass instead of being written and then contradicted.
+   * Blocks to stay behind head, so a reorg inside this window is re-scanned on
+   * the next pass instead of being written and then contradicted.
+   *
+   * At ~0.17s per block the old default of 3 bought 0.5 seconds of protection,
+   * which is not protection. 120 blocks is ~20 seconds.
    */
-  confirmations: BigInt(int('CONFIRMATIONS', 3)),
+  confirmations: BigInt(int('CONFIRMATIONS', 120)),
 
+  /** ~70 blocks of new head per tick at 0.17s block time. */
   pollIntervalMs: int('POLL_INTERVAL_MS', 12_000),
 
   /** Consecutive failures before the process exits and lets Railway restart it. */

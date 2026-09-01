@@ -2,12 +2,12 @@ import { createServer } from 'node:http';
 import { config } from './config.js';
 import {
   assertChainId,
-  blockChunks,
   getBlockTimestamp,
   getPublicClient,
   isValidAddress,
   rebalancedEventFor,
   RegistryEvents,
+  withAdaptiveRange,
 } from './chain.js';
 import {
   advanceCursor,
@@ -93,6 +93,26 @@ function startHealthServer(): void {
   server.unref();
 }
 
+/**
+ * Outer windows for a scan. Each becomes one cursor advance, so a long backfill
+ * checkpoints as it goes rather than only at the very end.
+ *
+ * Capped at 20 windows per cycle: without a cap, a first run against a chain
+ * already at block 111,000,000 would try to scan the entire history in one
+ * cycle and never reach the live tail. Successive cycles pick up where this one
+ * stopped.
+ */
+function planWindows(from: bigint, to: bigint, size: bigint): [bigint, bigint][] {
+  const windows: [bigint, bigint][] = [];
+  let cursor = from;
+  while (cursor <= to && windows.length < 20) {
+    const end = cursor + size - 1n > to ? to : cursor + size - 1n;
+    windows.push([cursor, end]);
+    cursor = end + 1n;
+  }
+  return windows;
+}
+
 // ─── Vault indexing ─────────────────────────────────────────────────────────
 
 async function indexVault(vault: VaultRow, safeHead: bigint): Promise<number> {
@@ -106,20 +126,38 @@ async function indexVault(vault: VaultRow, safeHead: bigint): Promise<number> {
 
   let inserted = 0;
 
-  for (const [chunkFrom, chunkTo] of blockChunks(from, safeHead, config.blockChunkSize)) {
-    const logs = await client.getLogs({
-      address: vault.address as `0x${string}`,
-      event,
-      fromBlock: chunkFrom,
-      toBlock: chunkTo,
-    });
+  // Walk the range in adaptive windows: on a "too many logs" error the window
+  // halves and retries rather than propagating, which would leave the cursor
+  // parked and re-issue the identical failing request every poll.
+  const windows = planWindows(from, safeHead, config.blockChunkSize);
+
+  for (const [chunkFrom, chunkTo] of windows) {
+    const { results: logs } = await withAdaptiveRange(
+      chunkFrom,
+      chunkTo,
+      config.blockChunkSize,
+      config.minBlockChunkSize,
+      (f, t) =>
+        client.getLogs({
+          address: vault.address as `0x${string}`,
+          event,
+          fromBlock: f,
+          toBlock: t,
+        }) as Promise<unknown[]>,
+    );
 
     const rows: RebalanceRow[] = [];
     const bumps: { manager: string; ts: string }[] = [];
 
-    for (const entry of logs) {
-      const args = (entry as unknown as { args: Record<string, unknown> }).args ?? {};
-      const blockNumber = entry.blockNumber!;
+    for (const raw of logs) {
+      const entry = raw as {
+        args?: Record<string, unknown>;
+        blockNumber: bigint;
+        transactionHash: string;
+        logIndex: number;
+      };
+      const args = entry.args ?? {};
+      const blockNumber = entry.blockNumber;
       const ts = await getBlockTimestamp(blockNumber);
 
       const asBig = (v: unknown): string | null =>
@@ -135,8 +173,8 @@ async function indexVault(vault: VaultRow, safeHead: bigint): Promise<number> {
         manager: vault.manager_address,
         submitter: null,
         block_number: Number(blockNumber),
-        tx_hash: entry.transactionHash!,
-        log_index: entry.logIndex!,
+        tx_hash: entry.transactionHash,
+        log_index: entry.logIndex,
         block_timestamp: ts,
         target_bps:
           vault.vault_type === 'spot' && typeof args.targetBps === 'number'
@@ -195,18 +233,31 @@ async function indexRegistry(address: `0x${string}`, safeHead: bigint): Promise<
 
   let handled = 0;
 
-  for (const [chunkFrom, chunkTo] of blockChunks(from, safeHead, config.blockChunkSize)) {
-    const logs = await client.getLogs({
-      address,
-      events: RegistryEvents,
-      fromBlock: chunkFrom,
-      toBlock: chunkTo,
-    });
+  for (const [chunkFrom, chunkTo] of planWindows(from, safeHead, config.blockChunkSize)) {
+    const { results: logs } = await withAdaptiveRange(
+      chunkFrom,
+      chunkTo,
+      config.blockChunkSize,
+      config.minBlockChunkSize,
+      (f, t) =>
+        client.getLogs({
+          address,
+          events: RegistryEvents,
+          fromBlock: f,
+          toBlock: t,
+        }) as Promise<unknown[]>,
+    );
 
-    for (const entry of logs) {
-      const name = (entry as unknown as { eventName?: string }).eventName;
-      const args = (entry as unknown as { args: Record<string, unknown> }).args ?? {};
-      const ts = await getBlockTimestamp(entry.blockNumber!);
+    for (const raw of logs) {
+      const entry = raw as {
+        eventName?: string;
+        args?: Record<string, unknown>;
+        blockNumber: bigint;
+        transactionHash: string;
+      };
+      const name = entry.eventName;
+      const args = entry.args ?? {};
+      const ts = await getBlockTimestamp(entry.blockNumber);
 
       if (name === 'StatsPublished') {
         await insertReputationPublish({
@@ -217,7 +268,7 @@ async function indexRegistry(address: `0x${string}`, safeHead: bigint): Promise<
           window_end: new Date(Number(args.windowEnd) * 1000).toISOString(),
           nonce: Number(args.nonce),
           challenge_deadline: new Date(Number(args.challengeDeadline) * 1000).toISOString(),
-          tx_hash: entry.transactionHash!,
+          tx_hash: entry.transactionHash,
         });
         handled++;
         continue;

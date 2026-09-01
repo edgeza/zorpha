@@ -1,9 +1,9 @@
 import { defineChain } from 'viem';
 
 const testnetRpc =
-  process.env.NEXT_PUBLIC_RPC_URL ?? 'https://testnet.rpc.robinhood.com';
+  process.env.NEXT_PUBLIC_RPC_URL ?? 'https://rpc.testnet.chain.robinhood.com/rpc';
 const explorer =
-  process.env.NEXT_PUBLIC_EXPLORER_URL ?? 'https://testnet-explorer.robinhood.com';
+  process.env.NEXT_PUBLIC_EXPLORER_URL ?? 'https://explorer.testnet.chain.robinhood.com';
 
 export const robinhoodTestnet = defineChain({
   id: 46630,
@@ -23,10 +23,18 @@ export const robinhoodMainnet = defineChain({
   name: 'Robinhood Chain',
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
   rpcUrls: {
-    default: { http: ['https://mainnet.rpc.robinhood.com'] },
+    default: {
+      http: [
+        'https://rpc.mainnet.chain.robinhood.com',
+        'https://robinhood-rpc.publicnode.com',
+      ],
+    },
   },
   blockExplorers: {
-    default: { name: 'Robinhood Chain Explorer', url: 'https://explorer.robinhood.com' },
+    default: {
+      name: 'Robinhood Chain Explorer',
+      url: 'https://robinhoodchain.blockscout.com',
+    },
   },
 });
 
