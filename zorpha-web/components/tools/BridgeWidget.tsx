@@ -114,8 +114,17 @@ export default function BridgeWidget() {
         }),
       ],
 
-      // Drop the widget's third-party chrome so it reads as part of the site.
-      hiddenUI: { poweredBy: true, language: true, appearance: true },
+      // Drop every piece of the widget's own chrome, so the bridge reads as a
+      // Zorpha surface rather than a component embedded in one. `contactSupport`
+      // matters most: it surfaces during a transfer and would send someone with
+      // a stuck transaction to a support desk that has never heard of them.
+      // Language and appearance are the site's decisions, not the visitor's.
+      hiddenUI: {
+        poweredBy: true,
+        language: true,
+        appearance: true,
+        contactSupport: true,
+      },
       appearance: 'dark',
 
       theme: {
