@@ -174,21 +174,26 @@ contract FirstLossEscrow is ReentrancyGuard {
         if (amount == 0) return;
         asset.safeTransferFrom(msg.sender, address(this), amount);
 
+        // Split the WHOLE fee first, then take retention out of the leader's
+        // half alone.
+        //
+        // Doing it the other way round — retaining, then splitting whatever
+        // survived — silently charges the protocol for the leader's drawdown.
+        // At an 80/20 split with an undercovered leader it paid the treasury
+        // 20% of the remainder instead of 20% of the fee, which on a measured
+        // case was $40 where $200 was owed. Half of the protocol's cut funds
+        // the buyback, so that shortfall came straight out of the burn.
+        uint256 leaderShare = (amount * leaderFeeShareBps) / 10_000;
+        uint256 toProtocol = amount - leaderShare;
+
         uint256 shortfall = coverageShortfall();
         uint256 retained;
-
         if (shortfall > 0) {
-            // Rebuild the buffer out of the LEADER's share only. The protocol's
-            // share is not the leader's to spend, and diverting it would make
-            // one leader's drawdown everyone else's problem.
-            uint256 leaderShare = (amount * leaderFeeShareBps) / 10_000;
             retained = shortfall < leaderShare ? shortfall : leaderShare;
             escrow += retained;
         }
 
-        uint256 remaining = amount - retained;
-        uint256 toLeader = (remaining * leaderFeeShareBps) / 10_000;
-        uint256 toProtocol = remaining - toLeader;
+        uint256 toLeader = leaderShare - retained;
 
         if (toLeader > 0) asset.safeTransfer(leader, toLeader);
         if (toProtocol > 0) asset.safeTransfer(protocolTreasury, toProtocol);

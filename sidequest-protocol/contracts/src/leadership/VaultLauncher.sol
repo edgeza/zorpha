@@ -230,6 +230,14 @@ contract VaultLauncher is AccessControl, ReentrancyGuard {
             YieldVault(vault).ADAPTER_SETTER_ROLE(), address(this)
         );
 
+        // Keep ADAPTER_SETTER_ROLE, give up everything else. This contract
+        // needs exactly one power over a launched vault — swapping the adapter
+        // between allowlisted venues on the leader's instruction — and holding
+        // DEFAULT_ADMIN_ROLE as well would leave it able to change the fee or
+        // the fee recipient on every vault ever launched, with no function
+        // that does so and no reason to be able to.
+        IAccessControl(vault).renounceRole(0x00, address(this));
+
         launches.push(
             Launch({
                 vault: vault,

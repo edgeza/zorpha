@@ -131,6 +131,25 @@ contract VaultLauncherTest is Test {
         );
     }
 
+    /// @dev The launcher needs exactly one power over a launched vault:
+    ///      swapping the adapter between allowlisted venues. Keeping
+    ///      DEFAULT_ADMIN_ROLE as well would leave one contract able to change
+    ///      the fee or the fee recipient on every vault ever launched.
+    function test_LauncherKeepsOnlyTheAdapterRole() public {
+        (address vault,) = _launch(leader, address(steak), bytes32("a"));
+
+        assertFalse(
+            IAccessControl(vault).hasRole(0x00, address(launcher)),
+            "launcher retained vault admin"
+        );
+        assertTrue(
+            IAccessControl(vault).hasRole(
+                YieldVault(vault).ADAPTER_SETTER_ROLE(), address(launcher)
+            ),
+            "launcher cannot reallocate"
+        );
+    }
+
     function test_LeaderCannotDisableTheEscrow() public {
         (address vault, address escrow) = _launch(leader, address(steak), bytes32("a"));
 

@@ -156,6 +156,48 @@ contract FirstLossEscrowTest is Test {
         assertApproxEqAbs(bobGot, aliceGot, 10, "exiting first paid better than exiting second");
     }
 
+    /// @dev Adversarial. The buffer is a fixed pot shared across shares, so a
+    ///      large deposit arriving mid-drawdown could in principle dilute the
+    ///      protection of people already in. It must not.
+    function test_LateDepositDoesNotDiluteExistingProtection() public {
+        _fund(1_000 * ONE);
+        uint256 aliceShares = _deposit(alice, 10_000 * ONE);
+
+        target.slash(800 * ONE); // inside the buffer; alice should be whole
+
+        // A whale arrives while the vault is underwater.
+        usdg.mint(bob, 1_000_000 * ONE);
+        _deposit(bob, 1_000_000 * ONE);
+
+        uint256 before = usdg.balanceOf(alice);
+        vm.startPrank(alice);
+        vault.redeem(aliceShares, alice, alice);
+        vm.stopPrank();
+
+        assertApproxEqAbs(
+            usdg.balanceOf(alice) - before,
+            10_000 * ONE,
+            20,
+            "a late deposit diluted an existing depositor's protection"
+        );
+    }
+
+    /// @dev The mirror case: someone must not be able to deposit during a
+    ///      drawdown and immediately extract a slice of the leader's buffer.
+    function test_DepositingIntoADrawdownIsNotFreeMoney() public {
+        _fund(1_000 * ONE);
+        _deposit(alice, 10_000 * ONE);
+        target.slash(800 * ONE);
+
+        uint256 before = usdg.balanceOf(bob);
+        uint256 shares = _deposit(bob, 5_000 * ONE);
+        vm.startPrank(bob);
+        vault.redeem(shares, bob, bob);
+        vm.stopPrank();
+
+        assertLe(usdg.balanceOf(bob), before + 2, "in-and-out during a drawdown paid a profit");
+    }
+
     // ─── Coverage ────────────────────────────────────────────────────────────
 
     function test_CoverageRatioIsMeasuredAgainstRawAssets() public {
@@ -225,6 +267,52 @@ contract FirstLossEscrowTest is Test {
             (accrued * 8000) / 10_000,
             "undercovered leader was paid in full"
         );
+    }
+
+    /// @dev The protocol's share must be exactly its share of the WHOLE fee,
+    ///      whatever the leader's coverage looks like. Retention comes out of
+    ///      the leader's cut alone; diverting the protocol's cut would make one
+    ///      leader's drawdown suppress the buyback for everybody.
+    function test_ProtocolShareIsNotDilutedByBufferRebuilding() public {
+        _fund(1 * ONE); // deeply undercovered, so retention is maximal
+        _deposit(alice, 100_000 * ONE);
+
+        target.accrue(10_000 * ONE);
+        vm.prank(alice);
+        vault.withdraw(1 * ONE, alice, alice);
+
+        uint256 accrued = vault.performanceFeeAccrued();
+        assertGt(accrued, 0, "no fee accrued");
+
+        uint256 treasuryBefore = usdg.balanceOf(treasury);
+        vault.claimFees();
+        uint256 toTreasury = usdg.balanceOf(treasury) - treasuryBefore;
+
+        // 20% of the whole fee, not 20% of whatever survived retention.
+        uint256 expected = (accrued * (10_000 - LEADER_FEE_SHARE)) / 10_000;
+        assertApproxEqAbs(toTreasury, expected, 2, "protocol share was diluted");
+    }
+
+    /// @dev And the three destinations must account for every unit taken.
+    function test_FeeSplitConservesTheWholeAmount() public {
+        _fund(1 * ONE);
+        _deposit(alice, 50_000 * ONE);
+        target.accrue(5_000 * ONE);
+        vm.prank(alice);
+        vault.withdraw(1 * ONE, alice, alice);
+
+        uint256 accrued = vault.performanceFeeAccrued();
+        uint256 leaderBefore = usdg.balanceOf(leader);
+        uint256 treasuryBefore = usdg.balanceOf(treasury);
+        uint256 escrowBefore = escrow.escrow();
+
+        vault.claimFees();
+
+        uint256 moved = (usdg.balanceOf(leader) - leaderBefore)
+            + (usdg.balanceOf(treasury) - treasuryBefore)
+            + (escrow.escrow() - escrowBefore);
+
+        assertApproxEqAbs(moved, accrued, 2, "fee units went missing");
     }
 
     // ─── Withdrawal ──────────────────────────────────────────────────────────
