@@ -11,6 +11,19 @@ fuzz.runs = 256
 fuzz.max_test_rejects = 65536
 block_gas_limit = 30000000
 
+# Robinhood Chain is Arbitrum Nitro, which applies the 24,576-byte contract
+# limit to BROTLI-COMPRESSED code, not raw. VaultFactory is 45,085 raw bytes --
+# it inlines three vault creationCodes -- and the chain accepts it: an
+# eth_estimateGas of its deployment returns 10,450,153 gas, which is the
+# 200/byte code deposit plus execution, so the node ran the deposit step and
+# did not reject it.
+#
+# Without this, forge stops mid-deploy with an interactive [y/n] prompt, which
+# a scripted run cannot answer. Raising it here does NOT weaken any on-chain
+# check; it only stops forge applying the Ethereum L1 rule to a chain that
+# does not use it. Anything deployed under this is Robinhood-Chain-only.
+code_size_limit = 50000
+
 [profile.ci]
 fuzz.runs = 1000
 
@@ -22,6 +35,12 @@ rhMainnet = "${RH_MAINNET_RPC_URL}"
 
 # ─── Explorer Verification ──────────────────────────────────────────────────
 # Robinhood Chain uses Blockscout-compatible explorers; API key in env.
+# The "/api" suffix below is load-bearing. RH_EXPLORER_URL is the BASE url --
+# the launch script also prints it as a browsable link -- and foundry appends
+# the query string to whatever it is given. Pointed at the base, every verify
+# request lands on the Next.js frontend and returns a page of HTML, which
+# foundry reports as "Failed to deserialize response: expected value at line 1
+# column 1": a parse error that reads nothing like a wrong URL.
 [etherscan]
-rhTestnet = { key = "${RH_EXPLORER_API_KEY}", url = "${RH_EXPLORER_URL}" }
-rhMainnet = { key = "${RH_EXPLORER_API_KEY}", url = "${RH_EXPLORER_URL}" }
+rhTestnet = { key = "${RH_EXPLORER_API_KEY}", url = "${RH_EXPLORER_URL}/api" }
+rhMainnet = { key = "${RH_EXPLORER_API_KEY}", url = "${RH_EXPLORER_URL}/api" }

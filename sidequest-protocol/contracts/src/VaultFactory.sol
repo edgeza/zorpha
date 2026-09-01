@@ -7,6 +7,20 @@ import {SpotVaultMinimal} from "./vaults/SpotVaultMinimal.sol";
 import {RWRotationVault} from "./vaults/RWRotationVault.sol";
 import {YieldVault} from "./vaults/YieldVault.sol";
 
+// SIZE: this contract compiles to ~45,085 bytes of runtime code, about 41,000
+// of which is the three vault creationCodes inlined by the type(...) reads
+// below. That is 20kB past the 24,576-byte EIP-170 limit, so it CANNOT be
+// deployed to Ethereum L1 or to any chain that enforces that limit on raw
+// bytecode. It deploys on Robinhood Chain only because Arbitrum Nitro applies
+// the limit to brotli-COMPRESSED code, and these three blobs compress well.
+//
+// The headroom is therefore in compressed bytes, which nothing local measures.
+// Adding a fourth vault type could cross the real limit while `forge build
+// --sizes` shows nothing new -- the first sign would be a reverted mainnet
+// deploy. Before adding one, split this into per-vault-type factories
+// (VaultLauncher only ever calls deployYieldVault, so it would follow the
+// yield one) rather than assuming the next blob also fits.
+
 /// @notice Vault deployment params for SpotVaultMinimal.
 struct SpotVaultParams {
     address asset;
