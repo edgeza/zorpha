@@ -5,6 +5,7 @@ import { TOKEN, FLOAT_AT_LAUNCH_PCT, INSIDER_PCT } from '@/lib/tokenomics';
 import { countBy } from '@/lib/audit';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/faq' },
   title: 'FAQ',
   description:
     'Straight answers about Zorpha vaults, $ZOR tokenomics, custody, governance, audit status and risk.',
@@ -120,9 +121,46 @@ const GROUPS: { heading: string; items: QA[] }[] = [
   },
 ];
 
+/**
+ * FAQPage structured data.
+ *
+ * This is the one schema on the site with a direct payoff: a well-formed
+ * FAQPage can surface the questions themselves as expandable rows under the
+ * search result, which is a great deal of result real estate for a domain with
+ * no ranking history.
+ *
+ * Only the answers stored as plain strings are emitted. A few are JSX because
+ * they carry links, and rather than keep a hand-written plaintext copy of those
+ * in sync with the markup, they are left out. Google requires that schema match
+ * the visible page; a subset satisfies that, a stale duplicate would not.
+ */
+function FaqStructuredData() {
+  const entries = GROUPS.flatMap((g) => g.items).filter(
+    (item): item is { q: string; a: string } => typeof item.a === 'string',
+  );
+
+  const schema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: entries.map((item) => ({
+      '@type': 'Question',
+      name: item.q,
+      acceptedAnswer: { '@type': 'Answer', text: item.a },
+    })),
+  };
+
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+    />
+  );
+}
+
 export default function FaqPage() {
   return (
     <>
+      <FaqStructuredData />
       <section className="relative overflow-hidden border-b border-void-700">
         <div className="spotlight absolute inset-0 -z-10" aria-hidden="true" />
         <div className="shell py-16 sm:py-20">

@@ -15,6 +15,7 @@ import { formatCompact, formatMonths } from '@/lib/format';
 import { countBy, TEST_STATUS } from '@/lib/audit';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/token' },
   title: 'Token',
   description:
     '$ZOR tokenomics: 1,000,000,000 fixed supply, no mint function, 21% float at launch, and 50% of protocol fees used to buy and burn on the open market.',

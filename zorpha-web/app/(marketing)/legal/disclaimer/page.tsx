@@ -4,6 +4,7 @@ import { TOKEN } from '@/lib/tokenomics';
 import { countBy } from '@/lib/audit';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/legal/disclaimer' },
   title: 'Risk disclaimer',
   description:
     'The specific risks of using Zorpha vaults and holding $ZOR, including unresolved audit findings and the possibility of total loss.',

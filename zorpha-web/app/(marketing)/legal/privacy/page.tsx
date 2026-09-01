@@ -3,6 +3,7 @@ import { LegalPage, LegalSection } from '@/components/marketing/LegalPage';
 import { TOKEN } from '@/lib/tokenomics';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/legal/privacy' },
   title: 'Privacy',
   description:
     'What Zorpha does and does not collect. No accounts, no tracking cookies, no analytics on wallet activity.',

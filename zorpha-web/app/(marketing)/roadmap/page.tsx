@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { SectionHeading, Callout } from '@/components/ui/Primitives';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/roadmap' },
   title: 'Roadmap',
   description:
     'What Zorpha ships next, in order, with the gate that has to close before each phase can start.',

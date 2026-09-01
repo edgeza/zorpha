@@ -12,6 +12,7 @@ import { formatCompact, formatMonths } from '@/lib/format';
 import { TEST_STATUS } from '@/lib/audit';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/whitepaper' },
   title: 'Whitepaper',
   description:
     'Zorpha technical whitepaper: the receipt and commitment scheme, vault architecture, signed-rebalance mechanism, $ZOR supply and value accrual, governance, and risk.',

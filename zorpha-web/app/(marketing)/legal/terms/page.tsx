@@ -4,6 +4,7 @@ import { LegalPage, LegalSection } from '@/components/marketing/LegalPage';
 import { TOKEN } from '@/lib/tokenomics';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/legal/terms' },
   title: 'Terms of use',
   description: 'Terms governing use of the Zorpha website and portal interface.',
 };

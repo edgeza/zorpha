@@ -9,6 +9,7 @@ import { TOKEN } from '@/lib/tokenomics';
 import { TEST_STATUS } from '@/lib/audit';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/' },
   // Absolute, so the root layout's "%s · Zorpha" template does not append a
   // second "Zorpha" to a title that already starts with it.
   title: { absolute: 'Zorpha: verifiable onchain asset management' },

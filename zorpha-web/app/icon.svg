@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Favicon. Carries its own dark plate rather than sitting transparent:
+       browser tab strips are light in some themes and dark in others, and a
+       violet-on-cyan gradient mark disappears against a light one. -->
+  <defs>
+    <linearGradient id="m" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#a48dff" />
+      <stop offset="55%" stop-color="#6f4ae8" />
+      <stop offset="100%" stop-color="#22d3ee" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#06060a" />
+  <path
+    d="M16 4.6 25.9 10.3v11.4L16 27.4 6.1 21.7V10.3L16 4.6Z"
+    fill="none"
+    stroke="url(#m)"
+    stroke-width="2"
+    stroke-linejoin="round"
+  />
+  <path d="M16 11.4 21.2 14.4v6L16 23.4l-5.2-3v-6L16 11.4Z" fill="url(#m)" opacity="0.9" />
+</svg>

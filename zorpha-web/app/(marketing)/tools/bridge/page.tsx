@@ -5,6 +5,7 @@ import { SectionHeading } from '@/components/ui/Primitives';
 import { robinhoodMainnet } from '@/lib/chains';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/tools/bridge' },
   title: 'Zorpha Bridging',
   description:
     'Move assets onto Robinhood Chain from Ethereum, Arbitrum, Base, Solana, Bitcoin and 65 other chains. Best-price routing across every major bridge and DEX, fully non-custodial.',

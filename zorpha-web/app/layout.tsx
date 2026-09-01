@@ -93,6 +93,51 @@ export const viewport: Viewport = {
   colorScheme: 'dark',
 };
 
+/**
+ * Site-level structured data.
+ *
+ * `Organization` is what lets a search engine associate the name, the mark and
+ * the social accounts with each other instead of guessing, and it is the
+ * prerequisite for a knowledge panel. `WebSite` names the site itself. Both are
+ * cheap and neither makes a claim that is not already on the page.
+ *
+ * Injected with `dangerouslySetInnerHTML` because that is how JSON-LD has to be
+ * embedded: React would escape the quotes in a plain text child and the block
+ * would fail to parse. The content is a serialised literal from this file, not
+ * user input, so there is nothing here to inject.
+ */
+function StructuredData() {
+  const graph = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': `${siteUrl}/#organization`,
+        name: 'Zorpha',
+        url: siteUrl,
+        logo: `${siteUrl}/icon.svg`,
+        description:
+          'Zorpha runs curated ERC-4626 vaults on Robinhood Chain where every rebalance is signed onchain and published as a publicly verifiable receipt.',
+      },
+      {
+        '@type': 'WebSite',
+        '@id': `${siteUrl}/#website`,
+        url: siteUrl,
+        name: 'Zorpha',
+        publisher: { '@id': `${siteUrl}/#organization` },
+        inLanguage: 'en',
+      },
+    ],
+  };
+
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(graph) }}
+    />
+  );
+}
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
@@ -108,6 +153,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           Skip to content
         </a>
         <Providers>{children}</Providers>
+        <StructuredData />
       </body>
     </html>
   );

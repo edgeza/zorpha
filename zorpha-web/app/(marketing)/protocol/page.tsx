@@ -4,6 +4,7 @@ import { ReceiptAnatomy } from '@/components/marketing/ReceiptAnatomy';
 import { SectionHeading, Callout, SpecRow } from '@/components/ui/Primitives';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/protocol' },
   title: 'Protocol',
   description:
     'How Zorpha works: ERC-4626 vaults with fixed mandates, EIP-712 signed rebalances, fail-closed oracles, and a public receipt for every action a manager takes.',
