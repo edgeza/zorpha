@@ -75,13 +75,13 @@ export default function SecurityPage() {
         <div className="spotlight absolute inset-0 -z-10" aria-hidden="true" />
         <div className="shell py-16 sm:py-20">
           <span className="badge">Security</span>
-          <h1 className="mt-6 max-w-3xl text-3xl font-semibold leading-tight tracking-tight sm:text-5xl">
-            {countBy('fixed')} findings in code that had never been compiled
+          <h1 className="mt-6 max-w-3xl text-3xl leading-tight sm:text-5xl">
+            Every finding, published in full
           </h1>
           <p className="lede mt-6 max-w-2xl">
             A security page that lists only resolved issues tells you nothing about whether anybody
             actually looked. Below is the complete output of our internal audit as of{' '}
-            {formatDate(AUDIT_DATE)} — all {countBy('fixed')} findings, including two that would
+            {formatDate(AUDIT_DATE)}: all {countBy('fixed')} findings, including two that would
             have caused unrecoverable loss of funds, each with the mechanism that made it possible
             and the test that now prevents it.
           </p>
@@ -127,9 +127,9 @@ export default function SecurityPage() {
             arrange afterwards.
           </p>
           <p>
-            The two findings that would have caused unrecoverable loss of funds — a buyback contract
-            that performed no swap while reporting that it had, and a yield vault that redeemed for
-            zero — are described in full below. Both are closed.
+            Two of them would have caused unrecoverable loss of funds: a buyback contract that
+            performed no swap while reporting that it had, and a yield vault that redeemed for
+            zero. Both are described in full below, and both are closed.
           </p>
         </Callout>
 
@@ -140,12 +140,12 @@ export default function SecurityPage() {
               <SpecRow label="Reviewer">{AUDITOR}</SpecRow>
               <SpecRow label="Date">{formatDate(AUDIT_DATE)}</SpecRow>
               <SpecRow label="In scope">
-                Whole protocol — token, vesting, buyback, airdrop distributor, treasury, the vaults,
+                Whole protocol. Token, vesting, buyback, airdrop distributor, treasury, the vaults,
                 strategy executor, reputation registry, oracle, both deploy pipelines, the off-chain
                 airdrop generator, and the front-end contract integration
               </SpecRow>
               <SpecRow label="Static analysis">
-                Slither — 130 results, none at high or medium severity
+                Slither: 130 results, none at high or medium severity
               </SpecRow>
               <SpecRow label="Third-party audit">
                 <span className="text-amber-400">Not started</span>
@@ -184,7 +184,7 @@ export default function SecurityPage() {
               <SectionHeading
                 eyebrow="Nothing outstanding"
                 title="No open findings"
-                lede="This section stays on the page. When a finding is open it appears here with the same detail as a resolved one — otherwise publishing findings at all would mean very little."
+                lede="This section stays on the page. When a finding is open it appears here with the same detail as a resolved one. Otherwise publishing findings at all would mean very little."
               />
               <div className="card-pad mt-8">
                 <p className="text-sm leading-relaxed text-ink-400">

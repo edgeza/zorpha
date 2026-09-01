@@ -14,8 +14,8 @@ export default function AirdropPage() {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Season 1 airdrop</h1>
         <p className="mt-3 text-sm leading-relaxed text-ink-400">
-          {formatCompact(tokensFor(community.tgeBps))} {TOKEN.ticker} — {community.tgeBps / 100}% of
-          max supply — is distributed at launch to early depositors and the managers who built a
+          {formatCompact(tokensFor(community.tgeBps))} {TOKEN.ticker}, or {community.tgeBps / 100}% of
+          max supply, is distributed at launch to early depositors and the managers who built a
           public record before there was any reason to. Claims are pull-based: nothing is airdropped
           into your wallet without you asking for it.
         </p>

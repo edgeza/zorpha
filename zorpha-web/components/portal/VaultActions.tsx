@@ -16,7 +16,7 @@ import { Callout } from '@/components/ui/Primitives';
  *
  * Gated behind VAULT_DEPOSITS_ENABLED, which now defaults to on: audit finding
  * V-01 (the yield vault redeeming for zero) is fixed and the contract suite is
- * green. The gate stays in the code as an incident kill switch — see
+ * green. The gate stays in the code as an incident kill switch, see
  * lib/contracts.ts.
  */
 export function VaultActions({
@@ -66,7 +66,7 @@ export function VaultActions({
       <Callout tone="warn" title="Deposits are paused">
         <p>
           Deposits have been switched off for this deployment. This is a manual kill switch, not a
-          known defect — the contract suite is green and the vault layer findings are closed.
+          known defect, the contract suite is green and the vault layer findings are closed.
         </p>
         <p className="text-xs text-ink-500">
           Everything else on this page is live and read straight from the contract.

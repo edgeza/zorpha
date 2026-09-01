@@ -158,8 +158,8 @@ export default function TokenPage() {
               lede="Vaults charge a performance fee. Fees land in the treasury, which splits them fifty-fifty: half funds operations, half goes to a buyback contract that purchases ZOR on the open market and burns what it receives."
             />
             <p className="mt-5 text-sm leading-relaxed text-ink-400">
-              The buyback is permissionless — anyone can trigger it once the balance clears a
-              threshold — and the caller supplies their own minimum output, so a sandwich attempt
+              The buyback is permissionless: anyone can trigger it once the balance clears a
+              threshold. The caller supplies their own minimum output, so a sandwich attempt
               cannot force the protocol into a bad fill.
             </p>
             <p className="mt-4 text-sm leading-relaxed text-ink-400">
@@ -203,7 +203,7 @@ export default function TokenPage() {
             <Callout tone="info" title="What ZOR is not">
               <p>
                 Not a dividend. Not a revenue share. Not a claim on treasury assets. Burning
-                reduces supply — it does not entitle any holder to a payment, and it does not
+                reduces supply. It does not entitle any holder to a payment, and it does not
                 promise a price outcome.
               </p>
             </Callout>
@@ -229,7 +229,7 @@ export default function TokenPage() {
                 <SpecRow label="Standards">{TOKEN.standard}</SpecRow>
                 <SpecRow label="Network">{TOKEN.chain}</SpecRow>
                 <SpecRow label="Voting clock">
-                  timestamp — <span className="font-mono">mode=timestamp</span>
+                  timestamp, as <span className="font-mono">mode=timestamp</span>
                 </SpecRow>
               </dl>
             </div>

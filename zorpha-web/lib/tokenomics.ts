@@ -1,11 +1,11 @@
 /**
- * Zorpha ($ZOR) — token facts and published allocation.
+ * Zorpha ($ZOR) token facts and published allocation.
  *
  * This file is the SINGLE SOURCE OF TRUTH for every supply number rendered on
  * the marketing site. The same basis points are hardcoded in
  * `sidequest-protocol/contracts/script/DeployZorphaToken.s.sol`, which asserts
  * they sum to 10_000 and that the distribution consumes exactly MAX_SUPPLY.
- * If you change a number here, change it there too — the deploy script will
+ * If you change a number here, change it there too. The deploy script will
  * refuse to run if the two ever disagree on the total.
  */
 
@@ -73,7 +73,7 @@ export const ALLOCATIONS: Allocation[] = [
     shape: 'cliff-linear',
     color: 'var(--cyan-500)',
     rationale:
-      'Nothing at launch, nothing for twelve months, then linear to month 48. Contributors are the last cohort to become liquid, which is the only version of this line item that means anything. Unvested tokens are held by the vesting contract and carry zero voting weight — nobody votes with tokens they have not earned.',
+      'Nothing at launch, nothing for twelve months, then linear to month 48. Contributors are the last cohort to become liquid, which is the only version of this line item that means anything. Unvested tokens are held by the vesting contract and carry zero voting weight, nobody votes with tokens they have not earned.',
   },
   {
     key: 'liquidity',
@@ -109,7 +109,7 @@ export const ALLOCATIONS: Allocation[] = [
     shape: 'locked',
     color: 'var(--danger-500)',
     rationale:
-      'Locked in the InsuranceFund contract and payable only by governance against a verified shortfall — an exploit, an oracle failure, bad debt. It is not a marketing line: it is the reason a depositor has something to be made whole from.',
+      'Locked in the InsuranceFund contract and payable only by governance against a verified shortfall: an exploit, an oracle failure, bad debt. It is not a marketing line: it is the reason a depositor has something to be made whole from.',
   },
 ];
 

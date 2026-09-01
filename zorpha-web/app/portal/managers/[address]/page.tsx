@@ -54,7 +54,7 @@ export default async function ManagerPage({
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-400">
             The complete signed history for this key. Nothing on this page is curated or
-            filtered — a bad rebalance appears exactly like a good one.
+            filtered. A bad rebalance appears exactly like a good one.
           </p>
         </div>
         <a

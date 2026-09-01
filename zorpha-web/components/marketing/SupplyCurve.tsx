@@ -14,7 +14,7 @@ import { useInView } from '@/components/motion/Reveal';
  *
  * The line draws itself left to right on scroll via `stroke-dasharray`, and the
  * year markers land behind it. That mirrors how the schedule is actually
- * read — forward through time — rather than being decoration.
+ * read, forward through time, rather than being decoration.
  */
 export function SupplyCurve() {
   const { ref, inView, reduced } = useInView<HTMLElement>({ threshold: 0.3 });
@@ -143,7 +143,7 @@ export function SupplyCurve() {
 
       <p className="mt-4 text-xs leading-relaxed text-ink-500">
         Modelled from the contract schedules, not from a plan. Ecosystem emissions are drawn on a
-        straight line because that is the maximum they can be — each season needs a governance
+        straight line because that is the maximum they can be. Each season needs a governance
         vote, so the real curve sits at or below this one.
       </p>
     </figure>

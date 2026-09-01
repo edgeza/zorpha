@@ -6,7 +6,7 @@ import { EnvBanner } from '@/components/portal/EnvBanner';
 export const metadata: Metadata = {
   title: 'Portal',
   description:
-    'Zorpha portal — vault positions, live rebalance receipts, manager records, airdrop and vesting claims, governance.',
+    'Zorpha portal. Vault positions, live rebalance receipts, manager records, airdrop and vesting claims, governance.',
   robots: { index: false, follow: false },
 };
 

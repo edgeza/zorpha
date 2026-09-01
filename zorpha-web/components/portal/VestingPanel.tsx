@@ -67,7 +67,7 @@ export function VestingPanel() {
         <p>
           The vesting contract address is not configured in this environment. Contributor and
           backer schedules are created by the governance Safe after deployment, not by the deploy
-          script — beneficiary addresses do not belong in a committed config file.
+          script, beneficiary addresses do not belong in a committed config file.
         </p>
       </Callout>
     );
@@ -202,7 +202,7 @@ export function VestingPanel() {
 
           <p className="mt-5 border-t border-void-700 pt-4 text-xs leading-relaxed text-ink-500">
             Vesting runs linearly from {startMs ? formatDate(startMs) : 'the start date'} over the
-            full term — the cliff gates the first release rather than extending the end date. At
+            full term, the cliff gates the first release rather than extending the end date. At
             the cliff, everything accrued up to that point unlocks at once
             {cliffMs && !preCliff ? '' : `, ${cliffMs ? formatRelative(cliffMs) : 'soon'}`}.
           </p>

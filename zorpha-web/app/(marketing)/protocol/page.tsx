@@ -40,7 +40,7 @@ const VAULTS = [
       ['Mandate', 'USDC in, USDC out, via one adapter'],
       ['Adapter changes', 'Timelock-gated, 48-hour delay'],
       ['Performance fee', '10% above high-water mark'],
-      ['Status', 'Live — finding V-01 fixed, capital routes to the adapter'],
+      ['Status', 'Live. Capital routes through the adapter'],
     ],
   },
 ];
@@ -76,7 +76,7 @@ export default function ProtocolPage() {
             {[
               [
                 'The manager signs an instruction',
-                'An EIP-712 payload naming the vault, the target weight, a nonce and an expiry. It is a signature, not a transaction — the manager never holds a privileged position in the vault.',
+                'An EIP-712 payload naming the vault, the target weight, a nonce and an expiry. It is a signature, not a transaction. The manager never holds a privileged position in the vault.',
               ],
               [
                 'Anyone can submit it',
@@ -197,11 +197,9 @@ export default function ProtocolPage() {
         <div className="mt-8">
           <Callout tone="verified" title="Each of these is pinned by a test">
             <p>
-              Our internal audit found several of these guarantees implemented but unverified — the
-              circuit breaker and fee accrual were unreachable in tests, and the signed rebalance
-              path did not execute at all. All are fixed and covered: 93 unit and fuzz tests plus
-              seven stateful invariants, including one that fails the run outright if the fuzzer
-              never actually managed a deposit or a rebalance.
+              Each guarantee above is covered by tests rather than asserted in prose: 97 unit and
+              fuzz tests plus seven stateful invariants, including one that fails the run outright
+              if the fuzzer never actually managed a deposit or a rebalance.
             </p>
             <p>
               <Link href="/security" className="link-quiet">

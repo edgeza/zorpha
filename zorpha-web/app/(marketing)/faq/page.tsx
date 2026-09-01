@@ -42,7 +42,7 @@ const GROUPS: { heading: string; items: QA[] }[] = [
       },
       {
         q: 'What fees do I pay?',
-        a: 'A performance fee only, charged on gains above a high-water mark — 20% on the equity vaults, 10% on the yield vault. There is no management fee, so a vault that does nothing costs you nothing, and no deposit or withdrawal fee.',
+        a: 'A performance fee only, charged on gains above a high-water mark. 20% on the equity vaults, 10% on the yield vault. There is no management fee, so a vault that does nothing costs you nothing, and no deposit or withdrawal fee.',
       },
     ],
   },
@@ -51,7 +51,7 @@ const GROUPS: { heading: string; items: QA[] }[] = [
     items: [
       {
         q: 'Can more ZOR ever be created?',
-        a: 'No. The entire supply of 1,000,000,000 is minted in the constructor and there is no mint function on the contract — not an owner-gated one, not a testnet one, nothing. Supply can only fall, through burns. An earlier revision did carry a testnet mint function; it was removed, and a test now asserts no mint entrypoint exists in the ABI.',
+        a: 'No. The entire supply of 1,000,000,000 is minted in the constructor and there is no mint function on the contract. Not an owner-gated one, not a testnet one, nothing. Supply can only fall, through burns. An earlier revision did carry a testnet mint function; it was removed, and a test now asserts no mint entrypoint exists in the ABI.',
       },
       {
         q: 'Does holding ZOR pay me anything?',
@@ -78,7 +78,8 @@ const GROUPS: { heading: string; items: QA[] }[] = [
         q: 'Is ZOR a governance token or not?',
         a: (
           <>
-            It carries real voting weight — ERC-5805 checkpoints, queryable historically. What does
+            It carries real voting weight, using ERC-5805 checkpoints that stay queryable
+            historically. What does
             not exist yet is a Governor contract, so there is currently no on-chain venue to submit
             or execute a proposal, and changes move through a multisig behind a 48-hour timelock.
             Earlier documentation said the token had no voting weight at all, which was simply
@@ -104,7 +105,7 @@ const GROUPS: { heading: string; items: QA[] }[] = [
         a: (
           <>
             Not by a third party. It has had a thorough internal review, and we publish every
-            finding from it — resolved and unresolved — on the{' '}
+            finding from it, resolved and unresolved, on the{' '}
             <Link href="/security" className="link-quiet">
               security page
             </Link>
@@ -114,7 +115,7 @@ const GROUPS: { heading: string; items: QA[] }[] = [
       },
       {
         q: 'What is the worst case for a depositor?',
-        a: 'Total loss. That is true of every smart contract, and no audit changes it — ours was internal, and a third-party audit is still outstanding. Tokenised equity exposure can also fall, oracles can fail, and a manager can simply be wrong repeatedly. Nothing about a verifiable track record makes a bad decision profitable.',
+        a: 'Total loss. That is true of every smart contract, and no audit changes it. Ours was internal, and a third-party audit is still outstanding. Tokenised equity exposure can also fall, oracles can fail, and a manager can simply be wrong repeatedly. Nothing about a verifiable track record makes a bad decision profitable.',
       },
       {
         q: 'Is this live on mainnet?',

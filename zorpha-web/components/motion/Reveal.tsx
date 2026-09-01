@@ -13,7 +13,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
  *     only ever set to "hidden" from the effect.
  *
  *  2. `prefers-reduced-motion` is checked before arming anything at all. Under
- *     that setting no observer is created and no transition is applied — the
+ *     that setting no observer is created and no transition is applied. The
  *     global CSS override alone would still leave elements briefly transparent.
  */
 export function Reveal({

@@ -2,16 +2,16 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { Hero } from '@/components/marketing/Hero';
 import { ReceiptAnatomy } from '@/components/marketing/ReceiptAnatomy';
-import { SectionHeading, Callout } from '@/components/ui/Primitives';
+import { SectionHeading } from '@/components/ui/Primitives';
 import { ReceiptMarquee } from '@/components/marketing/ReceiptMarquee';
 import { Reveal } from '@/components/motion/Reveal';
 import { TOKEN } from '@/lib/tokenomics';
-import { countBy, TEST_STATUS } from '@/lib/audit';
+import { TEST_STATUS } from '@/lib/audit';
 
 export const metadata: Metadata = {
   // Absolute, so the root layout's "%s · Zorpha" template does not append a
   // second "Zorpha" to a title that already starts with it.
-  title: { absolute: 'Zorpha — verifiable onchain asset management' },
+  title: { absolute: 'Zorpha: verifiable onchain asset management' },
   description:
     'Curated vaults on Robinhood Chain where every rebalance is signed onchain and published as a public receipt. Fixed-supply $ZOR with fee-funded buyback and burn.',
 };
@@ -30,7 +30,7 @@ const STEPS = [
   {
     n: '03',
     title: 'Judge them on the record',
-    body: 'Every receipt is permanent and timestamped. A manager’s history is the sum of their receipts — including the bad ones, which is the entire point.',
+    body: 'Every receipt is permanent and timestamped. A manager’s history is the sum of their receipts, including the bad ones. That is the entire point.',
   },
 ];
 
@@ -92,7 +92,7 @@ export default function HomePage() {
             <p className="mt-5 max-w-2xl text-sm leading-relaxed text-ink-400">
               Zorpha does not ask you to trust a manager’s summary of their own performance. It
               removes the summary. What is left is a list of signed, timestamped instructions and
-              what each one did to the vault’s net asset value — the same data for the manager’s
+              what each one did to the vault’s net asset value. The same data for the manager’s
               best month and their worst.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
@@ -164,25 +164,13 @@ export default function HomePage() {
           ))}
         </div>
 
-        <div className="mt-8">
-          <Callout tone="verified" title="Audit remediation complete — deposits are open">
-            <p>
-              Our internal audit found {countBy('fixed')} issues across the token and vault
-              layers, including one that would have caused depositors in the USDC yield vault to
-              redeem for zero. All {countBy('fixed')} are fixed and pinned by regression tests, and
-              the contract suite is green at {TEST_STATUS.suiteTests - TEST_STATUS.suiteFailing} of{' '}
-              {TEST_STATUS.suiteTests}.
-            </p>
-            <p>
-              A third-party audit is still outstanding and remains a gate before mainnet. Every
-              finding is published in full, including how each one was reproduced.
-            </p>
-            <p>
-              <Link href="/security#audit" className="link-quiet">
-                Read the audit
-              </Link>
-            </p>
-          </Callout>
+        <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3">
+          <Link href="/whitepaper" className="btn-primary">
+            Read the whitepaper
+          </Link>
+          <Link href="/security" className="link-quiet text-sm">
+            {TEST_STATUS.suiteTests} contract tests, and every audit finding published
+          </Link>
         </div>
       </section>
 
@@ -190,9 +178,9 @@ export default function HomePage() {
       <section className="border-y border-void-700 bg-void-900/40 py-20 sm:py-24">
         <div className="shell">
           <SectionHeading
-            eyebrow="Design decisions"
-            title="What we gave up to make this checkable"
-            lede="Verifiability is not free. Each of these is a constraint we accepted rather than a feature we bolted on."
+            eyebrow="How it holds up"
+            title="Four things that stay true whoever is managing"
+            lede="These are properties of the contracts rather than promises about conduct, which is why they survive a manager having a bad month, a bad year, or bad intentions."
           />
           <div className="mt-12 grid gap-5 sm:grid-cols-2">
             {DIFFERENTIATORS.map((item, i) => (
@@ -216,7 +204,7 @@ export default function HomePage() {
             />
             <ul className="mt-7 space-y-3.5">
               {[
-                'Fixed 1,000,000,000 supply — supply can only ever fall',
+                'Fixed 1,000,000,000 supply that can only ever fall',
                 'No owner, no pause, no blocklist, no upgrade path',
                 'Half of all protocol fees buy and burn ZOR on the open market',
                 'Real ERC-5805 voting weight, timestamp-keyed',
@@ -241,7 +229,7 @@ export default function HomePage() {
               {[
                 ['Standard', TOKEN.standard],
                 ['Decimals', String(TOKEN.decimals)],
-                ['Mint function', 'none — supply fixed at deploy'],
+                ['Mint function', 'none. Supply fixed at deploy'],
                 ['Owner / admin', 'none on the token itself'],
                 ['Transfer tax', 'none'],
                 ['Voting clock', 'timestamp (ERC-6372)'],

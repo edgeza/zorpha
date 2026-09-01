@@ -103,7 +103,7 @@ export default function RoadmapPage() {
             Ordered by dependency, not by date
           </h1>
           <p className="lede mt-6 max-w-2xl">
-            Dates on a crypto roadmap are decoration — they slip, and the slip becomes the story.
+            Dates on a crypto roadmap are decoration. They slip, and the slip becomes the story.
             What follows is the order the work has to happen in, and the gate that must close before
             each phase can start. Nothing here is a delivery commitment.
           </p>

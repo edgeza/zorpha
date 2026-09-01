@@ -61,8 +61,8 @@ export default function PrivacyPage() {
 
       <LegalSection heading="Server logs">
         <p>
-          Our hosting provider keeps standard access logs — IP address, timestamp, requested path,
-          user agent — for operational and abuse-prevention purposes. These are retained for a
+          Our hosting provider keeps standard access logs (IP address, timestamp, requested path,
+          user agent) for operational and abuse-prevention purposes. These are retained for a
           limited period and are not used to build profiles or combined with on-chain activity.
         </p>
       </LegalSection>

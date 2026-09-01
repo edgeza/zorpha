@@ -6,8 +6,8 @@ import { formatAddress } from '@/lib/format';
 /**
  * Horizontal marquee of rebalance receipts.
  *
- * Illustrative sample data, and labelled as such — the live feed lives in the
- * portal. It earns a place on the marketing page because a scrolling ledger of
+ * Illustrative sample data, and labelled as such on the page. The live feed
+ * lives in the portal. It earns a place on the marketing page because a scrolling ledger of
  * signed instructions communicates "the chain is writing this down" faster than
  * a paragraph does.
  *

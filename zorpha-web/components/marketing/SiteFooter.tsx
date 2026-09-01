@@ -7,9 +7,9 @@ const COLUMNS: { heading: string; links: { href: string; label: string; external
     {
       heading: 'Protocol',
       links: [
+        { href: '/whitepaper', label: 'Whitepaper' },
         { href: '/protocol', label: 'How it works' },
         { href: '/protocol#vaults', label: 'Vaults' },
-        { href: '/protocol#receipts', label: 'Receipts' },
         { href: '/roadmap', label: 'Roadmap' },
       ],
     },

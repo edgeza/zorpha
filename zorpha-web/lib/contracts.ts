@@ -1,14 +1,14 @@
 /**
  * Zorpha contract address + ABI registry.
  *
- * IMPORTANT — why every lookup below is a literal `process.env.NEXT_PUBLIC_X`:
+ * IMPORTANT, why every lookup below is a literal `process.env.NEXT_PUBLIC_X`:
  *
  * Next.js inlines client-side env vars with a webpack DefinePlugin pass that
  * only rewrites *statically analysable* member expressions. A previous revision
  * of this file read addresses through a helper as `process.env[name]` with a
  * variable key. That is not statically analysable, so nothing was substituted,
  * `process.env` was an empty object in the browser bundle, and every single
- * address silently fell back to `0x0000…0000` — meaning the token page and the
+ * address silently fell back to `0x0000…0000`, meaning the token page and the
  * airdrop claim were reading state from the zero address in production while
  * looking perfectly healthy in dev (where the real `process.env` exists).
  *
@@ -67,7 +67,7 @@ export function explorerTx(hash: string): string {
 /**
  * Vault deposits.
  *
- * These were gated off while audit finding V-01 was open — the yield vault
+ * These were gated off while audit finding V-01 was open, the yield vault
  * valued shares against an adapter balance it never funded, so a redeemer
  * received nothing. That is fixed, the full contract suite is green, and the
  * gate now defaults to ON.

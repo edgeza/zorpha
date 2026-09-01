@@ -90,13 +90,13 @@ export default function GovernancePage() {
               Required. An undelegated balance has zero voting weight.
             </SpecRow>
             <SpecRow label="Unvested tokens">
-              Zero weight — the vesting contract never delegates.
+              Zero weight, because the vesting contract never delegates.
             </SpecRow>
             <SpecRow label="Quorum / thresholds">Not set. No Governor deployed.</SpecRow>
           </dl>
           <p className="mt-4 border-t border-void-700 pt-4 text-xs leading-relaxed text-ink-500">
             A timestamp clock was chosen deliberately. Robinhood Chain does not guarantee a stable
-            block interval, and a block-numbered voting period drifts in wall-clock terms — a
+            block interval, and a block-numbered voting period drifts in wall-clock terms. A
             &ldquo;three day&rdquo; vote can quietly become five.
           </p>
         </div>

@@ -67,7 +67,7 @@ export function Stat({
   sub?: ReactNode;
   tone?: 'default' | 'verified' | 'warn';
   /**
-   * `lg` suits short numerics. Use `md` for word values — "Testnet" at the
+   * `lg` suits short numerics. Use `md` for word values: "Testnet" at the
    * large mono size overflows a quarter-width card on narrow viewports.
    */
   size?: 'lg' | 'md';

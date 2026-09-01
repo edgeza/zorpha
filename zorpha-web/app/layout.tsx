@@ -16,7 +16,7 @@ const sans = Inter({
  * Instrument Serif ships a single weight (400). That is a constraint, not an
  * oversight: asking a browser to synthesise bold from a high-contrast serif
  * smears the thin strokes. So display headings are set at weight 400 and get
- * their hierarchy from size and tracking instead — see the h1/h2 rules in
+ * their hierarchy from size and tracking instead. See the h1/h2 rules in
  * globals.css.
  */
 const display = Instrument_Serif({
@@ -38,7 +38,7 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://zorpha.xyz';
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: 'Zorpha — verifiable onchain asset management',
+    default: 'Zorpha: verifiable onchain asset management',
     template: '%s · Zorpha',
   },
   description:
@@ -56,13 +56,13 @@ export const metadata: Metadata = {
     type: 'website',
     url: siteUrl,
     siteName: 'Zorpha',
-    title: 'Zorpha — verifiable onchain asset management',
+    title: 'Zorpha: verifiable onchain asset management',
     description:
       'Curated vaults where every rebalance is a public, verifiable receipt. Fixed-supply $ZOR with fee-funded buyback and burn.',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Zorpha — verifiable onchain asset management',
+    title: 'Zorpha: verifiable onchain asset management',
     description:
       'Curated vaults where every rebalance is a public, verifiable receipt. Fixed-supply $ZOR.',
   },

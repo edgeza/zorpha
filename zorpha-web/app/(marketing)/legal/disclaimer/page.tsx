@@ -25,7 +25,7 @@ export default function DisclaimerPage() {
       <LegalSection heading="Bugs were found in this code, and more may remain">
         <p>
           Our internal review found {countBy('fixed')} issues, including a critical defect in the
-          USDC yield vault which valued shares against a yield-adapter balance it never funded — a
+          USDC yield vault which valued shares against a yield-adapter balance it never funded. A
           depositor could have burned their entire share position and received nothing while their
           principal remained stranded in the contract. Two further high-severity findings affected
           the signed rebalance path and the reputation registry.
@@ -78,7 +78,7 @@ export default function DisclaimerPage() {
           <li>
             <strong className="text-ink-200">Oracle risk.</strong> Price feeds can be stale, wrong,
             manipulated, or unavailable. Vaults fail closed where possible, which converts a pricing
-            failure into an availability failure rather than a loss — but not in every case.
+            failure into an availability failure rather than a loss, though not in every case.
           </li>
           <li>
             <strong className="text-ink-200">Manager risk.</strong> Managers can be wrong,

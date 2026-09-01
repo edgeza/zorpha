@@ -75,7 +75,7 @@ function buildConnectors(): CreateConnectorFn[] {
  * source rather than decoration: a single RPC is a single point of failure for
  * the entire portal, and the previous configuration pointed at a hostname
  * (`testnet.rpc.robinhood.com`) that did not resolve to a working endpoint at
- * all — with no fallback, that meant a portal that could never read anything.
+ * all. With no fallback, that meant a portal that could never read anything.
  */
 export const wagmiConfig = createConfig({
   chains: [robinhoodTestnet, robinhoodMainnet],

@@ -130,7 +130,7 @@ export function Hero() {
 
           <p className="lede fade-in-3 mx-auto mt-6 max-w-2xl text-white/70">
             Zorpha runs curated vaults on {TOKEN.chain}. Every rebalance is signed by the manager
-            and written onchain as a public receipt — with the price, the size, and the exact
+            and written onchain as a public receipt, with the price, the size, and the exact
             moment it happened. No screenshots. No edits. No quietly deleted calls.
           </p>
 

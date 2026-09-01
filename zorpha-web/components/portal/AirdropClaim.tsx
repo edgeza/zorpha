@@ -35,8 +35,8 @@ export function AirdropClaim() {
   const deployed = isDeployed('merkleDistributor');
   const [lookup, setLookup] = useState<LookupState>({ status: 'idle' });
 
-  // Fetch the caller's Merkle proof. Proofs are public data — they only let the
-  // committed recipient claim their committed amount — so serving them from a
+  // Fetch the caller's Merkle proof. Proofs are public data, they only let the
+  // committed recipient claim their committed amount, so serving them from a
   // plain endpoint is safe.
   useEffect(() => {
     if (!address) {
@@ -146,7 +146,7 @@ export function AirdropClaim() {
           {lookup.status === 'not-eligible' ? (
             <p className="text-sm leading-relaxed text-ink-400">
               This wallet is not in the Season 1 snapshot. Eligibility was fixed at a published
-              block — it cannot be earned retroactively, and there is no form to fill in. Later
+              block, it cannot be earned retroactively, and there is no form to fill in. Later
               seasons are decided by governance.
             </p>
           ) : null}

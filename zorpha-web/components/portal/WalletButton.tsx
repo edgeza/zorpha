@@ -18,7 +18,7 @@ import { explorerAddress } from '@/lib/contracts';
  * Wallet connection.
  *
  * The previous version registered one connector and hardcoded
- * `connectors[0]`, so the only way in was a desktop browser extension — no
+ * `connectors[0]`, so the only way in was a desktop browser extension, no
  * mobile wallet could connect at all, and neither could the governance Safe
  * that owns the protocol. This presents every registered connector and reports
  * honestly when one is unavailable.

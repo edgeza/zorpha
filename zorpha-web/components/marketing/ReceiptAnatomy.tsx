@@ -50,7 +50,7 @@ export function ReceiptAnatomy() {
       </div>
 
       {/* Fields land one after another, which is the order the vault computes
-          them in — the commitment can only exist once the rest is known. */}
+          them in, the commitment can only exist once the rest is known. */}
       <dl className="divide-hair px-5">
         {FIELDS.map((field, i) => (
           <div

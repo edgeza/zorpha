@@ -64,7 +64,7 @@ export const FINDINGS: Finding[] = [
     scope: 'token',
     title: 'A mint function that could never succeed, with tests asserting that it did',
     impact:
-      'The token exposed mintForTestnet, but the constructor already minted the full cap and the ERC20Votes supply ceiling was pinned to that same cap, so any call reverted with ERC20ExceededSafeSupply. Three tests asserted the opposite. Those tests had never been executed — the suite did not compile — which meant the whole test suite was decorative. After any burn the function also became genuinely callable on the testnet chain id, letting burned supply be re-minted.',
+      'The token exposed mintForTestnet, but the constructor already minted the full cap and the ERC20Votes supply ceiling was pinned to that same cap, so any call reverted with ERC20ExceededSafeSupply. Three tests asserted the opposite. Those tests had never been executed, the suite did not compile, which meant the whole test suite was decorative. After any burn the function also became genuinely callable on the testnet chain id, letting burned supply be re-minted.',
     resolution:
       'The function is removed. The token now has no mint entrypoint whatsoever, pinned by a test that asserts both mintForTestnet and mint are absent from the ABI.',
   },
@@ -130,7 +130,7 @@ export const FINDINGS: Finding[] = [
     scope: 'tooling',
     title: 'The deploy script reverted in every production configuration',
     impact:
-      'The vault factory grants its deploy role only to the constructor admin. The script passed governance as that admin and then called deploySpotVault, setSwapAdapter and grantRole from the deployer key. Whenever governance was a multisig — that is, every real deployment — the run failed partway through with an access-control revert, after the token had already been deployed.',
+      'The vault factory grants its deploy role only to the constructor admin. The script passed governance as that admin and then called deploySpotVault, setSwapAdapter and grantRole from the deployer key. Whenever governance was a multisig, that is, every real deployment, the run failed partway through with an access-control revert, after the token had already been deployed.',
     resolution:
       'The factory and vaults are deployed with the deployer as temporary admin, wired, then handed to governance with the deployer renouncing. The script asserts no deployer authority survives.',
   },
@@ -141,7 +141,7 @@ export const FINDINGS: Finding[] = [
     scope: 'token',
     title: 'Voting checkpoints were keyed to block numbers on a chain with no block-time guarantee',
     impact:
-      'ERC20Votes defaults to a block-number clock. Robinhood Chain does not guarantee a stable block interval, so any future governance period expressed in blocks would drift in wall-clock terms — a three day vote could quietly become five.',
+      'ERC20Votes defaults to a block-number clock. Robinhood Chain does not guarantee a stable block interval, so any future governance period expressed in blocks would drift in wall-clock terms, a three day vote could quietly become five.',
     resolution:
       'The token overrides clock() and CLOCK_MODE() to report timestamps, per ERC-6372.',
   },
@@ -211,7 +211,7 @@ export const FINDINGS: Finding[] = [
     impact:
       'The vault reported totalAssets as its yield adapter balance but never overrode the ERC-4626 deposit and withdraw hooks, so deposited funds stayed on the vault and the adapter balance stayed zero. Share price read as zero: a depositor burned every share and received nothing while their principal sat stranded in the contract. It also inflated share issuance for the next depositor, diluting the first.',
     resolution:
-      'Both hooks now route capital through the adapter — deposits forward in, withdrawals recall first. Switching adapters migrates the position in the same transaction rather than stranding it, and a claimFees path was added so accrued fees are actually payable instead of permanently depressing NAV for nobody. Pinned by a fuzz test asserting a deposit-then-redeem round trip is whole to within one wei, plus an invariant that everything totalAssets counts is held where it is counted.',
+      'Both hooks now route capital through the adapter: deposits forward in, withdrawals recall first. Switching adapters migrates the position in the same transaction rather than stranding it, and a claimFees path was added so accrued fees are actually payable instead of permanently depressing NAV for nobody. Pinned by a fuzz test asserting a deposit-then-redeem round trip is whole to within one wei, plus an invariant that everything totalAssets counts is held where it is counted.',
   },
   {
     id: 'V-02',
@@ -220,7 +220,7 @@ export const FINDINGS: Finding[] = [
     scope: 'vault',
     title: 'The signed-rebalance path could not execute at all',
     impact:
-      'The sliding rate-limit window computed its cutoff as block.timestamp minus one day, which underflows on any chain whose timestamp is below 86400 — precisely the state a fresh Foundry or Anvil instance starts in. Every rate-limited rebalance reverted with an arithmetic panic, so the EIP-712 mechanism the entire protocol is built around was never once exercised by a test.',
+      'The sliding rate-limit window computed its cutoff as block.timestamp minus one day, which underflows on any chain whose timestamp is below 86400, precisely the state a fresh Foundry or Anvil instance starts in. Every rate-limited rebalance reverted with an arithmetic panic, so the EIP-712 mechanism the entire protocol is built around was never once exercised by a test.',
     resolution:
       'The cutoff is clamped at zero. The window is now compacted in place rather than deleted and re-pushed, which halves the storage writes, and the signature is verified before any storage is touched so a forged command cannot make the protocol pay for the compaction. All nine executor tests pass.',
   },
@@ -231,7 +231,7 @@ export const FINDINGS: Finding[] = [
     scope: 'vault',
     title: 'Reputation registry reported disputes as unchallenged',
     impact:
-      'A challenge wrote only to the history array, while the portal reads getLatest — which returned a separate duplicated copy that challenges never touched. The two diverged the moment anything was disputed, so an overturned commitment kept displaying as unchallenged.',
+      'A challenge wrote only to the history array, while the portal reads getLatest, which returned a separate duplicated copy that challenges never touched. The two diverged the moment anything was disputed, so an overturned commitment kept displaying as unchallenged.',
     resolution:
       'The duplicated latest mapping is removed entirely and getLatest now derives from history, so the two cannot disagree. Thirteen registry tests cover publish, dispute, arbitration and window expiry.',
   },
@@ -253,9 +253,9 @@ export const FINDINGS: Finding[] = [
     scope: 'vault',
     title: 'The invariant suite passed without exercising anything',
     impact:
-      'The run reported both invariants holding across 128,000 calls, but all 64,010 rebalance calls reverted — the handler pranked as an address holding no keeper role. The invariants were satisfied vacuously while reporting green, which is worse than having no invariant test because it manufactures confidence. The two assertions were also tautologies: one checked that an unsigned integer was at least zero.',
+      'The run reported both invariants holding across 128,000 calls, but all 64,010 rebalance calls reverted, because the handler pranked as an address holding no keeper role. The invariants were satisfied vacuously while reporting green, which is worse than having no invariant test because it manufactures confidence. The two assertions were also tautologies: one checked that an unsigned integer was at least zero.',
     resolution:
-      'Rewritten with seven real invariants — fee solvency, full backing of outstanding shares, net never exceeding gross, receipt count matching executed rebalances, and no value created from nothing. The handler is wired so calls land, and an afterInvariant coverage floor fails the run outright if no deposit or rebalance ever succeeded. Revert rate went from 100% to under 10%.',
+      'Rewritten with seven real invariants: fee solvency, full backing of outstanding shares, net never exceeding gross, receipt count matching executed rebalances, and no value created from nothing. The handler is wired so calls land, and an afterInvariant coverage floor fails the run outright if no deposit or rebalance ever succeeded. Revert rate went from 100% to under 10%.',
   },
   {
     id: 'V-06',
@@ -264,7 +264,7 @@ export const FINDINGS: Finding[] = [
     scope: 'vault',
     title: 'A manager could mint their own "verified" badge',
     impact:
-      'A challenge was resolved by comparing the stored commitment against a hash the challenger supplied, and a match set upheld to true. So a manager could publish any figures at all, immediately self-challenge quoting that same hash, and be recorded as upheld — while the already-challenged guard then permanently blocked a genuine challenge from anyone else. The portal renders that flag as a green Upheld badge, so the worst case was a fabricated track record displaying as independently verified.',
+      'A challenge was resolved by comparing the stored commitment against a hash the challenger supplied, and a match set upheld to true. So a manager could publish any figures at all, immediately self-challenge quoting that same hash, and be recorded as upheld, while the already-challenged guard then permanently blocked a genuine challenge from anyone else. The portal renders that flag as a green Upheld badge, so the worst case was a fabricated track record displaying as independently verified.',
     resolution:
       'Only a mismatch is a dispute; a matching counter-commitment now reverts and leaves the window open. Upheld can only be set by a governance arbiter through a separate resolveChallenge call, because deciding which of two off-chain computations is correct is not something a hash comparison between the disputing parties can settle. The specific self-minting attack is pinned by a test.',
   },
@@ -275,7 +275,7 @@ export const FINDINGS: Finding[] = [
     scope: 'vault',
     title: 'Rotation vault receipts did not commit to the basket',
     impact:
-      'The rotation vault reused the single-asset commitment helper, passing rebalanceCount modulo 65536 as the target weight and the constant 10000 weight checksum as the cash leg. The resulting hash therefore bound neither the basket weights nor the per-token legs — exactly the fields a rotation receipt exists to attest. Two rebalances into completely different baskets could hash identically.',
+      'The rotation vault reused the single-asset commitment helper, passing rebalanceCount modulo 65536 as the target weight and the constant 10000 weight checksum as the cash leg. The resulting hash therefore bound neither the basket weights nor the per-token legs, exactly the fields a rotation receipt exists to attest. Two rebalances into completely different baskets could hash identically.',
     resolution:
       'A dedicated basketCommitment binds the full weight array and every token leg, using abi.encode rather than encodePacked so two dynamic arrays cannot collide. Tests assert that reordering either the weights or the legs changes the hash.',
   },
@@ -286,7 +286,7 @@ export const FINDINGS: Finding[] = [
     scope: 'vault',
     title: 'The rotation vault charged none of its advertised performance fee',
     impact:
-      'The vault stored a performance fee, a high-water mark and an accrual slot, and the deploy script configured 20% — but there was no evaluateFees and no claimFees anywhere in the contract. The accrual slot was never written, so the protocol earned nothing from this vault while the site advertised a 20% performance fee. Slither surfaced it by flagging the accrual as assignable-to-constant, which is what a never-written storage slot looks like from the outside.',
+      'The vault stored a performance fee, a high-water mark and an accrual slot, and the deploy script configured 20%, but there was no evaluateFees and no claimFees anywhere in the contract. The accrual slot was never written, so the protocol earned nothing from this vault while the site advertised a 20% performance fee. Slither surfaced it by flagging the accrual as assignable-to-constant, which is what a never-written storage slot looks like from the outside.',
     resolution:
       'Both functions implemented, mirroring the spot vault: charged only on gains above the high-water mark, clamped so the accrual can never exceed what the vault holds, and payable in the base asset. Five tests cover no-accrual below the high-water mark, accrual on a new high, no double-billing at the same high, keeper gating, and the empty-claim revert.',
   },

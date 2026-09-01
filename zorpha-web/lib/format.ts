@@ -1,5 +1,5 @@
 /**
- * Formatting helpers. Everything returns display-ready strings — no raw
+ * Formatting helpers. Everything returns display-ready strings, no raw
  * BigInts, no `[object Object]`, no NaN leaking into the UI.
  */
 

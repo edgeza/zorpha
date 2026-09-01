@@ -14,7 +14,7 @@ import { CountUp } from '@/components/motion/CountUp';
  *
  * The ring draws itself on scroll by animating `stroke-dashoffset` from a full
  * circumference down to each segment's real offset. That is the composition
- * assembling, which is what the chart is about — not decoration. Under reduced
+ * assembling, which is what the chart is about, not decoration. Under reduced
  * motion every segment renders at its final offset immediately.
  */
 export function AllocationChart() {

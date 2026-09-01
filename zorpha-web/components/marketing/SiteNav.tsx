@@ -7,9 +7,9 @@ import { Wordmark } from '@/components/ui/Primitives';
 
 const LINKS = [
   { href: '/protocol', label: 'Protocol' },
+  { href: '/whitepaper', label: 'Whitepaper' },
   { href: '/token', label: 'Token' },
   { href: '/security', label: 'Security' },
-  { href: '/roadmap', label: 'Roadmap' },
   { href: '/faq', label: 'FAQ' },
 ];
 
@@ -21,7 +21,7 @@ const LINKS = [
  * it.
  *
  * Two states: transparent while the hero is behind it, and an opaque bar once
- * scrolled. The scrolled state is deliberately NOT translucent — legibility
+ * scrolled. The scrolled state is deliberately NOT translucent, legibility
  * would then depend on `backdrop-filter` being both supported and composited,
  * and where it is not the nav renders as text over whatever is behind it.
  * Glass is fine for a pill floating on a controlled gradient; it is not fine

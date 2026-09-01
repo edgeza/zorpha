@@ -15,8 +15,8 @@ export default function TermsPage() {
         <p>
           These terms govern your use of the {TOKEN.domain} website and the portal interface hosted
           on it. They do not and cannot govern the smart contracts themselves: those are deployed
-          on a public blockchain, they execute for anyone who calls them, and nobody — including us
-          — can stop, reverse or modify them on your behalf.
+          on a public blockchain, they execute for anyone who calls them, and nobody, including us,
+          can stop, reverse or modify them on your behalf.
         </p>
       </LegalSection>
 
@@ -78,7 +78,7 @@ export default function TermsPage() {
           To the maximum extent permitted by law, no contributor to Zorpha is liable for any
           indirect, incidental, special, consequential or exemplary damages, or for any loss of
           funds, profits, tokens or data, arising from your use of this interface or of the
-          protocol contracts — including losses caused by smart contract defects, oracle failure,
+          protocol contracts, including losses caused by smart contract defects, oracle failure,
           manager conduct, network conditions, or your own error.
         </p>
       </LegalSection>
@@ -95,7 +95,7 @@ export default function TermsPage() {
         <p>
           The protocol contracts are released under the MIT licence and you may use, fork and
           deploy them accordingly. The Zorpha name, wordmark and visual identity are not covered by
-          that licence — do not use them to present a fork as though it were this project.
+          that licence. Do not use them to present a fork as though it were this project.
         </p>
       </LegalSection>
 
