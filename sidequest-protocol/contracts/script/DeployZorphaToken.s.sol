@@ -71,7 +71,11 @@ contract DeployZorphaToken is Script {
         require(gov != address(0), "GOVERNANCE unset");
         require(gov != deployer, "GOVERNANCE must not be the deployer EOA");
 
-        address usdc = vm.envAddress("USDC_TOKEN");
+        // Robinhood Chain's stablecoin is Paxos USDG, not USDC: the canonical
+        // USDC addresses have no code on 4663. USDC_TOKEN is still honoured so
+        // an in-flight runbook keeps working.
+        address usdc = vm.envOr("USDG_TOKEN", address(0));
+        if (usdc == address(0)) usdc = vm.envAddress("USDC_TOKEN");
         address liquidityRecipient = vm.envAddress("LIQUIDITY_RECIPIENT");
         bytes32 airdropRoot = vm.envBytes32("AIRDROP_MERKLE_ROOT");
         uint256 claimDeadline = vm.envUint("AIRDROP_CLAIM_DEADLINE");

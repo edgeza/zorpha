@@ -18,7 +18,7 @@
 # Required env:
 #   PRIVATE_KEY              deployer EOA (testnet ONLY — it holds nothing after)
 #   GOVERNANCE               multisig Safe. MUST NOT equal the deployer.
-#   USDC_TOKEN               USDC address on the target chain
+#   USDG_TOKEN               base asset (USDC_TOKEN also accepted)
 #   LIQUIDITY_RECIPIENT      protocol-owned liquidity destination
 #   AIRDROP_MERKLE_ROOT      root of the published Season 1 snapshot
 #   AIRDROP_CLAIM_DEADLINE   unix seconds, must be in the future
@@ -52,10 +52,22 @@ require_env() {
   fi
 }
 
-for v in PRIVATE_KEY GOVERNANCE USDC_TOKEN LIQUIDITY_RECIPIENT \
+for v in PRIVATE_KEY GOVERNANCE LIQUIDITY_RECIPIENT \
          AIRDROP_MERKLE_ROOT AIRDROP_CLAIM_DEADLINE RH_TESTNET_RPC_URL; do
   require_env "$v"
 done
+
+# The base asset goes by two names. Robinhood Chain's stablecoin is Paxos USDG,
+# not USDC -- the canonical USDC addresses have no code on 4663 -- but the
+# original variable was USDC_TOKEN and an in-flight runbook may still use it.
+# Accept either, prefer USDG_TOKEN, and export both so the forge scripts see a
+# value whichever name they read.
+if [[ -z "${USDG_TOKEN:-}" && -z "${USDC_TOKEN:-}" ]]; then
+  echo "ERROR: set USDG_TOKEN (or the legacy USDC_TOKEN) to the base asset" >&2
+  exit 1
+fi
+export USDG_TOKEN="${USDG_TOKEN:-$USDC_TOKEN}"
+export USDC_TOKEN="${USDC_TOKEN:-$USDG_TOKEN}"
 
 DEPLOYER=$(cast wallet address --private-key "$PRIVATE_KEY")
 if [[ "${DEPLOYER,,}" == "${GOVERNANCE,,}" ]]; then

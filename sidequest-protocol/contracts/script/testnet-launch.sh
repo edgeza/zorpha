@@ -117,6 +117,10 @@ export STOCK_TOKEN_2=$(node -e '
 [[ -n "$USDG_TOKEN" && -n "$YIELD_TARGET" && -n "$STOCK_TOKEN_1" ]] \
   || die "could not read fixture addresses out of $FIX"
 
+# Export the legacy name too, so a script that has not been renamed yet still
+# finds the address rather than dying after gas has been spent.
+export USDC_TOKEN="$USDG_TOKEN"
+
 ok "tUSDG        $USDG_TOKEN"
 ok "yield target $YIELD_TARGET"
 ok "tAAPL        $STOCK_TOKEN_1"
