@@ -184,6 +184,50 @@ export STOCK_TOKEN_1=0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9   # AAPL
 
 ---
 
+## Phase 5b — Leadership layer
+
+Permissionless vault creation, with the leader's capital subordinated to
+depositors'. Run after the vault layer, because it needs the factory.
+
+```bash
+export ZOR_TOKEN=0x...          # from phase A
+export VAULT_FACTORY=0x...      # from phase B
+export APPROVED_YIELD_TARGETS=0xBeEff033F34C046626B8D0A041844C5d1A5409dd,0xde770c84FE66E063336b31737cFE9790f18c4087
+forge script script/DeployLeadership.s.sol:DeployLeadership   --rpc-url "$RH_TESTNET_RPC_URL" --broadcast -vvv
+```
+
+- [ ] Launcher deployed, deployer holds no role on it.
+- [ ] **Grant `DEPLOYER_ROLE` on the factory to the launcher.** The script
+      prints this; it cannot do it itself, because factory admin is the Safe.
+      Until it happens nobody can launch anything.
+- [ ] At least one venue approved. With none, `launchYieldVault` reverts for
+      everyone.
+- [ ] Every approved venue is a real ERC-4626 whose `asset()` you have checked.
+      The allowlist is the only thing standing between permissionless creation
+      and a leader pointing a vault at a contract they wrote.
+
+Exercise it end to end from a **second account**, not the deployer:
+
+- [ ] Approve ZOR bond and seed capital, call `launchYieldVault`.
+- [ ] Vault, escrow and adapter all deployed; `vaultSummary(1)` reads back.
+- [ ] Deposit from a **third** account. Coverage ratio falls as the vault grows.
+- [ ] Accrue yield on the venue, claim fees: leader and treasury both paid.
+- [ ] Force a drawdown smaller than the buffer. Depositor redeems **whole**;
+      `totalAbsorbed()` is non-zero. This is the product claim — see it work.
+- [ ] Force a drawdown larger than the buffer. Depositor takes only the
+      uncovered part, and the escrow is empty.
+- [ ] Leader reallocates to a second approved venue. NAV does not move.
+- [ ] Leader tries an unapproved target: reverts.
+- [ ] Someone other than the leader tries to reallocate: reverts.
+- [ ] Leader requests an escrow withdrawal that would breach 5%: reverts after
+      the 7-day wait.
+- [ ] Governance slashes a bond; the leader cannot then reclaim it.
+
+**Gate:** a depositor was made whole out of a leader's capital, on chain, and
+you watched it happen.
+
+---
+
 ## Phase 6 — Manual steps no script can do
 
 Each needs the Safe.

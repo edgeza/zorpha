@@ -4,6 +4,7 @@ import { missingContracts } from '@/lib/contracts';
 
 const LABELS: Record<string, string> = {
   zor: 'ZOR token',
+  vaultLauncher: 'Vault launcher',
   vesting: 'Vesting',
   merkleDistributor: 'Airdrop distributor',
   buyback: 'Buyback',

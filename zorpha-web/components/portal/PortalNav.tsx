@@ -8,6 +8,7 @@ import { WalletButton } from './WalletButton';
 const NAV = [
   { href: '/portal', label: 'Dashboard' },
   { href: '/portal/vaults', label: 'Vaults' },
+  { href: '/portal/leaders', label: 'Leaders' },
   { href: '/portal/receipts', label: 'Receipts' },
   { href: '/portal/leaderboard', label: 'Managers' },
   { href: '/portal/airdrop', label: 'Airdrop' },

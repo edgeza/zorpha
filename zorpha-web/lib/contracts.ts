@@ -39,6 +39,7 @@ export const contracts = {
   vaultFactory: normalise(process.env.NEXT_PUBLIC_VAULT_FACTORY_ADDRESS),
   strategyExecutor: normalise(process.env.NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS),
   reputationRegistry: normalise(process.env.NEXT_PUBLIC_REPUTATION_REGISTRY_ADDRESS),
+  vaultLauncher: normalise(process.env.NEXT_PUBLIC_VAULT_LAUNCHER_ADDRESS),
 } as const;
 
 export type ContractKey = keyof typeof contracts;
@@ -267,3 +268,43 @@ export const vaultAbi = [
 ] as const;
 
 export { erc20Abi, erc4626Abi };
+
+/**
+ * VaultLauncher: permissionless vault creation.
+ *
+ * `vaultSummary` exists so a leaderboard row is one call rather than five.
+ * The column that matters is coverage: the share of a vault's assets backed by
+ * its leader's own subordinated capital. It is the only number on the page
+ * that a competitor cannot also show, because no other vault protocol has the
+ * leader's money standing in front of the depositors'.
+ */
+export const vaultLauncherAbi = [
+  {
+    type: 'function',
+    name: 'launchCount',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'minCoverageBps',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint16' }],
+  },
+  {
+    type: 'function',
+    name: 'vaultSummary',
+    stateMutability: 'view',
+    inputs: [{ name: 'launchId', type: 'uint256' }],
+    outputs: [
+      { name: 'vault', type: 'address' },
+      { name: 'leader', type: 'address' },
+      { name: 'totalAssets', type: 'uint256' },
+      { name: 'escrowBalance', type: 'uint256' },
+      { name: 'coverageBps', type: 'uint256' },
+      { name: 'adequatelyCovered', type: 'bool' },
+    ],
+  },
+] as const;
