@@ -10,6 +10,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {IYieldAdapter} from "../interfaces/IYieldAdapter.sol";
+import {FirstLossEscrow} from "../leadership/FirstLossEscrow.sol";
 import {ReceiptRenderer} from "../lib/ReceiptRenderer.sol";
 
 /// @title YieldVault
@@ -25,6 +26,11 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
 
     IYieldAdapter public adapter;
 
+    /// @notice The leader's subordinated capital, or zero for a vault without
+    ///         one. When set, its balance stands between a loss and the
+    ///         depositors, and performance fees are split through it.
+    address public firstLossEscrow;
+
     uint256 public rebalanceCount;
     uint256 public performanceFee;
     uint256 public highWaterMark;
@@ -36,6 +42,7 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
     event AdapterMigrated(address indexed oldAdapter, address indexed newAdapter, uint256 amount);
     event FeesClaimed(address indexed recipient, uint256 amount);
     event FeeRecipientSet(address indexed oldRecipient, address indexed newRecipient);
+    event FirstLossEscrowSet(address indexed escrow);
     event Rebalanced(
         uint256 navPerShare,
         uint256 totalAssetsInAdapter,
@@ -165,6 +172,17 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         uint256 shares
     ) internal override {
         _pullFromAdapter(assets);
+
+        // Whatever the adapter could not return, the leader's capital covers,
+        // up to its balance. This is the moment the subordination is real: the
+        // depositor is paid out of the escrow before the vault reports a loss
+        // to them.
+        address esc = firstLossEscrow;
+        if (esc != address(0)) {
+            uint256 held = IERC20(asset()).balanceOf(address(this));
+            if (held < assets) FirstLossEscrow(esc).absorb(assets - held);
+        }
+
         super._withdraw(caller, receiver, owner, assets, shares);
     }
 
@@ -191,13 +209,53 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         adapter.withdraw(needed < available ? needed : available);
     }
 
+    /// @notice The vault's own assets, net of accrued fees and EXCLUDING any
+    ///         support from the first-loss escrow.
+    /// @dev The escrow measures its own coverage ratio against this. Measuring
+    ///      against `totalAssets()` would be circular: the buffer would inflate
+    ///      the denominator it is compared to and report better coverage than
+    ///      actually exists.
+    function rawAssets() public view returns (uint256) {
+        uint256 held = address(adapter) == address(0)
+            ? IERC20(asset()).balanceOf(address(this))
+            : adapter.totalAssets();
+        return held > performanceFeeAccrued ? held - performanceFeeAccrued : 0;
+    }
+
+    /// @notice Assets the high-water mark implies the vault should hold.
+    function highWaterMarkValue() public view returns (uint256) {
+        uint256 supply = totalSupply();
+        if (supply == 0) return 0;
+        return (highWaterMark * supply) / (10 ** decimals());
+    }
+
+    /// @notice How much of the escrow is currently standing behind depositors.
+    ///
+    /// @dev Capped at the drawdown below the high-water mark, so in normal
+    ///      times this is zero and the leader's capital is NOT part of NAV.
+    ///      That matters: counting it unconditionally would mean a new
+    ///      depositor buys shares priced to include the leader's own money.
+    ///
+    ///      Support enters NAV rather than being paid out to whoever exits
+    ///      first. Every share therefore carries its pro-rata slice of the
+    ///      buffer and a redeeming holder draws only that slice. A buffer paid
+    ///      first-come-first-served would be a run incentive wearing a safety
+    ///      jacket.
+    function escrowSupport() public view returns (uint256) {
+        address esc = firstLossEscrow;
+        if (esc == address(0)) return 0;
+
+        uint256 raw = rawAssets();
+        uint256 mark = highWaterMarkValue();
+        if (raw >= mark) return 0;
+
+        uint256 shortfall = mark - raw;
+        uint256 avail = FirstLossEscrow(esc).available();
+        return shortfall < avail ? shortfall : avail;
+    }
+
     function totalAssets() public view override returns (uint256) {
-        if (address(adapter) == address(0)) {
-            uint256 held = IERC20(asset()).balanceOf(address(this));
-            return held > performanceFeeAccrued ? held - performanceFeeAccrued : 0;
-        }
-        uint256 adapterAssets = adapter.totalAssets();
-        return adapterAssets > performanceFeeAccrued ? adapterAssets - performanceFeeAccrued : 0;
+        return rawAssets() + escrowSupport();
     }
 
     function getNavPerShare() public view returns (uint256) {
@@ -302,15 +360,40 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
 
         performanceFeeAccrued = 0;
         _pullFromAdapter(amount);
-        IERC20(asset()).safeTransfer(feeRecipient, amount);
 
-        emit FeesClaimed(feeRecipient, amount);
+        address esc = firstLossEscrow;
+        if (esc == address(0)) {
+            IERC20(asset()).safeTransfer(feeRecipient, amount);
+            emit FeesClaimed(feeRecipient, amount);
+        } else {
+            // Split leader/protocol, and rebuild the buffer out of the
+            // leader's share first if it is short. A leader who has taken a
+            // drawdown restores the protection before they earn again.
+            IERC20(asset()).forceApprove(esc, amount);
+            FirstLossEscrow(esc).splitFees(amount);
+            IERC20(asset()).forceApprove(esc, 0);
+            emit FeesClaimed(esc, amount);
+        }
     }
 
     function setFeeRecipient(address newRecipient) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(newRecipient != address(0), "YieldVault: zero recipient");
         emit FeeRecipientSet(feeRecipient, newRecipient);
         feeRecipient = newRecipient;
+    }
+
+    /// @notice Install the leader's first-loss escrow. Settable once.
+    /// @dev One-shot on purpose. A swappable escrow is a swappable promise:
+    ///      an admin could point the vault at an empty contract the moment a
+    ///      drawdown started and the protection would evaporate exactly when
+    ///      it was being relied on.
+    function setFirstLossEscrow(address escrow_) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(firstLossEscrow == address(0), "YieldVault: escrow already set");
+        require(escrow_ != address(0), "YieldVault: zero escrow");
+        require(FirstLossEscrow(escrow_).vault() == address(this), "YieldVault: escrow vault mismatch");
+        require(address(FirstLossEscrow(escrow_).asset()) == asset(), "YieldVault: escrow asset mismatch");
+        firstLossEscrow = escrow_;
+        emit FirstLossEscrowSet(escrow_);
     }
 
     function setCircuitBreaker(bool active) external onlyRole(RISK_COUNCIL_ROLE) {
