@@ -37,11 +37,21 @@
     @apply outline-none ring-2 ring-zor-500 ring-offset-2 ring-offset-void-950;
   }
 
+  /* Display scale gets the serif at weight 400 — Instrument Serif has no bold,
+     and a synthesised one smears its thin strokes. Hierarchy comes from size
+     and negative tracking instead. */
   h1,
-  h2,
+  h2 {
+    @apply font-display font-normal text-ink-100;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  /* Sub-display headings stay sans: at 14–18px a high-contrast serif costs
+     legibility, and these sit inside dense data cards. */
   h3,
   h4 {
-    @apply font-display text-ink-100;
+    @apply font-sans font-semibold text-ink-100;
     text-wrap: balance;
   }
 
@@ -49,7 +59,6 @@
     text-wrap: pretty;
   }
 
-  /* Respect the OS setting rather than animating regardless. */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -69,6 +78,32 @@
   }
   .shell-narrow {
     @apply mx-auto w-full max-w-[52rem] px-5 sm:px-8;
+  }
+
+  /* ─── Glass ───────────────────────────────────────────────────────────── */
+  /* One glass recipe, used by the nav pill, the hero badge and the hero
+     buttons, so they read as the same material rather than three lookalikes. */
+  .glass {
+    @apply border border-white/10 bg-white/[0.06];
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+  }
+  .glass-strong {
+    @apply border border-white/15 bg-white/[0.10];
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+  }
+
+  /* Nav pill: links and the CTA live inside one container. */
+  .nav-pill {
+    @apply glass flex items-center gap-1 rounded-full p-1;
+  }
+  .nav-link {
+    @apply rounded-full px-3.5 py-2 text-sm font-medium text-ink-300
+           transition-colors hover:bg-white/[0.07] hover:text-white;
+  }
+  .nav-link-active {
+    @apply bg-white/[0.09] text-white;
   }
 
   /* ─── Surfaces ────────────────────────────────────────────────────────── */
@@ -98,8 +133,8 @@
 
   /* ─── Controls ────────────────────────────────────────────────────────── */
   .btn {
-    @apply inline-flex select-none items-center justify-center gap-2 rounded-lg border border-void-600
-           bg-void-800 px-4 py-2.5 text-sm font-medium text-ink-100
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-full border border-void-600
+           bg-void-800 px-5 py-3 text-sm font-medium text-ink-100
            transition-all duration-150 hover:border-void-500 hover:bg-void-700
            disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-void-800;
   }
@@ -107,11 +142,20 @@
     @apply btn border-transparent bg-zor-600 text-white
            hover:bg-zor-500 hover:shadow-glow disabled:hover:bg-zor-600 disabled:hover:shadow-none;
   }
+  .btn-glass {
+    @apply glass-strong inline-flex select-none items-center justify-center gap-2 rounded-full
+           px-5 py-3 text-sm font-medium text-white transition-colors
+           hover:bg-white/[0.16];
+  }
+  .btn-quiet {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-full bg-transparent
+           px-5 py-3 text-sm font-medium text-ink-300 transition-colors hover:text-white;
+  }
   .btn-ghost {
     @apply btn border-transparent bg-transparent hover:bg-void-800;
   }
   .btn-sm {
-    @apply px-3 py-1.5 text-xs;
+    @apply px-3.5 py-2 text-xs;
   }
 
   .input {
@@ -138,6 +182,15 @@
     @apply badge border-zor-600/50 bg-zor-500/10 text-zor-300;
   }
 
+  /* Announcement chip: a solid label followed by a sentence, on glass. */
+  .chip-row {
+    @apply glass inline-flex items-center gap-3 rounded-full px-2.5 py-2;
+  }
+  .chip-label {
+    @apply inline-flex items-center rounded-full bg-white/90 px-2 py-0.5
+           text-2xs font-semibold uppercase tracking-wider text-void-950;
+  }
+
   /* ─── Misc ────────────────────────────────────────────────────────────── */
   .divide-hair {
     @apply divide-y divide-void-700;
@@ -158,12 +211,49 @@
   .text-gradient {
     @apply bg-zor-sheen bg-clip-text text-transparent;
   }
-  /* Radial spotlight behind hero content. */
+
+  /* ─── Violet aurora ───────────────────────────────────────────────────── */
+  /* The reference hero used a full-bleed Mars photograph, which is where its
+     red came from. This is the same atmospheric effect built from gradients
+     instead: no external image to host, nothing for the CSP to allow, and it
+     scales to any viewport without art direction. Animation is applied to
+     blurred blobs via transform (see .aurora-blob), not to these gradients —
+     animating a large radial gradient repaints the whole layer every frame. */
+  .aurora {
+    background:
+      radial-gradient(58rem 38rem at 12% -12%, rgba(139, 109, 255, 0.30), transparent 62%),
+      radial-gradient(48rem 34rem at 88% -4%, rgba(34, 211, 238, 0.14), transparent 62%),
+      radial-gradient(72rem 48rem at 50% 108%, rgba(111, 74, 232, 0.26), transparent 66%),
+      radial-gradient(36rem 28rem at 78% 62%, rgba(232, 73, 192, 0.10), transparent 62%),
+      #06060a;
+  }
+
+  .aurora-blob {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(90px);
+    will-change: transform;
+  }
+
+  /* Film grain over the gradients. Without it, wide smooth gradients band
+     visibly on 8-bit panels. Inline SVG turbulence keeps it a data URI. */
+  .grain::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.16;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  }
+
+  /* Radial spotlight behind non-hero section headers. */
   .spotlight {
     background:
       radial-gradient(60rem 32rem at 50% -8rem, rgba(139, 109, 255, 0.18), transparent 70%),
-      radial-gradient(40rem 24rem at 85% 0%, rgba(34, 211, 238, 0.10), transparent 70%);
+      radial-gradient(40rem 24rem at 85% 0%, rgba(34, 211, 238, 0.1), transparent 70%);
   }
+
   .grid-lines {
     background-image:
       linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
@@ -172,4 +262,45 @@
     mask-image: radial-gradient(48rem 28rem at 50% 0%, black, transparent 75%);
     -webkit-mask-image: radial-gradient(48rem 28rem at 50% 0%, black, transparent 75%);
   }
+
+  /* ─── Staggered entrance ──────────────────────────────────────────────── */
+  /* One keyframe, five delays. Matches the reference's fade-slide-in-N pattern
+     but expressed as utilities so the hero markup stays declarative. */
+  .fade-in-1,
+  .fade-in-2,
+  .fade-in-3,
+  .fade-in-4,
+  .fade-in-5 {
+    animation: fade-slide-in 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .fade-in-1 { animation-delay: 0.05s; }
+  .fade-in-2 { animation-delay: 0.16s; }
+  .fade-in-3 { animation-delay: 0.27s; }
+  .fade-in-4 { animation-delay: 0.38s; }
+  .fade-in-5 { animation-delay: 0.52s; }
 }
+
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* Slow drift on the aurora blobs. Transform-only, so it composites on the GPU
+   and never triggers layout. */
+@keyframes drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(4%, 3%, 0) scale(1.08); }
+}
+@keyframes drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.06); }
+  50%      { transform: translate3d(-5%, -2%, 0) scale(1); }
+}
+
+.animate-drift-a { animation: drift-a 22s ease-in-out infinite; }
+.animate-drift-b { animation: drift-b 28s ease-in-out infinite; }

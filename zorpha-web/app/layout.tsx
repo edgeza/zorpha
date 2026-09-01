@@ -1,6 +1,6 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
-import { Inter, Space_Grotesk, JetBrains_Mono } from 'next/font/google';
+import { Inter, Instrument_Serif, JetBrains_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { Providers } from './providers';
 
@@ -10,8 +10,19 @@ const sans = Inter({
   variable: '--font-sans',
 });
 
-const display = Space_Grotesk({
+/**
+ * Display face.
+ *
+ * Instrument Serif ships a single weight (400). That is a constraint, not an
+ * oversight: asking a browser to synthesise bold from a high-contrast serif
+ * smears the thin strokes. So display headings are set at weight 400 and get
+ * their hierarchy from size and tracking instead — see the h1/h2 rules in
+ * globals.css.
+ */
+const display = Instrument_Serif({
   subsets: ['latin'],
+  weight: '400',
+  style: ['normal', 'italic'],
   display: 'swap',
   variable: '--font-display',
 });
