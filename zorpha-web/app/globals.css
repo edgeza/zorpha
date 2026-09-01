@@ -23,8 +23,18 @@
 
   body {
     @apply bg-void-950 text-ink-200 font-sans antialiased;
-    /* Tabular figures everywhere: this is a numbers product and digits that
-       change width make a dashboard twitch on every re-render. */
+  }
+
+  /* Tabular figures where numbers are actually tabulated, and NOWHERE else.
+     This used to sit on `body`, which is wrong for any text face whose `tnum`
+     set covers punctuation as well as digits — a tabular full stop is padded
+     out to digit width so decimal columns line up, which is correct in a table
+     and puts a visible gap in front of every full stop and comma in prose.
+     Schibsted Grotesk does exactly that, to the tune of ~6px a mark. */
+  .stat-value,
+  .tnum,
+  td,
+  th {
     font-variant-numeric: tabular-nums;
   }
 
