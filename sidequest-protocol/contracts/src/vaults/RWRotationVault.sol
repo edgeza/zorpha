@@ -120,6 +120,53 @@ contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
         return 6;
     }
 
+    // ─── ERC-4626 entrypoints ────────────────────────────────────────────────
+    //
+    // Overridden for two reasons: to mark fees before the preview maths runs
+    // (see `_evaluateFees`), and to apply the `nonReentrant` guard this
+    // contract already inherits but was not using on the paths that actually
+    // move depositor funds.
+
+    function deposit(uint256 assets, address receiver)
+        public
+        override
+        nonReentrant
+        returns (uint256)
+    {
+        _evaluateFees();
+        return super.deposit(assets, receiver);
+    }
+
+    function mint(uint256 shares, address receiver)
+        public
+        override
+        nonReentrant
+        returns (uint256)
+    {
+        _evaluateFees();
+        return super.mint(shares, receiver);
+    }
+
+    function withdraw(uint256 assets, address receiver, address owner)
+        public
+        override
+        nonReentrant
+        returns (uint256)
+    {
+        _evaluateFees();
+        return super.withdraw(assets, receiver, owner);
+    }
+
+    function redeem(uint256 shares, address receiver, address owner)
+        public
+        override
+        nonReentrant
+        returns (uint256)
+    {
+        _evaluateFees();
+        return super.redeem(shares, receiver, owner);
+    }
+
     function _readPrice(uint256 i) internal view returns (uint256) {
         AggregatorV3Interface o = oracles[i];
         (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound) =
@@ -245,7 +292,29 @@ contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
     /// @notice Accrue performance fee on new high-water-mark NAV.
     ///         Charged only on gains above the previous high, so a recovery back
     ///         to a prior level is not billed twice.
+    /// @notice Mark performance fees against the high-water mark.
+    /// @dev Kept as a keeper entrypoint so fees can still be marked through a
+    ///      long stretch with no deposits or withdrawals. It is no longer the
+    ///      only path to accrual: see `_evaluateFees`.
     function evaluateFees() external onlyRole(KEEPER_ROLE) {
+        _evaluateFees();
+    }
+
+    /// @dev Accrue the performance fee on any gain above the high-water mark.
+    ///
+    ///      This used to run only when a keeper called `evaluateFees`, which
+    ///      left the protocol's revenue depending on off-chain punctuality: a
+    ///      depositor could enter, wait for the position to appreciate, and
+    ///      redeem before the next keeper call, taking the entire gain and
+    ///      paying nothing.
+    ///
+    ///      It is now also called from the four ERC-4626 entrypoints, so anyone
+    ///      moving value in or out first crystallises what has been earned.
+    ///      Note those call sites are the PUBLIC functions, not the internal
+    ///      `_deposit`/`_withdraw` hooks: ERC-4626 fixes the asset amount via
+    ///      `previewRedeem` before those hooks run, so accruing inside them
+    ///      lands after the number it is meant to affect has been computed.
+    function _evaluateFees() internal {
         uint256 nav = getNavPerShare();
         if (nav <= highWaterMark) return;
 

@@ -112,6 +112,7 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         nonReentrant
         returns (uint256)
     {
+        _evaluateFees();
         return super.deposit(assets, receiver);
     }
 
@@ -121,6 +122,7 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         nonReentrant
         returns (uint256)
     {
+        _evaluateFees();
         return super.mint(shares, receiver);
     }
 
@@ -130,6 +132,7 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         nonReentrant
         returns (uint256)
     {
+        _evaluateFees();
         return super.withdraw(assets, receiver, owner);
     }
 
@@ -139,6 +142,7 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         nonReentrant
         returns (uint256)
     {
+        _evaluateFees();
         return super.redeem(shares, receiver, owner);
     }
 
@@ -314,7 +318,53 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         emit CircuitBreakerSet(active);
     }
 
+    /// @notice Mark performance fees against the high-water mark.
+    /// @dev Kept as a keeper entrypoint so fees can still be marked during a
+    ///      long stretch with no deposits or withdrawals. It is no longer the
+    ///      ONLY way fees accrue — see `_evaluateFees` for why that mattered.
     function evaluateFees() external onlyRole(KEEPER_ROLE) {
+        _evaluateFees();
+    }
+
+    /// @dev Accrue the performance fee on any gain above the high-water mark.
+    ///
+    ///      This used to run only when a keeper called `evaluateFees`, which
+    ///      left a hole big enough to drive the protocol's whole revenue model
+    ///      through: a depositor could enter, wait for the position to earn,
+    ///      and redeem before the keeper's next call, taking the entire gain
+    ///      and paying nothing. Since half of every fee funds the $ZOR buyback,
+    ///      "the keeper was late" and "the protocol earned nothing" were the
+    ///      same sentence.
+    ///
+    ///      Marking on every deposit and withdrawal closes it. Anyone moving
+    ///      value in or out of the vault first crystallises what has been
+    ///      earned since the last mark, so the fee no longer depends on
+    ///      off-chain punctuality.
+    ///
+    ///      It has to be called from the PUBLIC entrypoints, not the internal
+    ///      `_deposit`/`_withdraw` hooks. ERC-4626 fixes the asset amount via
+    ///      `previewRedeem` before those hooks run, so accruing inside them
+    ///      lands after the number it is supposed to affect has already been
+    ///      computed, and the exiting holder still pays nothing.
+    ///
+    ///      The mark is deliberately set to the PRE-fee NAV. Charging the fee
+    ///      drops NAV per share, so the vault has to re-earn that drop before
+    ///      it can charge again. That is conservative in the depositor's
+    ///      favour, and it is the existing behaviour, left unchanged.
+    function _evaluateFees() internal {
+        // An empty vault has no NAV to mark and nothing to charge. The early
+        // return is load-bearing, not tidiness: `getNavPerShare()` answers
+        // `10 ** decimals()` for an empty vault, and share decimals are asset
+        // decimals plus a 6-place offset, so that sentinel is a million times
+        // larger than any NAV a funded vault will ever report. Letting it reach
+        // the line below ratchets `highWaterMark` to a level the vault can
+        // never exceed and silently disables performance fees for the life of
+        // the contract — which, since half of every fee funds the buyback, also
+        // disables $ZOR value accrual. Reachable by anyone able to touch an
+        // empty vault, including a keeper calling `evaluateFees` once before
+        // the first deposit.
+        if (totalSupply() == 0) return;
+
         uint256 nav = getNavPerShare();
         if (nav <= highWaterMark) return;
         uint256 alpha = nav - highWaterMark;
