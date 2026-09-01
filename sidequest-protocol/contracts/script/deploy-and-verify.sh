@@ -34,7 +34,7 @@
 #   STOCK_TOKEN_1/2, STOCK_FEED_1/2                        (phase B)
 #   DEPLOY_VAULTS=true       opt in to phase B (token-only is the default)
 #
-# Pre-reqs: forge, cast, slither, jq
+# Pre-reqs: forge, cast, slither, node
 
 set -euo pipefail
 
@@ -105,10 +105,18 @@ if [[ ! -f "$BROADCAST" ]]; then
   exit 1
 fi
 
+# Reads a deployed address out of a broadcast artifact, via node rather
+# than jq. jq is a separate install often absent on a fresh machine, and it
+# is only reached AFTER the token layer is live — the worst moment to find
+# out, with a half-finished deploy and no addresses captured.
 addr_of() {
-  jq -r --arg n "$1" \
-    '[.transactions[] | select(.contractName == $n) | .contractAddress] | first // ""' \
-    "$BROADCAST"
+  node -e '
+    const fs = require("fs");
+    const name = process.argv[1], file = process.argv[2];
+    const j = JSON.parse(fs.readFileSync(file, "utf8"));
+    const hit = (j.transactions || []).find(t => t.contractName === name);
+    process.stdout.write(hit && hit.contractAddress ? hit.contractAddress : "");
+  ' "$1" "$BROADCAST"
 }
 
 ZOR_ADDR=$(addr_of Zorpha)
@@ -191,9 +199,13 @@ else
   fi
 
   vault_addr_of() {
-    jq -r --arg n "$1" \
-      '[.transactions[] | select(.contractName == $n) | .contractAddress] | first // ""' \
-      "$VAULT_BROADCAST"
+    node -e '
+      const fs = require("fs");
+      const name = process.argv[1], file = process.argv[2];
+      const j = JSON.parse(fs.readFileSync(file, "utf8"));
+      const hit = (j.transactions || []).find(t => t.contractName === name);
+      process.stdout.write(hit && hit.contractAddress ? hit.contractAddress : "");
+    ' "$1" "$VAULT_BROADCAST"
   }
 
   FACTORY_ADDR=$(vault_addr_of VaultFactory)
