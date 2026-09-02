@@ -1,7 +1,9 @@
 # Finding: a depositor can be charged a performance fee on gains earned before they arrived
 
-**Status:** open, unremediated. Found on testnet 46630, 2026-09-02, by
-`contracts/script/testnet-yield-drill.sh`.
+**Status:** fixed, pending auditor review. Found on testnet 46630, 2026-09-02,
+by `contracts/script/testnet-yield-drill.sh`. Remediated the same day — see
+**Fix** below. The fix changes fee behaviour, so it must not reach mainnet
+without the external auditor having looked at it.
 **Contract:** `src/vaults/YieldVault.sol`
 **Severity:** low in isolation, and it should be on the external audit's list
 regardless — it is a fee-accounting design gap, not a coding error, and those
@@ -35,6 +37,26 @@ overcharged:
 The entry NAV lands at `(dust + 1) x 1e6` through the ERC-4626 offset, and the
 mark is wherever the previous cycle left it, so the gap recurs every time the
 vault is emptied and re-entered. This is deterministic, not a rare interleaving.
+
+## A refinement: it needs drift, not one cycle
+
+Writing the regression test turned up something that lowers the severity a
+little, and is worth stating because it was not obvious.
+
+**A clean full redemption self-corrects.** The residue a redemption leaves is
+almost exactly `multiple - 1` base units, which the 1e6 offset turns back into
+`multiple * 1e6` — the old NAV. So the next depositor's entry lands *exactly
+on* the old mark: not above it, not below. No overcharge.
+
+The unit test could not reach "entry above the mark" through a single cycle for
+this reason, and had to force it. What produced the testnet case was **drift
+across four cycles**: the dust grew by two or three units per cycle rather than
+tracking `multiple - 1` precisely, and once it ran ahead of the mark the gap
+opened.
+
+So the precondition is not "a vault was emptied once". It is "a vault has been
+emptied and re-entered repeatedly, with fees left unclaimed across cycles".
+Narrower than first written, and still reachable over a vault's life.
 
 ## Why
 
@@ -124,20 +146,51 @@ per conversion in a deposit/redeem round trip. This was ten million.
 Not a bug in the fee formula. The formula computes what it says it computes,
 to the unit.
 
-## Options
+## Fix
 
-Listed, not chosen. This should be decided with the external auditor.
+Option 1 of the four below, implemented in `YieldVault._markFirstEntry()`.
 
-1. **Mark the entry NAV for a first depositor.** In `deposit`/`mint`, when
-   `totalSupply() == 0` and `totalAssets() > 0`, set `highWaterMark` to the NAV
-   the incoming deposit will establish. Smallest change; needs care not to
-   reintroduce the sentinel-ratchet problem the early return exists to prevent.
-2. **Sweep the residue when a vault empties.** If `totalSupply()` returns to 0,
-   send the remaining `rawAssets()` to the treasury and reset the mark. Removes
-   the precondition rather than handling it.
-3. **Per-depositor equalisation.** Correct and much larger. Probably not V1.
-4. **Accept and document.** Defensible while the magnitude is dust-sized, but
-   then it belongs in the depositor-facing risk copy, not only here.
+`deposit` and `mint` record whether the vault was empty, and if it was, set
+`highWaterMark` to `getNavPerShare()` *after* minting — the price the incoming
+depositor actually paid. Reading the NAV there is safe where it is not inside
+`_evaluateFees`: supply is non-zero by that point, so it returns a real price
+rather than the `10 ** decimals()` sentinel whose ratcheting the early return
+exists to prevent. `test_MarkNeverTakesTheEmptyVaultSentinel` pins that.
+
+**The reset is unconditional**, not `if (nav > highWaterMark)`. An empty vault
+has no holders for the mark to protect, so there is nobody it can be lowered at
+the expense of.
+
+**This is a behaviour change in both directions, and the second one is an
+economic decision, not a bug fix.** Overcharging on entry above a stale mark
+stops, which is the finding. But entry *below* a stale mark also stops riding
+free: a depositor entering after a drawdown-and-exit now pays a fee on gains
+between their entry and the old peak, where previously the leader earned nothing
+until the peak was beaten. That is the conventional treatment and it favours the
+leader. It should be an explicit choice rather than a side effect — flagging it
+here so it is not discovered later.
+
+Three regression tests in `test/vaults/YieldVault.t.sol`:
+
+- `test_FirstDepositorIntoADustyVaultPaysOnlyForTheirOwnGain` — the finding.
+- `test_FirstDepositorBelowAStaleMarkStillPaysOnTheirGain` — the mirror case.
+- `test_MarkNeverTakesTheEmptyVaultSentinel` — the regression the early return
+  guards against.
+
+Full suite green: 152 tests, up from 149, zero failures, both invariant suites
+included.
+
+## Options considered
+
+1. **Mark the entry NAV for a first depositor.** ← **chosen.** Smallest change
+   that addresses the cause.
+2. **Sweep the residue when a vault empties.** Removes the precondition rather
+   than handling it. Rejected as the primary fix because it needs a privileged
+   caller at exactly the moment a vault empties, which nothing guarantees; still
+   worth doing as defence in depth.
+3. **Per-depositor equalisation.** Correct and much larger. Not V1.
+4. **Accept and document.** Rejected: a 12–20% overcharge is not dust-sized,
+   whatever the size of the residue that causes it.
 
 ## Reproducing
 
@@ -156,8 +209,14 @@ gap loudly whenever entry NAV is above the mark:
 
 ## Open
 
-- [ ] Raise with the external auditor as a named item rather than leaving it to
-      be rediscovered.
-- [ ] Decide between options 1–4 before mainnet.
-- [ ] Add a Foundry test covering entry-above-mark. No test in the suite exercises
-      it today, which is why 20 tests and a fuzz test passed while this was live.
+- [x] Add a Foundry test covering entry-above-mark. Three added; nothing in the
+      suite exercised it before, which is why 20 tests, six invariants and a
+      fuzz test were green while this was live.
+- [x] Fix the cause. `_markFirstEntry()`, option 1.
+- [ ] **Auditor review of the fix.** It changes fee accounting. Do not ship to
+      mainnet on my say-so.
+- [ ] **Decide the below-mark behaviour deliberately.** The fix stops the free
+      ride as well as the overcharge. That favours leaders over late depositors
+      and should be a choice, not a side effect.
+- [ ] Consider option 2 as well, as defence in depth against a residue building
+      up at all.

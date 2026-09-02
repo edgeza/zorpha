@@ -51,6 +51,7 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         bytes32 commitment
     );
     event CircuitBreakerSet(bool active);
+    event HighWaterMarkReset(uint256 nav);
 
     error CircuitBreakerActive();
     error AdapterUnset();
@@ -120,7 +121,10 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         returns (uint256)
     {
         _evaluateFees();
-        return super.deposit(assets, receiver);
+        bool wasEmpty = totalSupply() == 0;
+        uint256 shares = super.deposit(assets, receiver);
+        if (wasEmpty) _markFirstEntry();
+        return shares;
     }
 
     function mint(uint256 shares, address receiver)
@@ -130,7 +134,49 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         returns (uint256)
     {
         _evaluateFees();
-        return super.mint(shares, receiver);
+        bool wasEmpty = totalSupply() == 0;
+        uint256 assets = super.mint(shares, receiver);
+        if (wasEmpty) _markFirstEntry();
+        return assets;
+    }
+
+    /// @dev Set the high-water mark to the price the first depositor into an
+    ///      empty vault actually paid.
+    ///
+    ///      `_evaluateFees` returns early while `totalSupply()` is zero, and it
+    ///      has to: the empty-vault NAV is a `10 ** decimals()` sentinel a
+    ///      million times any real price, and letting that reach the mark would
+    ///      ratchet it out of reach and disable performance fees for the life of
+    ///      the contract. The side effect is that the first depositor never
+    ///      marks their own entry, so the mark stays wherever the previous
+    ///      cohort left it.
+    ///
+    ///      That is fine on a vault that empties to nothing. It is not fine when
+    ///      the vault holds a residue while empty -- rounding dust, a donation to
+    ///      the venue, yield earned on the remainder -- because the ERC-4626
+    ///      decimal offset then puts the incoming entry NAV ABOVE the stale mark,
+    ///      and at redemption the fee is charged from the mark rather than from
+    ///      where this depositor bought in. They pay a performance fee on
+    ///      appreciation that happened before they arrived: measured at 12-20%
+    ///      over on testnet 46630, deterministically, once per cycle. See
+    ///      docs/FINDINGS-EQUALISATION.md.
+    ///
+    ///      The reset is unconditional rather than `if (nav > highWaterMark)`.
+    ///      An empty vault has no holders for the mark to protect, so there is
+    ///      nobody it can be lowered at the expense of, and doing it
+    ///      unconditionally also closes the mirror-image case: an entry BELOW a
+    ///      stale high mark used to ride free while the leader earned nothing on
+    ///      real gains.
+    ///
+    ///      Reading `getNavPerShare()` is safe here where it is not in
+    ///      `_evaluateFees`: supply is non-zero by this point, so it returns a
+    ///      real price and not the sentinel.
+    function _markFirstEntry() internal {
+        uint256 nav = getNavPerShare();
+        if (nav != highWaterMark) {
+            highWaterMark = nav;
+            emit HighWaterMarkReset(nav);
+        }
     }
 
     function withdraw(uint256 assets, address receiver, address owner)
