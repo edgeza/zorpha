@@ -20,6 +20,20 @@
 
 set -euo pipefail
 
+# foundryup installs to ~/.foundry/bin, which is on the PATH of the shell that
+# ran it and often nowhere else -- so this script is frequently invoked from a
+# shell where cast is missing even though foundry is installed. Look there
+# before giving up.
+if ! command -v cast >/dev/null; then
+  if [[ -x "$HOME/.foundry/bin/cast" || -x "$HOME/.foundry/bin/cast.exe" ]]; then
+    PATH="$HOME/.foundry/bin:$PATH"; export PATH
+  else
+    echo "ERROR: cast not found, and not at ~/.foundry/bin either." >&2
+    echo "       Install foundry (foundryup), then reopen the shell." >&2
+    exit 1
+  fi
+fi
+
 ACCOUNT="${1:-}"
 [[ -n "$ACCOUNT" ]] || {
   echo "usage: $0 <keystore-account-name>" >&2
