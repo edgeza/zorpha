@@ -179,8 +179,15 @@ for entry in "${BURNED[@]}"; do
   HITS=0
 
   for c in "${CONTRACTS[@]}"; do
-    CNAME="${c%%:*}"; CADDR=$(env_of "${c##*:}")
-    [[ -z "$CADDR" || "$CADDR" == "0x0000000000000000000000000000000000000000" ]] && continue
+    # Entries are "Label:0xADDRESS". They used to be "Label:ENV_VAR_NAME" and
+    # this line called env_of on the second half; after discovery started
+    # yielding addresses directly, that lookup returned empty for all 27 and
+    # every contract was silently skipped -- the audit printed a key header and
+    # no findings, which reads exactly like a clean result.
+    CNAME="${c%%:*}"; CADDR="${c##*:}"
+    if [[ -z "$CADDR" || "$CADDR" == "$ZERO_ADDR" ]]; then
+      continue
+    fi
 
     for r in "${ROLES[@]}"; do
       RNAME="${r%%:*}"; RHASH="${r##*:}"

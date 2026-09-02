@@ -61,8 +61,17 @@ contract DeployZorphaToken is Script {
     }
 
     function run() external returns (Deployed memory d) {
-        uint256 deployerKey = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(deployerKey);
+        // PRIVATE_KEY is optional. When it is absent the run authenticates with
+        // `--account <keystore>` (plus `--sender`), and forge resolves both the
+        // signer and `msg.sender` from it -- verified by probe.
+        //
+        // A raw key means the deployer sits in an environment variable and in
+        // shell history, which is how both keys in docs/BURNED-KEYS.md were
+        // burned. A keystore is the only form that should ever touch mainnet, so
+        // it must be the form these scripts support.
+        uint256 deployerKey = vm.envOr("PRIVATE_KEY", uint256(0));
+        address deployer = deployerKey != 0 ? vm.addr(deployerKey) : msg.sender;
+        require(deployer != address(0), "no deployer: set PRIVATE_KEY or use --account with --sender");
 
         // Governance Safe. Deliberately has no `deployer` fallback: launching
         // with governance pointed at a hot key is the failure this script
@@ -92,7 +101,11 @@ contract DeployZorphaToken is Script {
         require(airdropRoot != bytes32(0), "AIRDROP_MERKLE_ROOT unset");
         require(claimDeadline > block.timestamp, "AIRDROP_CLAIM_DEADLINE in the past");
 
-        vm.startBroadcast(deployerKey);
+        if (deployerKey != 0) {
+            vm.startBroadcast(deployerKey);
+        } else {
+            vm.startBroadcast();
+        }
 
         // ─── 1. Token. Full supply to the deployer, spent entirely below. ────
         d.zor = new Zorpha(deployer);

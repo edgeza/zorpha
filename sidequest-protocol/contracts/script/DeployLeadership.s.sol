@@ -20,8 +20,17 @@ import {VaultFactory} from "../src/VaultFactory.sol";
 ///         wrote.
 contract DeployLeadership is Script {
     function run() external returns (VaultLauncher launcher) {
-        uint256 deployerKey = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(deployerKey);
+        // PRIVATE_KEY is optional. When it is absent the run authenticates with
+        // `--account <keystore>` (plus `--sender`), and forge resolves both the
+        // signer and `msg.sender` from it -- verified by probe.
+        //
+        // A raw key means the deployer sits in an environment variable and in
+        // shell history, which is how both keys in docs/BURNED-KEYS.md were
+        // burned. A keystore is the only form that should ever touch mainnet, so
+        // it must be the form these scripts support.
+        uint256 deployerKey = vm.envOr("PRIVATE_KEY", uint256(0));
+        address deployer = deployerKey != 0 ? vm.addr(deployerKey) : msg.sender;
+        require(deployer != address(0), "no deployer: set PRIVATE_KEY or use --account with --sender");
 
         address gov = vm.envAddress("GOVERNANCE");
         address treasury = vm.envAddress("TREASURY");
@@ -38,7 +47,11 @@ contract DeployLeadership is Script {
         // drain. Comma-separated.
         address[] memory targets = vm.envOr("APPROVED_YIELD_TARGETS", ",", new address[](0));
 
-        vm.startBroadcast(deployerKey);
+        if (deployerKey != 0) {
+            vm.startBroadcast(deployerKey);
+        } else {
+            vm.startBroadcast();
+        }
 
         // Vault admin is the TIMELOCK, not governance directly and never the
         // leader: privileged changes to someone else's vault should be visible

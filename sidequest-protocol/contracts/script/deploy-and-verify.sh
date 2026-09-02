@@ -79,7 +79,11 @@ fi
 # How every forge/cast call below authenticates. An array so it expands to two
 # words or one, with no quoting games at the call sites.
 if [[ -n "${DEPLOY_ACCOUNT:-}" ]]; then
-  SIGNER_ARGS=(--account "$DEPLOY_ACCOUNT")
+  # --sender as well as --account: the deploy scripts read `msg.sender` when
+  # PRIVATE_KEY is absent, and forge resolves msg.sender from --sender. Probed
+  # to confirm it comes back as the keystore address.
+  DEPLOY_ACCOUNT_ADDR=$(cast wallet address --account "$DEPLOY_ACCOUNT")
+  SIGNER_ARGS=(--account "$DEPLOY_ACCOUNT" --sender "$DEPLOY_ACCOUNT_ADDR")
 else
   SIGNER_ARGS=(--private-key "$PRIVATE_KEY")
 fi

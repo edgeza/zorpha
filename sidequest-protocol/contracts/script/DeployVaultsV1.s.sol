@@ -58,8 +58,17 @@ contract DeployVaultsV1 is Script {
     }
 
     function run() external returns (Deployed memory r) {
-        uint256 deployerKey = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(deployerKey);
+        // PRIVATE_KEY is optional. When it is absent the run authenticates with
+        // `--account <keystore>` (plus `--sender`), and forge resolves both the
+        // signer and `msg.sender` from it -- verified by probe.
+        //
+        // A raw key means the deployer sits in an environment variable and in
+        // shell history, which is how both keys in docs/BURNED-KEYS.md were
+        // burned. A keystore is the only form that should ever touch mainnet, so
+        // it must be the form these scripts support.
+        uint256 deployerKey = vm.envOr("PRIVATE_KEY", uint256(0));
+        address deployer = deployerKey != 0 ? vm.addr(deployerKey) : msg.sender;
+        require(deployer != address(0), "no deployer: set PRIVATE_KEY or use --account with --sender");
 
         address gov = vm.envAddress("GOVERNANCE");
         address timelock = vm.envAddress("TIMELOCK");
@@ -109,7 +118,34 @@ contract DeployVaultsV1 is Script {
         if (quorum == 0) quorum = oracleUpdaters.length;
         require(quorum > 0 && quorum <= oracleUpdaters.length, "ORACLE_QUORUM exceeds updater set");
 
-        vm.startBroadcast(deployerKey);
+        // The deployer must not be an oracle updater, and the default above
+        // makes it one -- which produces a DEAD oracle.
+        //
+        // `_handOver` renounces every role in `_allRoles()` from the deployer,
+        // and UPDATER_ROLE is in that list. `addUpdater` has already pushed the
+        // address into the `updaters` array by then, and nothing removes it. So
+        // the oracle ends up with an array entry that holds no role: it can
+        // never report, `latestRoundData` can never reach quorum, and every
+        // vault reverts on its first NAV read.
+        //
+        // Before the deploy-time role assertion further down, that shipped as a
+        // successful deploy. Refusing here instead names the cause, because
+        // "a seated oracle updater does not hold UPDATER_ROLE" does not explain
+        // that the fix is to set ORACLE_UPDATERS to something other than the
+        // key you are deploying with. See docs/FINDINGS-ORACLE-REVOCATION.md
+        // for the array-versus-role divergence this is one instance of.
+        for (uint256 i = 0; i < oracleUpdaters.length; i++) {
+            require(
+                oracleUpdaters[i] != deployer,
+                "ORACLE_UPDATERS contains the deployer, whose roles are renounced at handover -- set it to the governance address or a keeper"
+            );
+        }
+
+        if (deployerKey != 0) {
+            vm.startBroadcast(deployerKey);
+        } else {
+            vm.startBroadcast();
+        }
 
         // ─── Oracle. Deployer is admin only long enough to seat the updaters.
         r.oracle = new MedianOracle(8, 1 hours, 100 * 1e8, 1_000_000 * 1e8, quorum, deployer);
