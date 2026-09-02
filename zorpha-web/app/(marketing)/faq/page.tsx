@@ -29,7 +29,7 @@ const GROUPS: { heading: string; items: QA[] }[] = [
         q: 'Were there ever bugs that could have lost my deposit?',
         a: (
           <>
-            Yes, and we publish them. Our internal audit found that the USDC yield vault valued
+            Yes, and we publish them. Our internal audit found that the USDG yield vault valued
             shares against a yield-adapter balance it never actually funded, so a depositor could
             have burned every share and received nothing while their principal stayed stuck in the
             contract. Deposits were disabled until it was fixed. It is now fixed and pinned by a

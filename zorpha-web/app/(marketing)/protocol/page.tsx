@@ -16,7 +16,7 @@ const VAULTS = [
     name: 'Long / Flat Equity',
     body: 'Holds a single tokenised equity or sits in cash. The manager sets a target exposure in basis points; the vault will not act on a target that moves less than its rebalance threshold, which stops fee-generating churn.',
     specs: [
-      ['Mandate', 'One asset versus USDC, 0–100% exposure'],
+      ['Mandate', 'One asset versus USDG, 0–100% exposure'],
       ['Pricing', 'Single oracle, staleness-checked, fails closed'],
       ['Slippage cap', '1% per rebalance, enforced onchain'],
       ['Performance fee', '20% above high-water mark'],
@@ -25,7 +25,7 @@ const VAULTS = [
   {
     symbol: 'zqROT',
     name: 'RWA Rotation',
-    body: 'Holds a basket of tokenised equities against a USDC base and reweights between them. Target weights are stored onchain, so the intended portfolio is public before the trades settle.',
+    body: 'Holds a basket of tokenised equity exposure against a USDG base and reweights between them. Target weights are stored onchain, so the intended portfolio is public before the trades settle.',
     specs: [
       ['Mandate', 'N-asset basket, weights sum to 100%'],
       ['Pricing', 'One oracle per asset, each staleness-checked'],
@@ -35,10 +35,10 @@ const VAULTS = [
   },
   {
     symbol: 'zqUSD',
-    name: 'USDC Yield',
-    body: 'Routes idle USDC through a pluggable yield adapter. V1 ships a zero-yield, zero-risk stub so the slot is real before a lending market is wired in; swapping the adapter is a timelocked action.',
+    name: 'USDG Yield',
+    body: 'Routes idle USDG through a pluggable yield adapter. V1 ships a zero-yield, zero-risk stub so the slot is real before a lending market is wired in; swapping the adapter is a timelocked action.',
     specs: [
-      ['Mandate', 'USDC in, USDC out, via one adapter'],
+      ['Mandate', 'USDG in, USDG out, via one adapter'],
       ['Adapter changes', 'Timelock-gated, 48-hour delay'],
       ['Performance fee', '10% above high-water mark'],
       ['Status', 'Live. Capital routes through the adapter'],

@@ -67,7 +67,7 @@ export function BuybackPanel() {
       ) : (
         <dl className="mt-5 grid grid-cols-2 gap-4 border-t border-void-700 pt-5 sm:grid-cols-3">
           <div>
-            <dt className="stat-label">USDC spent</dt>
+            <dt className="stat-label">USDG spent</dt>
             <dd className="mt-1.5 font-mono text-sm text-ink-200">
               {usdcSpent === undefined ? '—' : `$${formatUnits(usdcSpent as bigint, 6, 2)}`}
             </dd>

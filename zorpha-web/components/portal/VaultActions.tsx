@@ -22,17 +22,61 @@ import { Callout } from '@/components/ui/Primitives';
 export function VaultActions({
   vaultAddress,
   assetAddress,
-  assetDecimals = 6,
-  assetSymbol = 'USDC',
+  assetDecimals: assetDecimalsProp,
+  assetSymbol: assetSymbolProp,
 }: {
   vaultAddress: `0x${string}`;
   assetAddress: `0x${string}`;
+  /** Optional override. Normally read from the token itself. */
   assetDecimals?: number;
+  /** Optional override. Normally read from the token itself. */
   assetSymbol?: string;
 }) {
   const { address } = useAccount();
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState<'deposit' | 'withdraw'>('deposit');
+
+  // Read the asset's own decimals and symbol rather than assuming them.
+  //
+  // These used to default to 6 and 'USDC', and the only call site passed
+  // neither. Both equity vaults hold an 18-decimal asset, so on those pages
+  // every number was wrong by 10^12 in whichever direction hurt: a balance of
+  // one token rendered as 1,000,000,000,000, and typing "1" into the deposit
+  // field produced parseUnits("1", 6) = 1e6 against an 18-decimal token --
+  // a trillionth of the intended deposit. "Max" filled in a nonsense figure
+  // from the same mistake.
+  //
+  // Reading them is also the only thing that can be right for a
+  // leader-launched vault, whose asset is whatever venue the leader chose.
+  const { data: readDecimals } = useReadContract({
+    abi: erc20Abi,
+    address: assetAddress,
+    functionName: 'decimals',
+  });
+  const { data: readSymbol } = useReadContract({
+    abi: erc20Abi,
+    address: assetAddress,
+    functionName: 'symbol',
+  });
+
+  // Share decimals are the vault's own, NOT a hardcoded 18: ERC-4626 with a
+  // decimal offset reports asset decimals plus the offset, so the spot vault
+  // reports 24. Withdrawals are denominated in shares.
+  // erc20Abi, not vaultAbi: the vault's shares ARE an ERC-20 and vaultAbi does
+  // not declare decimals().
+  const { data: readShareDecimals } = useReadContract({
+    abi: erc20Abi,
+    address: vaultAddress,
+    functionName: 'decimals',
+  });
+
+  const assetDecimals = assetDecimalsProp ?? (readDecimals as number | undefined);
+  const assetSymbol = assetSymbolProp ?? (readSymbol as string | undefined);
+  const shareDecimals = readShareDecimals as number | undefined;
+
+  // Until the reads land there is no honest way to parse or format an amount,
+  // so the form waits rather than guessing a scale.
+  const scalesKnown = assetDecimals !== undefined && shareDecimals !== undefined;
 
   const { data: assetBalance } = useReadContract({
     abi: erc20Abi,
@@ -75,7 +119,9 @@ export function VaultActions({
     );
   }
 
-  const parsed = parseUnits(amount, mode === 'deposit' ? assetDecimals : 18);
+  const parsed = scalesKnown
+    ? parseUnits(amount, mode === 'deposit' ? (assetDecimals as number) : (shareDecimals as number))
+    : null;
   const needsApproval =
     mode === 'deposit' &&
     parsed !== null &&
@@ -112,7 +158,7 @@ export function VaultActions({
           <span className="font-mono text-2xs text-ink-500">
             balance{' '}
             {mode === 'deposit'
-              ? formatUnits(assetBalance as bigint | undefined, assetDecimals, 2)
+              ? formatUnits(assetBalance as bigint | undefined, assetDecimals ?? 18, 2)
               : formatUnits(shareBalance as bigint | undefined, 18, 4)}
           </span>
         </div>
@@ -131,7 +177,13 @@ export function VaultActions({
             onClick={() => {
               const max = mode === 'deposit' ? assetBalance : shareBalance;
               if (max !== undefined) {
-                setAmount(formatUnits(max as bigint, mode === 'deposit' ? assetDecimals : 18, 6));
+                setAmount(
+                  formatUnits(
+                    max as bigint,
+                    mode === 'deposit' ? (assetDecimals ?? 18) : (shareDecimals ?? 18),
+                    6,
+                  ),
+                );
               }
             }}
           >
@@ -167,7 +219,7 @@ export function VaultActions({
         {busy
           ? 'Confirming…'
           : needsApproval
-            ? `Approve ${assetSymbol}`
+            ? `Approve ${assetSymbol ?? 'asset'}`
             : mode === 'deposit'
               ? 'Deposit'
               : 'Withdraw'}

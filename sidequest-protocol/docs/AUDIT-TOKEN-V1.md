@@ -13,7 +13,16 @@
 **All findings are closed. The remaining gate before mainnet is a third-party audit.**
 
 Twenty-four findings were identified across two passes. All twenty-four are fixed and covered by
-regression tests. The full suite is green at **97 of 97**, including seven stateful invariants.
+regression tests.
+
+> **On the test count.** This document used to say "green at 97 of 97, including seven stateful
+> invariants" here, while its own closing checklist said 158/158 and 13 — the headline was never
+> updated after later passes. Both numbers were quoted back at us as current, because a figure in a
+> verdict reads as the state of the repo rather than the state of one audit pass.
+>
+> So this line no longer carries a number. **Run `forge test` for the current count**; at the time of
+> writing it is 215 across 23 suites with 13 stateful invariants, and CI runs it on every push. The
+> before/after table below is deliberately a snapshot of *this audit*, and is labelled as such.
 
 The first pass covered the token layer and left five vault-layer findings open, one critical. The
 second pass closed all five and uncovered three more in the process: a reputation flag a manager
@@ -33,7 +42,10 @@ A third would have destroyed the product's core claim rather than its funds:
 
 ### Test state
 
-| | Before | After |
+Both columns are **as of this audit's second pass**, not as of today. Later work has moved every
+figure in the right-hand column upward; see the note in the verdict above.
+
+| | Before this audit | At close of this audit |
 |---|---|---|
 | Compiles | ❌ no | ✅ yes |
 | Token-layer tests | 8, never executed | **40, all passing** |

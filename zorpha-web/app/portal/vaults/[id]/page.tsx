@@ -111,11 +111,13 @@ export default async function VaultDetailPage({
         </div>
 
         <div>
-          <VaultActions
-            vaultAddress={vault.address}
-            assetAddress={asset}
-            assetSymbol={vault.vault_type === 'yield' ? 'USDC' : 'USDC'}
-          />
+          {/* No assetSymbol or assetDecimals: VaultActions reads both from the
+              token. This used to pass
+              `assetSymbol={vault.vault_type === 'yield' ? 'USDC' : 'USDC'}` --
+              a ternary whose branches were identical, so every vault was
+              labelled USDC including the two that hold an 18-decimal equity
+              token. */}
+          <VaultActions vaultAddress={vault.address} assetAddress={asset} />
         </div>
       </div>
 

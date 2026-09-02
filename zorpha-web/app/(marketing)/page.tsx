@@ -45,13 +45,13 @@ const VAULTS = [
   {
     symbol: 'zqROT',
     name: 'RWA Rotation',
-    mandate: 'Reweights a basket of tokenised equities against a USDC base.',
+    mandate: 'Reweights a basket of tokenised equity exposure against a USDG base.',
     detail: 'Per-asset oracles · basket weights onchain · 20% performance fee',
   },
   {
     symbol: 'zqUSD',
-    name: 'USDC Yield',
-    mandate: 'Routes idle USDC through a pluggable yield adapter.',
+    name: 'USDG Yield',
+    mandate: 'Routes idle USDG through a pluggable yield adapter.',
     detail: 'Adapter swaps are timelocked · 10% performance fee',
   },
 ];
@@ -67,7 +67,7 @@ const DIFFERENTIATORS = [
   },
   {
     title: 'Fees buy and burn the token',
-    body: `Half of every performance fee is used to buy ${TOKEN.ticker} on the open market and burn it. The contract reports the USDC actually spent and the tokens actually destroyed.`,
+    body: `Half of every performance fee is used to buy ${TOKEN.ticker} on the open market and burn it. The contract reports the USDG actually spent and the tokens actually destroyed.`,
   },
   {
     title: 'Admin power sits behind a delay',
