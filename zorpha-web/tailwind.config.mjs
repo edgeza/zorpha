@@ -94,11 +94,19 @@ export default {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.35' },
         },
+        // A polish highlight travelling across the glass wordmark. Animates
+        // background-position, so nothing reflows and nothing repaints but
+        // the one clipped gradient.
+        'glass-sweep': {
+          from: { backgroundPosition: '-140% 0' },
+          to: { backgroundPosition: '240% 0' },
+        },
       },
       animation: {
         'fade-up': 'fade-up 0.5s cubic-bezier(0.22,1,0.36,1) both',
         ticker: 'ticker 40s linear infinite',
         'pulse-dot': 'pulse-dot 2s ease-in-out infinite',
+        'glass-sweep': 'glass-sweep 9s cubic-bezier(0.5,0,0.5,1) infinite',
       },
     },
   },

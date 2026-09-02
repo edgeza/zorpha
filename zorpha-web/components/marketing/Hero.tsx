@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { TOKEN, FLOAT_AT_LAUNCH_PCT } from '@/lib/tokenomics';
 import { formatCompact } from '@/lib/format';
 import { CountUp } from '@/components/motion/CountUp';
@@ -37,43 +36,9 @@ const BUILT_ON = [
   { label: 'Blockscout', detail: 'public explorer' },
 ];
 
-function ArrowRight({ className = 'h-4 w-4' }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <path d="M5 12h14" />
-      <path d="m12 5 7 7-7 7" />
-    </svg>
-  );
-}
-
-function Play({ className = 'h-4 w-4' }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />
-    </svg>
-  );
-}
-
 export function Hero() {
   return (
+<<<<<<< Updated upstream
     // -mt-20 cancels the marketing layout's pt-20 so the aurora runs behind
     // the fixed header; the inner pt-28 then clears it for content.
     <section className="relative isolate -mt-20 flex min-h-[100svh] flex-col overflow-hidden">
@@ -109,6 +74,30 @@ export function Hero() {
       <div
         className="absolute inset-x-0 bottom-0 -z-10 h-40 bg-gradient-to-b from-transparent to-void-950"
         aria-hidden="true"
+=======
+    <>
+      {/* -mt-20 cancels the marketing layout's pt-20 so the scene runs behind
+          the fixed header; topInset then clears it for the copy. */}
+      <PrismHero
+        className="-mt-20"
+        topInset
+        word="Zorpha"
+        eyebrow={`Testnet live on ${TOKEN.chain}`}
+        description={
+          <>
+            <span className="block font-display text-[1.35rem] leading-snug text-ink-100 sm:text-[1.6rem]">
+              Track records you can actually verify
+            </span>
+            <span className="mt-4 block">
+              Zorpha runs curated vaults on {TOKEN.chain}. Every rebalance is signed by the manager
+              and written onchain as a public receipt, with the price, the size, and the exact
+              moment it happened. No screenshots. No edits. No quietly deleted calls.
+            </span>
+          </>
+        }
+        footnote={`Depositing never requires holding ${TOKEN.ticker}.`}
+        meta={['Signed rebalances', 'Onchain receipts', '48h timelock']}
+>>>>>>> Stashed changes
       />
 
       {/* ─── Content ──────────────────────────────────────────────────────── */}
