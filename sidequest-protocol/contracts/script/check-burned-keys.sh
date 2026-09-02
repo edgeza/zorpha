@@ -89,19 +89,88 @@ for nm in "${ROLE_NAMES[@]}"; do
   ROLES+=("$nm:$(cast keccak "$nm")")
 done
 
-CONTRACTS=(
-  "ZOR:NEXT_PUBLIC_ZOR_ADDRESS"
-  "Timelock:NEXT_PUBLIC_TIMELOCK_ADDRESS"
-  "Treasury:NEXT_PUBLIC_TREASURY_ADDRESS"
-  "Buyback:NEXT_PUBLIC_BUYBACK_ADDRESS"
-  "Insurance:NEXT_PUBLIC_INSURANCE_ADDRESS"
-  "Distributor:NEXT_PUBLIC_MERKLE_DISTRIBUTOR_ADDRESS"
-  "Vesting:NEXT_PUBLIC_VESTING_ADDRESS"
-  "Factory:NEXT_PUBLIC_VAULT_FACTORY_ADDRESS"
-  "Executor:NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS"
-  "Reputation:NEXT_PUBLIC_REPUTATION_REGISTRY_ADDRESS"
-  "Launcher:NEXT_PUBLIC_VAULT_LAUNCHER_ADDRESS"
-)
+# Every contract this deployment created, from three sources unioned, because
+# each one alone is incomplete and the gaps are not the same gaps.
+#
+# This list used to be eleven hand-written NEXT_PUBLIC_* names. It omitted the
+# MedianOracle, both adapters and all three vaults -- and the oracle is where
+# UPDATER_ROLE lives, which on a minQuorum-of-1 median is total control of every
+# price the protocol reads. The burned deployer key holds UPDATER_ROLE on testnet
+# right now, and this gate reported "2 findings" without mentioning it.
+#
+# That is the third time a hand-maintained list in this file has silently covered
+# less than it claimed. script/broadcast-contracts.js already solved exactly this
+# for contract verification -- its own header says "the oracle, the two adapters
+# and the three vaults were all deployed and none of them were ever verified,
+# because nobody added a line for them" -- and the insight was not carried over
+# to the security gate. It is now.
+#
+#   1. broadcast artifacts   everything a deploy script created, named or not
+#   2. zorpha-web/.env.local anything wired up AFTER a deploy. The executor was
+#                            migrated, so the live one appears here and not in
+#                            any broadcast.
+#   3. the factory's events  the vaults, which are CREATE2 children
+#
+# A gate that checks a subset it does not disclose is worse than no gate: it
+# returns "clear" and means "clear among the ones I happened to look at".
+declare -a CONTRACTS=()
+seen_addrs=""
+
+add_contract() {
+  local label="$1" addr="$2"
+  [[ -n "$addr" && "$addr" != "$ZERO_ADDR" ]] || return 0
+  local lower
+  lower=$(printf '%s' "$addr" | tr 'A-Z' 'a-z')
+  case "$seen_addrs" in *"|$lower|"*) return 0 ;; esac
+  seen_addrs="${seen_addrs}|$lower|"
+  CONTRACTS+=("$label:$addr")
+}
+
+ZERO_ADDR=0x0000000000000000000000000000000000000000
+
+# 1. Broadcast artifacts.
+for f in broadcast/*.s.sol/"$CHAIN_ON_WIRE"/run-latest.json; do
+  [[ -f "$f" ]] || continue
+  while read -r addr src; do
+    [[ -n "$addr" ]] || continue
+    add_contract "${src##*:}" "$addr"
+  done < <(MSYS_NO_PATHCONV=1 node script/broadcast-contracts.js "$f" 2>/dev/null | awk '{print $1, $2}')
+done
+
+# 2. Anything the front end is pointed at, which includes post-deploy rewires.
+while read -r key; do
+  add_contract "${key#NEXT_PUBLIC_}" "$(env_of "$key")"
+done < <(grep -oE '^NEXT_PUBLIC_[A-Z_0-9]*ADDRESS' "$WEB_ENV" | sort -u)
+
+# 3. The vaults, which the factory creates by CREATE2 and which therefore carry
+#    no contractName in any artifact.
+FACTORY_ADDR=$(env_of NEXT_PUBLIC_VAULT_FACTORY_ADDRESS)
+if [[ -n "$FACTORY_ADDR" ]]; then
+  HEAD_BLK=$(cast block-number --rpc-url "$RPC" 2>/dev/null || echo "")
+  if [[ -n "$HEAD_BLK" ]]; then
+    for ev in SpotVaultDeployed RotationVaultDeployed YieldVaultDeployed; do
+      while read -r v; do
+        add_contract "Vault(${ev%VaultDeployed})" "$v"
+      done < <(cast logs --rpc-url "$RPC" --address "$FACTORY_ADDR" \
+                 --from-block 0 "${ev}(address,address,bytes32)" --json 2>/dev/null \
+               | MSYS_NO_PATHCONV=1 node -e '
+                   let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+                     let l=[];try{l=JSON.parse(s||"[]")}catch(e){}
+                     for(const e of l) if(e.topics&&e.topics[1])
+                       console.log("0x"+e.topics[1].slice(26));
+                   })' || true)
+    done
+  fi
+fi
+
+[[ ${#CONTRACTS[@]} -gt 5 ]] || die "only ${#CONTRACTS[@]} contracts discovered.
+     Expected the token layer, the vault layer and the vaults. Either the
+     broadcast artifacts are missing for chain $CHAIN_ON_WIRE or the discovery is
+     broken -- and a gate that checks almost nothing must fail loudly rather
+     than report clear."
+info_line=$(printf '%s' "checking ${#CONTRACTS[@]} contracts")
+printf '  %s\n' "$info_line"
+
 
 for entry in "${BURNED[@]}"; do
   ADDR="${entry%%:*}"; WAS="${entry##*:}"
