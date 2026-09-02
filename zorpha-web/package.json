@@ -1,7 +1,7 @@
 {
   "name": "zorpha-web",
   "version": "1.0.0",
-  "description": "Zorpha ($ZOR) \u2014 marketing site and protocol portal",
+  "description": "Zorpha ($ZOR) — marketing site and protocol portal",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -17,6 +17,8 @@
     "@lifi/widget": "4.5.0",
     "@lifi/widget-provider-ethereum": "4.1.3",
     "@metamask/connect-evm": "^2.1.1",
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
     "@safe-global/safe-apps-provider": "^0.18.6",
     "@safe-global/safe-apps-sdk": "^9.1.0",
     "@supabase/supabase-js": "^2.45.0",
@@ -24,9 +26,11 @@
     "@wagmi/connectors": "8.0.20",
     "@wagmi/core": "3.5.5",
     "@walletconnect/ethereum-provider": "^2.24.0",
+    "motion": "^13.2.0",
     "next": "^15.5.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "three": "^0.185.1",
     "viem": "^2.53.1",
     "wagmi": "3.6.21"
   },
@@ -34,6 +38,7 @@
     "@types/node": "^20.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.185.4",
     "autoprefixer": "^10.4.20",
     "eslint": "^9.10.0",
     "eslint-config-next": "^15.5.0",
