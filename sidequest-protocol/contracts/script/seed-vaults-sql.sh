@@ -124,9 +124,30 @@ for i in "${!ADDRS[@]}"; do
 
   # Type by which accessor answers. cashAsset is only on the spot vault,
   # baseAsset only on the rotation vault, firstLossEscrow only on the yield one.
+  #
+  # All three are read and exactly one must answer. `yield` used to be the
+  # fallback for "neither of the other two replied", with firstLossEscrow read
+  # into a variable that was then never used -- so a transient RPC failure on
+  # cashAsset() silently relabelled a spot vault as a yield vault and wrote the
+  # wrong strategy copy and a null oracle into the database. `try` suppresses
+  # stderr, so there was nothing to see. Guessing a type is worse than skipping
+  # a row: a skipped vault is visibly absent, a mislabelled one is not.
   CASH=$(try "$V" 'cashAsset()(address)')
   BASE=$(try "$V" 'baseAsset()(address)')
   ESC=$(try "$V" 'firstLossEscrow()(address)')
+
+  MATCHED=0
+  [[ -n "$CASH" ]] && MATCHED=$((MATCHED + 1))
+  [[ -n "$BASE" ]] && MATCHED=$((MATCHED + 1))
+  [[ -n "$ESC"  ]] && MATCHED=$((MATCHED + 1))
+
+  if [[ "$MATCHED" -ne 1 ]]; then
+    log "skipping $V ($NAME): $MATCHED of 3 type accessors answered, expected exactly 1."
+    log "         cashAsset=[$CASH] baseAsset=[$BASE] firstLossEscrow=[$ESC]"
+    log "         Either this is not a Zorpha vault, or the RPC is dropping calls."
+    log "         Re-run before trusting the table; do not seed a guessed type."
+    continue
+  fi
 
   if   [[ -n "$CASH" ]]; then TYPE=spot;     ORACLE=$(try "$V" 'oracle()(address)')
   elif [[ -n "$BASE" ]]; then TYPE=rotation; ORACLE=$(try "$V" 'oracles(uint256)(address)' 0)

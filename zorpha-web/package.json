@@ -1,7 +1,7 @@
 {
   "name": "zorpha-web",
   "version": "1.0.0",
-  "description": "Zorpha ($ZOR) \u2014 marketing site and protocol portal",
+  "description": "Zorpha ($ZOR) — marketing site and protocol portal",
   "private": true,
   "scripts": {
     "dev": "next dev",

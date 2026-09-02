@@ -5,6 +5,7 @@ import {Script, console2} from "forge-std/Script.sol";
 
 import {Timelock} from "../src/governance/Timelock.sol";
 import {MedianOracle} from "../src/oracle/MedianOracle.sol";
+import {MainnetSafety} from "../src/lib/MainnetSafety.sol";
 import {StrategyExecutor} from "../src/executor/StrategyExecutor.sol";
 import {VaultFactory, SpotVaultParams, RWRotationVaultParams, YieldVaultParams} from "../src/VaultFactory.sol";
 import {ReputationRegistry} from "../src/reputation/ReputationRegistry.sol";
@@ -74,6 +75,18 @@ contract DeployVaultsV1 is Script {
         address swapRouter = vm.envOr("SWAP_ROUTER", address(0));
         uint24 swapFeeTier = uint24(vm.envOr("SWAP_FEE_TIER", uint256(500)));
 
+        // Who may submit a signed rebalance, and who may pull the pause.
+        // Default to governance so a deploy is never left with these unseated;
+        // on mainnet these should be a keeper bot and a guardian multisig, not
+        // the Safe doing both jobs.
+        address keeper = vm.envOr("KEEPER", gov);
+        address guardian = vm.envOr("GUARDIAN", gov);
+        // Rebalances per vault per rolling 24h. Zero disables the limit
+        // entirely -- `if (limit > 0)` in the executor -- so it must not be
+        // the default.
+        uint256 dailyLimit = vm.envOr("DAILY_REBALANCE_LIMIT", uint256(4));
+        require(dailyLimit > 0, "DAILY_REBALANCE_LIMIT of 0 disables the rate limit");
+
         address stockToken1 = vm.envAddress("STOCK_TOKEN_1");
         address stockToken2 = vm.envOr("STOCK_TOKEN_2", address(0));
         address stockFeed1 = vm.envOr("STOCK_FEED_1", address(0));
@@ -129,7 +142,13 @@ contract DeployVaultsV1 is Script {
             );
             r.swapIsReal = true;
         } else {
-            r.swapAdapter = address(new StubSwapAdapter(stockToken1, usdc, deployer));
+            // The stub now prices off the same oracle the vault uses, so a
+            // rebalance settles at a sane value instead of 1:1 on raw units.
+            // It is still not a market -- zero slippage, unbounded depth, pays
+            // out of its own balance -- so it must be pre-funded.
+            r.swapAdapter = address(
+                new StubSwapAdapter(stockToken1, usdc, address(r.oracle), deployer)
+            );
         }
 
         // ─── Factory owned by the deployer for the duration of this script.
@@ -221,6 +240,26 @@ contract DeployVaultsV1 is Script {
         //     timelock, and the deployer renounces its own.
         _handOver(address(r.oracle), gov, deployer);
         _handOver(address(r.factory), gov, deployer);
+        // Seat the executor's own roles BEFORE handing it over, or nothing
+        // can ever be granted again without a governance transaction.
+        //
+        // This was missing entirely. The deploy granted KEEPER_ROLE on each
+        // VAULT to the executor -- so the executor could drive the vaults --
+        // and never granted KEEPER_ROLE on the EXECUTOR to anybody, so
+        // executeRebalance was callable by nobody and the spot and rotation
+        // vaults shipped frozen. GUARDIAN_ROLE was unseated the same way,
+        // which meant the emergency pause existed and could not be pulled.
+        // Found on testnet 46630 after the fact; see the assertions below.
+        r.executor.grantRole(r.executor.KEEPER_ROLE(), keeper);
+        r.executor.grantRole(r.executor.GUARDIAN_ROLE(), guardian);
+
+        // And give the rate limit a value, because 0 means "no limit".
+        r.executor.setDailyLimit(address(r.spotVault), dailyLimit);
+        r.executor.setDailyLimit(address(r.yieldVault), dailyLimit);
+        if (address(r.rotationVault) != address(0)) {
+            r.executor.setDailyLimit(address(r.rotationVault), dailyLimit);
+        }
+
         _handOver(address(r.executor), gov, deployer);
         _handOver(r.swapAdapter, gov, deployer);
         if (r.yieldIsReal) _handOver(r.yieldAdapter, gov, deployer);
@@ -240,13 +279,50 @@ contract DeployVaultsV1 is Script {
         vm.stopBroadcast();
 
         // ─── Assertions: no deployer authority may survive this script.
+        //
+        // Checked against every role, not just DEFAULT_ADMIN_ROLE. The earlier
+        // version of this block checked admin alone and therefore passed while
+        // the deploy key kept DEPLOYER_ROLE on the factory -- which is exactly
+        // the authority that matters there, since it is what deployYieldVault
+        // is gated on.
         bytes32 adminRole = 0x00;
         require(IAccessControl(address(r.factory)).hasRole(adminRole, gov), "factory admin not gov");
-        require(!IAccessControl(address(r.factory)).hasRole(adminRole, deployer), "deployer kept factory admin");
-        require(!IAccessControl(address(r.spotVault)).hasRole(adminRole, deployer), "deployer kept vault admin");
-        require(!IAccessControl(address(r.yieldVault)).hasRole(adminRole, deployer), "deployer kept vault admin");
-        require(!IAccessControl(address(r.oracle)).hasRole(adminRole, deployer), "deployer kept oracle admin");
+        _assertStripped(address(r.factory), deployer, "factory");
+        _assertStripped(address(r.spotVault), deployer, "spot vault");
+        _assertStripped(address(r.yieldVault), deployer, "yield vault");
+        _assertStripped(address(r.oracle), deployer, "oracle");
+        _assertStripped(address(r.reputation), deployer, "reputation registry");
+        if (address(r.rotationVault) != address(0)) {
+            _assertStripped(address(r.rotationVault), deployer, "rotation vault");
+        }
         require(r.oracle.minQuorum() <= r.oracle.updaterCount(), "oracle quorum unsatisfiable");
+
+        // Testnet scaffolding must not reach mainnet. The three conditions and
+        // the reasoning live in `MainnetSafety`, as a library so a test can
+        // exercise the real check rather than a copy of it -- see
+        // test/lib/MainnetSafety.t.sol. Until now these were guarded only by
+        // the console warnings printed below, which arrive after the
+        // transactions have landed.
+        MainnetSafety.check(
+            block.chainid,
+            r.swapIsReal,
+            r.yieldIsReal,
+            r.oracle.updaterCount(),
+            r.oracle.minQuorum()
+        );
+
+        // A role nobody holds is a feature that does not exist. These four
+        // assertions are the ones whose absence let the executor ship inert.
+        require(
+            IAccessControl(address(r.executor)).hasRole(r.executor.KEEPER_ROLE(), keeper),
+            "nobody can submit a rebalance"
+        );
+        require(
+            IAccessControl(address(r.executor)).hasRole(r.executor.GUARDIAN_ROLE(), guardian),
+            "nobody can pull the pause"
+        );
+        require(r.executor.dailyLimit(address(r.spotVault)) > 0, "spot vault has no rate limit");
+        require(r.executor.dailyLimit(address(r.yieldVault)) > 0, "yield vault has no rate limit");
 
         console2.log("=== Zorpha vault layer deployed ===");
         console2.log("Oracle         ", address(r.oracle));
@@ -275,15 +351,71 @@ contract DeployVaultsV1 is Script {
         console2.log("single-updater median is a single point of failure.");
     }
 
-    /// @dev Grant DEFAULT_ADMIN_ROLE to `gov` and renounce the deployer's.
+    /// @dev Every role the protocol defines, so a handover can be checked
+    ///      against all of them rather than against the one that was
+    ///      remembered.
+    ///
+    ///      This list existing at all is the fix for a real gap. `_handOver`
+    ///      used to renounce DEFAULT_ADMIN_ROLE and nothing else, and the
+    ///      assertions below only checked DEFAULT_ADMIN_ROLE -- so the deploy
+    ///      key kept DEPLOYER_ROLE on the VaultFactory through a run that
+    ///      asserted "no deployer authority may survive this script" and
+    ///      passed. On testnet 46630 the compromised deploy key could still
+    ///      call deployYieldVault months later. See docs/BURNED-KEYS.md.
+    ///      Solidity cannot grep, so unlike the shell checkers this list is
+    ///      literal and has to be kept in step with src/. Verify it with:
+    ///        grep -rhoE 'keccak256\("[A-Z_]+"\)' src | sort -u
+    ///      The first version of this list invented ORACLE_UPDATER_ROLE, which
+    ///      does not exist -- the real name is UPDATER_ROLE -- and omitted
+    ///      SWEEPER_ROLE, GUARDIAN_ROLE and VAULT_ROLE. A wrong entry is
+    ///      harmless (renounceRole on a role you do not hold is a no-op) but a
+    ///      MISSING one is the whole bug this function exists to prevent.
+    function _allRoles() internal pure returns (bytes32[10] memory) {
+        return [
+            bytes32(0x00), // DEFAULT_ADMIN_ROLE
+            keccak256("ADAPTER_SETTER_ROLE"),
+            keccak256("DEPLOYER_ROLE"),
+            keccak256("GOVERNANCE_ROLE"),
+            keccak256("GUARDIAN_ROLE"),
+            keccak256("KEEPER_ROLE"),
+            keccak256("RISK_COUNCIL_ROLE"),
+            keccak256("SWEEPER_ROLE"),
+            keccak256("UPDATER_ROLE"),
+            keccak256("VAULT_ROLE")
+        ];
+    }
+
+    /// @dev Hand `target` to `gov` and strip the deployer of everything.
+    ///
+    ///      Admin first, so governance can always recover, then renounce every
+    ///      role the deployer holds. `renounceRole` on a role the caller does
+    ///      not hold is a no-op in OpenZeppelin's implementation, so the loop
+    ///      is safe against contracts that define only some of these.
     function _handOver(address target, address gov, address deployer) internal {
         bytes32 adminRole = 0x00;
         IAccessControl ac = IAccessControl(target);
         if (!ac.hasRole(adminRole, gov)) {
             ac.grantRole(adminRole, gov);
         }
-        if (ac.hasRole(adminRole, deployer)) {
-            ac.renounceRole(adminRole, deployer);
+        bytes32[10] memory roles = _allRoles();
+        for (uint256 i = 0; i < roles.length; i++) {
+            // Admin last: renouncing it first would forfeit the right to
+            // renounce the others on a contract where admin gates them.
+            uint256 j = roles.length - 1 - i;
+            if (ac.hasRole(roles[j], deployer)) {
+                ac.renounceRole(roles[j], deployer);
+            }
+        }
+    }
+
+    /// @dev Assert the deployer holds no role at all on `target`.
+    function _assertStripped(address target, address deployer, string memory what) internal view {
+        bytes32[10] memory roles = _allRoles();
+        for (uint256 i = 0; i < roles.length; i++) {
+            require(
+                !IAccessControl(target).hasRole(roles[i], deployer),
+                string.concat("deployer kept a role on ", what)
+            );
         }
     }
 }

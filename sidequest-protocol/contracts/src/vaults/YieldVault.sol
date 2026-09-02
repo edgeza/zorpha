@@ -51,6 +51,8 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         bytes32 commitment
     );
     event CircuitBreakerSet(bool active);
+    event HighWaterMarkReset(uint256 nav);
+    event AccruedFeesWrittenDown(uint256 amount, uint256 remaining);
 
     error CircuitBreakerActive();
     error AdapterUnset();
@@ -120,7 +122,10 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         returns (uint256)
     {
         _evaluateFees();
-        return super.deposit(assets, receiver);
+        bool wasEmpty = totalSupply() == 0;
+        uint256 shares = super.deposit(assets, receiver);
+        if (wasEmpty) _markFirstEntry();
+        return shares;
     }
 
     function mint(uint256 shares, address receiver)
@@ -130,7 +135,49 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         returns (uint256)
     {
         _evaluateFees();
-        return super.mint(shares, receiver);
+        bool wasEmpty = totalSupply() == 0;
+        uint256 assets = super.mint(shares, receiver);
+        if (wasEmpty) _markFirstEntry();
+        return assets;
+    }
+
+    /// @dev Set the high-water mark to the price the first depositor into an
+    ///      empty vault actually paid.
+    ///
+    ///      `_evaluateFees` returns early while `totalSupply()` is zero, and it
+    ///      has to: the empty-vault NAV is a `10 ** decimals()` sentinel a
+    ///      million times any real price, and letting that reach the mark would
+    ///      ratchet it out of reach and disable performance fees for the life of
+    ///      the contract. The side effect is that the first depositor never
+    ///      marks their own entry, so the mark stays wherever the previous
+    ///      cohort left it.
+    ///
+    ///      That is fine on a vault that empties to nothing. It is not fine when
+    ///      the vault holds a residue while empty -- rounding dust, a donation to
+    ///      the venue, yield earned on the remainder -- because the ERC-4626
+    ///      decimal offset then puts the incoming entry NAV ABOVE the stale mark,
+    ///      and at redemption the fee is charged from the mark rather than from
+    ///      where this depositor bought in. They pay a performance fee on
+    ///      appreciation that happened before they arrived: measured at 12-20%
+    ///      over on testnet 46630, deterministically, once per cycle. See
+    ///      docs/FINDINGS-EQUALISATION.md.
+    ///
+    ///      The reset is unconditional rather than `if (nav > highWaterMark)`.
+    ///      An empty vault has no holders for the mark to protect, so there is
+    ///      nobody it can be lowered at the expense of, and doing it
+    ///      unconditionally also closes the mirror-image case: an entry BELOW a
+    ///      stale high mark used to ride free while the leader earned nothing on
+    ///      real gains.
+    ///
+    ///      Reading `getNavPerShare()` is safe here where it is not in
+    ///      `_evaluateFees`: supply is non-zero by this point, so it returns a
+    ///      real price and not the sentinel.
+    function _markFirstEntry() internal {
+        uint256 nav = getNavPerShare();
+        if (nav != highWaterMark) {
+            highWaterMark = nav;
+            emit HighWaterMarkReset(nav);
+        }
     }
 
     function withdraw(uint256 assets, address receiver, address owner)
@@ -223,10 +270,18 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
     ///      the denominator it is compared to and report better coverage than
     ///      actually exists.
     function rawAssets() public view returns (uint256) {
-        uint256 held = address(adapter) == address(0)
+        uint256 held = heldAssets();
+        return held > performanceFeeAccrued ? held - performanceFeeAccrued : 0;
+    }
+
+    /// @notice Everything the vault controls, gross of the accrued fee claim.
+    /// @dev Extracted from `rawAssets` so the fee reconciliation below is capped
+    ///      against exactly the figure `rawAssets` nets against, rather than a
+    ///      second expression that has to be kept in step with it by hand.
+    function heldAssets() public view returns (uint256) {
+        return address(adapter) == address(0)
             ? IERC20(asset()).balanceOf(address(this))
             : adapter.totalAssets();
-        return held > performanceFeeAccrued ? held - performanceFeeAccrued : 0;
     }
 
     /// @notice Assets the high-water mark implies the vault should hold.
@@ -447,7 +502,49 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
     ///      drops NAV per share, so the vault has to re-earn that drop before
     ///      it can charge again. That is conservative in the depositor's
     ///      favour, and it is the existing behaviour, left unchanged.
+    /// @dev Cap the outstanding fee claim at the value actually behind it, but
+    ///      only while the vault is empty.
+    ///
+    ///      `performanceFeeAccrued` is a fixed number in asset units and
+    ///      `heldAssets()` is a live balance. Nothing binds them, so a venue loss
+    ///      can leave the claim larger than the assets backing it. While
+    ///      shareholders exist that gap is at least priced in: `rawAssets()` nets
+    ///      the claim, so anyone entering buys at a NAV reflecting it.
+    ///
+    ///      Once the vault empties, that stops being true. `getNavPerShare()`
+    ///      falls back to a `10 ** decimals()` sentinel that ignores the claim,
+    ///      so an incoming depositor pays a price decoupled from an encumbrance
+    ///      their own principal then settles. Worse, `_pullFromAdapter` takes
+    ///      whatever is available rather than reverting, so `claimFees` goes from
+    ///      failing to succeeding the moment that deposit lands: the stale claim
+    ///      is paid in full out of the new depositor's money and the books
+    ///      balance afterwards. Measured at 9% of the deposit in
+    ///      `test_UnclaimedFee_AgainstAVenueLoss`.
+    ///
+    ///      So reconcile it here, while there are no shareholders to protect. A
+    ///      claim larger than the assets behind it is not a claim on the vault,
+    ///      it is a lien on whoever deposits next.
+    ///
+    ///      This deliberately does NOT touch the non-empty case, where the same
+    ///      divergence leaves holders bearing a loss the fee recipient is
+    ///      insulated from. That is unfair, but it is a dilution among parties
+    ///      present when the fee was struck, and correcting it means denominating
+    ///      the claim in shares -- a change to what the fee recipient owns. See
+    ///      docs/FINDINGS-FEE-CLAIM-BACKING.md, option 3.
+    function _reconcileFeeClaimWhenEmpty() internal {
+        if (totalSupply() != 0) return;
+        uint256 accrued = performanceFeeAccrued;
+        uint256 backing = heldAssets();
+        if (accrued <= backing) return;
+        performanceFeeAccrued = backing;
+        emit AccruedFeesWrittenDown(accrued - backing, backing);
+    }
+
     function _evaluateFees() internal {
+        // Runs before the early return below, which fires on exactly the case it
+        // needs to act on.
+        _reconcileFeeClaimWhenEmpty();
+
         // An empty vault has no NAV to mark and nothing to charge. The early
         // return is load-bearing, not tidiness: `getNavPerShare()` answers
         // `10 ** decimals()` for an empty vault, and share decimals are asset

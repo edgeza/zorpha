@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {StrategyExecutor} from "../../src/executor/StrategyExecutor.sol";
 import {ISpotRebalancer} from "../../src/executor/StrategyExecutor.sol";
+import {IBasketRebalancer} from "../../src/executor/StrategyExecutor.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockOracle} from "../mocks/MockOracle.sol";
 import {MockSpotAdapter} from "../mocks/MockSpotAdapter.sol";
@@ -16,6 +17,24 @@ contract MockSpotRebalancer is ISpotRebalancer {
         lastWeight = w;
         callCount += 1;
     }
+}
+
+contract MockBasketRebalancer is IBasketRebalancer {
+    uint16[] private _last;
+    uint256 public callCount;
+    bool public revertNext;
+
+    function setRevertNext(bool v) external { revertNext = v; }
+
+    function rebalanceTo(uint16[] calldata w) external {
+        require(!revertNext, "MockBasketRebalancer: refused");
+        delete _last;
+        for (uint256 i = 0; i < w.length; i++) _last.push(w[i]);
+        callCount += 1;
+    }
+
+    function lastWeightAt(uint256 i) external view returns (uint16) { return _last[i]; }
+    function lastLength() external view returns (uint256) { return _last.length; }
 }
 
 contract StrategyExecutorTest is Test {
@@ -173,5 +192,335 @@ contract StrategyExecutorTest is Test {
         bytes memory sig1 = _signRebalance(address(vault), 100, 6, expiry1);
         assertTrue(executor.executeRebalance(address(vault), 100, 6, expiry1, sig1));
         assertEq(executor.getRecentRebalanceCount(address(vault)), 1);
+    }
+
+    // --- Basket rebalance ---------------------------------------------------
+    //
+    // RWRotationVault takes rebalanceTo(uint16[]), a different selector from
+    // the single-weight form. Before executeBasketRebalance existed the
+    // executor could only call the latter, so it reverted with empty data
+    // against a rotation vault -- and because the deploy grants KEEPER_ROLE on
+    // each vault only to the executor, nothing else could call the array form
+    // either. The rotation vault shipped unable to rebalance by any route
+    // while the portal advertised it as rotating on a signed mandate.
+
+    function _signBasket(address v, uint16[] memory w, uint256 nonce, uint256 expiry)
+        internal
+        view
+        returns (bytes memory)
+    {
+        uint256[] memory padded = new uint256[](w.length);
+        for (uint256 i = 0; i < w.length; i++) padded[i] = w[i];
+        bytes32 structHash = keccak256(
+            abi.encode(
+                executor.BASKET_REBALANCE_TYPEHASH(),
+                v,
+                keccak256(abi.encodePacked(padded)),
+                nonce,
+                expiry
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", executor.DOMAIN_SEPARATOR(), structHash));
+        (uint8 vSig, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
+        return abi.encodePacked(r, s, vSig);
+    }
+
+    function _basket() internal returns (MockBasketRebalancer b) {
+        b = new MockBasketRebalancer();
+        executor.setDailyLimit(address(b), 5);
+    }
+
+    function test_Basket_ValidSignatureRebalances() public {
+        MockBasketRebalancer b = _basket();
+        uint16[] memory w = new uint16[](2);
+        w[0] = 6000;
+        w[1] = 4000;
+        uint256 expiry = block.timestamp + 1 days;
+
+        executor.executeBasketRebalance(address(b), w, 1, expiry, _signBasket(address(b), w, 1, expiry));
+
+        assertEq(b.callCount(), 1, "the vault must actually be called");
+        assertEq(b.lastWeightAt(0), 6000);
+        assertEq(b.lastWeightAt(1), 4000);
+        assertEq(executor.nonces(address(b)), 1, "nonce consumed");
+    }
+
+    /// The weights are part of what is signed, so altering one after signing
+    /// must fail. Without hashing the array into the struct this would pass.
+    function test_Basket_TamperedWeightsRejected() public {
+        MockBasketRebalancer b = _basket();
+        uint16[] memory signed = new uint16[](2);
+        signed[0] = 6000;
+        signed[1] = 4000;
+        uint256 expiry = block.timestamp + 1 days;
+        bytes memory sig = _signBasket(address(b), signed, 1, expiry);
+
+        uint16[] memory tampered = new uint16[](2);
+        tampered[0] = 9000;
+        tampered[1] = 1000;
+
+        vm.expectRevert(StrategyExecutor.InvalidSignature.selector);
+        executor.executeBasketRebalance(address(b), tampered, 1, expiry, sig);
+    }
+
+    /// Reordering is a different instruction, not the same one. A hash over
+    /// concatenated elements catches it; a sum or a length check would not.
+    function test_Basket_ReorderedWeightsRejected() public {
+        MockBasketRebalancer b = _basket();
+        uint16[] memory signed = new uint16[](2);
+        signed[0] = 6000;
+        signed[1] = 4000;
+        uint256 expiry = block.timestamp + 1 days;
+        bytes memory sig = _signBasket(address(b), signed, 1, expiry);
+
+        uint16[] memory swapped = new uint16[](2);
+        swapped[0] = 4000;
+        swapped[1] = 6000;
+
+        vm.expectRevert(StrategyExecutor.InvalidSignature.selector);
+        executor.executeBasketRebalance(address(b), swapped, 1, expiry, sig);
+    }
+
+    /// The two commands are distinct EIP-712 types on purpose. If they shared a
+    /// typehash, authority to set one weight would be authority to set a whole
+    /// basket, which is a strictly larger permission.
+    function test_Basket_SpotSignatureCannotBeReplayedAsBasket() public {
+        MockBasketRebalancer b = _basket();
+        uint256 expiry = block.timestamp + 1 days;
+
+        bytes memory spotSig = _signRebalance(address(b), 6000, 1, expiry);
+
+        uint16[] memory w = new uint16[](1);
+        w[0] = 6000;
+
+        vm.expectRevert(StrategyExecutor.InvalidSignature.selector);
+        executor.executeBasketRebalance(address(b), w, 1, expiry, spotSig);
+    }
+
+    function test_Basket_ReplayRejected() public {
+        MockBasketRebalancer b = _basket();
+        uint16[] memory w = new uint16[](2);
+        w[0] = 5000;
+        w[1] = 5000;
+        uint256 expiry = block.timestamp + 1 days;
+        bytes memory sig = _signBasket(address(b), w, 1, expiry);
+
+        executor.executeBasketRebalance(address(b), w, 1, expiry, sig);
+        vm.expectRevert(
+            abi.encodeWithSelector(StrategyExecutor.NonceAlreadyUsed.selector, address(b), 1)
+        );
+        executor.executeBasketRebalance(address(b), w, 1, expiry, sig);
+    }
+
+    function test_Basket_ExpiredRejected() public {
+        MockBasketRebalancer b = _basket();
+        uint16[] memory w = new uint16[](1);
+        w[0] = 10000;
+        uint256 expiry = block.timestamp - 1;
+        // Signature computed BEFORE vm.expectRevert, not inside the call
+        // arguments. _signBasket reads BASKET_REBALANCE_TYPEHASH and
+        // DOMAIN_SEPARATOR off the executor, and those external calls consume
+        // the single-shot expectation -- so the revert is attributed to a view
+        // call that does not revert, and the test fails with "next call did not
+        // revert as expected" while the contract behaves correctly. The same
+        // trap with vm.prank is already documented in this file.
+        bytes memory sig = _signBasket(address(b), w, 1, expiry);
+        vm.expectRevert(
+            abi.encodeWithSelector(StrategyExecutor.SignalExpired.selector, expiry, block.timestamp)
+        );
+        executor.executeBasketRebalance(address(b), w, 1, expiry, sig);
+    }
+
+    function test_Basket_RateLimitBites() public {
+        MockBasketRebalancer b = new MockBasketRebalancer();
+        executor.setDailyLimit(address(b), 2);
+        uint16[] memory w = new uint16[](1);
+        w[0] = 10000;
+        uint256 expiry = block.timestamp + 1 days;
+
+        executor.executeBasketRebalance(address(b), w, 1, expiry, _signBasket(address(b), w, 1, expiry));
+        executor.executeBasketRebalance(address(b), w, 2, expiry, _signBasket(address(b), w, 2, expiry));
+
+        // Signature computed BEFORE vm.expectRevert, not inside the call
+        // arguments. _signBasket reads BASKET_REBALANCE_TYPEHASH and
+        // DOMAIN_SEPARATOR off the executor, and those external calls consume
+        // the single-shot expectation -- so the revert is attributed to a view
+        // call that does not revert, and the test fails with "next call did not
+        // revert as expected" while the contract behaves correctly. The same
+        // trap with vm.prank is already documented in this file.
+        bytes memory third = _signBasket(address(b), w, 3, expiry);
+        vm.expectRevert(abi.encodeWithSelector(StrategyExecutor.DailyLimitExceeded.selector, 2, 2));
+        executor.executeBasketRebalance(address(b), w, 3, expiry, third);
+
+        assertEq(b.callCount(), 2, "the rejected one must not reach the vault");
+    }
+
+    /// A keeper may submit and must not be able to decide, on this path too.
+    function test_Basket_WrongSignerRejected() public {
+        MockBasketRebalancer b = _basket();
+        uint16[] memory w = new uint16[](1);
+        w[0] = 10000;
+        uint256 expiry = block.timestamp + 1 days;
+
+        uint256[] memory padded = new uint256[](1);
+        padded[0] = 10000;
+        bytes32 structHash = keccak256(
+            abi.encode(
+                executor.BASKET_REBALANCE_TYPEHASH(),
+                address(b),
+                keccak256(abi.encodePacked(padded)),
+                uint256(1),
+                expiry
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", executor.DOMAIN_SEPARATOR(), structHash));
+        (uint8 vSig, bytes32 r, bytes32 s) = vm.sign(uint256(0xBADBAD), digest);
+
+        vm.expectRevert(StrategyExecutor.InvalidSignature.selector);
+        executor.executeBasketRebalance(address(b), w, 1, expiry, abi.encodePacked(r, s, vSig));
+    }
+
+    /// The vault owns basket validity, and its revert must unwind the nonce and
+    /// the rate-limit slot with it. Otherwise a basket the vault refuses would
+    /// still burn a nonce, and the manager would have to re-sign to retry.
+    function test_Basket_VaultRevertConsumesNothing() public {
+        MockBasketRebalancer b = _basket();
+        b.setRevertNext(true);
+        uint16[] memory w = new uint16[](1);
+        w[0] = 10000;
+        uint256 expiry = block.timestamp + 1 days;
+
+        // Signature computed BEFORE vm.expectRevert, not inside the call
+        // arguments. _signBasket reads BASKET_REBALANCE_TYPEHASH and
+        // DOMAIN_SEPARATOR off the executor, and those external calls consume
+        // the single-shot expectation -- so the revert is attributed to a view
+        // call that does not revert, and the test fails with "next call did not
+        // revert as expected" while the contract behaves correctly. The same
+        // trap with vm.prank is already documented in this file.
+        bytes memory sig = _signBasket(address(b), w, 1, expiry);
+        vm.expectRevert("MockBasketRebalancer: refused");
+        executor.executeBasketRebalance(address(b), w, 1, expiry, sig);
+
+        assertEq(executor.nonces(address(b)), 0, "nonce must not survive a vault revert");
+        assertEq(b.callCount(), 0);
+    }
+}
+
+/// @notice The EIP-712 domain itself, which nothing pinned.
+///
+///         Every signing test in the suite above reads `DOMAIN_SEPARATOR()` off
+///         the executor and signs against whatever it returns. That is correct
+///         for testing the signature path and it means those tests pass under
+///         ANY domain, including a malformed one -- the same shape of gap as a
+///         fee assertion on a zero-fee vault. Nothing failed when the domain was
+///         non-standard, and nothing would have failed if a field were dropped.
+///
+///         These tests reconstruct the domain independently, so a change to it
+///         has to be deliberate.
+contract StrategyExecutorDomainTest is Test {
+    StrategyExecutor executor;
+    address governor = makeAddr("governor");
+
+    function setUp() public {
+        executor = new StrategyExecutor(governor);
+    }
+
+    /// The domain must be the conventional four-field EIP-712 domain, because
+    /// that is the string wallets match on to decide whether they can render
+    /// structured data at all. Built here from the literal type string rather
+    /// than read from the contract.
+    function test_Domain_IsTheStandardFourFieldDomain() public view {
+        bytes32 expected = keccak256(abi.encode(
+            keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+            ),
+            keccak256(bytes("Zorpha Strategy Executor")),
+            keccak256(bytes("1")),
+            block.chainid,
+            address(executor)
+        ));
+        assertEq(executor.DOMAIN_SEPARATOR(), expected, "domain must be standard and unchanged");
+    }
+
+    /// An external anchor. This is the published EIP-712 domain typehash, the
+    /// same value OpenZeppelin's `EIP712.TYPE_HASH` computes, and it does not
+    /// come from anywhere in this repository. Every other assertion here builds
+    /// the type string from a literal, so a typo copied into both the contract
+    /// and the test would pass all of them. This one would not.
+    function test_Domain_TypehashMatchesThePublishedConstant() public pure {
+        assertEq(
+            keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+            ),
+            0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f,
+            "the domain typehash must match the published EIP-712 constant"
+        );
+    }
+
+    /// The old domain must no longer verify. Without this, reverting the fix
+    /// would leave the suite green.
+    function test_Domain_IsNotTheOldNonStandardOne() public view {
+        bytes32 old = keccak256(abi.encode(
+            keccak256("EIP712Domain(uint256 chainId,address executor)"),
+            block.chainid,
+            address(executor)
+        ));
+        assertTrue(executor.DOMAIN_SEPARATOR() != old, "the non-standard domain is gone");
+    }
+
+    /// ERC-5267, so tooling reads the domain instead of copying the type string
+    /// out of the source by hand -- which four drill scripts were doing, each one
+    /// typo away from signatures that fail with no diagnosis.
+    function test_Domain_IsDiscoverableViaErc5267() public view {
+        (
+            bytes1 fields,
+            string memory name,
+            string memory version,
+            uint256 chainId,
+            address verifyingContract,
+            bytes32 salt,
+            uint256[] memory extensions
+        ) = executor.eip712Domain();
+
+        assertEq(fields, hex"0f", "name|version|chainId|verifyingContract, no salt");
+        assertEq(name, "Zorpha Strategy Executor");
+        assertEq(version, "1");
+        assertEq(chainId, block.chainid);
+        assertEq(verifyingContract, address(executor));
+        assertEq(salt, bytes32(0));
+        assertEq(extensions.length, 0);
+
+        // And what it reports must actually rebuild the separator it describes.
+        bytes32 rebuilt = keccak256(abi.encode(
+            keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+            ),
+            keccak256(bytes(name)),
+            keccak256(bytes(version)),
+            chainId,
+            verifyingContract
+        ));
+        assertEq(rebuilt, executor.DOMAIN_SEPARATOR(), "5267 output must match the real domain");
+    }
+
+    /// The separator is cached against a chain id and rebuilt on a fork. If the
+    /// cache were returned unconditionally, a forked chain would accept
+    /// signatures minted for the original.
+    function test_Domain_RebuildsOnAFork() public {
+        bytes32 before = executor.DOMAIN_SEPARATOR();
+        vm.chainId(block.chainid + 1);
+        bytes32 after_ = executor.DOMAIN_SEPARATOR();
+        assertTrue(before != after_, "a fork must not reuse the original domain");
+
+        bytes32 expected = keccak256(abi.encode(
+            keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+            ),
+            keccak256(bytes("Zorpha Strategy Executor")),
+            keccak256(bytes("1")),
+            block.chainid,
+            address(executor)
+        ));
+        assertEq(after_, expected, "and must rebuild correctly for the new chain");
     }
 }

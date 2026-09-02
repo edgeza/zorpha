@@ -22,6 +22,70 @@ real venues correctly.
 
 ---
 
+## Open blockers — read before Phase 5
+
+These are not checklist steps. They are findings that should stop a mainnet
+deploy until somebody has decided what to do about them, and they are recorded
+here because a decision that lives only in a findings doc does not get made.
+
+- [x] ~~A depositor can lose 9—10% of their principal on entry, silently.~~
+      **Fixed**, both vaults. `_reconcileFeeClaimWhenEmpty()` caps an accrued fee
+      claim at the value backing it while the vault is empty, which is the only
+      window where the price paid can decouple from the encumbrance settled.
+      Both reproductions now assert the depositor holds exactly what they paid.
+      [FINDINGS-FEE-CLAIM-BACKING.md](FINDINGS-FEE-CLAIM-BACKING.md).
+      **Still open underneath it:** the non-empty divergence, where holders bear
+      a loss the fee recipient is insulated from. That is a fee policy, not a
+      bug, and option 3 (denominate the claim in shares) is the answer if you
+      want it gone.
+- [x] ~~The emergency exit strands the cash leg and reports the loss as zero.~~
+      **Fixed.** Option 3: `redeemEmergency` pays a pro-rata slice of both legs
+      in kind, needing no oracle and no venue -- so the independence that
+      justified the forfeiture never actually required it. No residue, nothing to
+      recover, and the haircut field now means what it says.
+      [FINDINGS-EMERGENCY-EXIT.md](FINDINGS-EMERGENCY-EXIT.md).
+- [ ] **Auditor review of both fixes above.** Each changes what somebody
+      receives: the first what the fee recipient can claim, the second what a
+      depositor is paid. Both move value toward the depositor, which is the safe
+      direction, and neither should ship on my say-so.
+- [ ] **Auditor review of the equalisation fix.**
+      [FINDINGS-EQUALISATION.md](FINDINGS-EQUALISATION.md). Now applied to both
+      vaults. It changes fee accounting in both directions and must not ship on
+      my say-so.
+- [x] ~~EIP-712 blind signing.~~ **Fixed.** The executor now inherits
+      OpenZeppelin's `EIP712` with the standard four-field domain, so wallets can
+      render a rebalance, and ERC-5267 `eip712Domain()` lets tooling read the
+      domain instead of copying the type string by hand.
+      [FINDINGS-EIP712-DOMAIN.md](FINDINGS-EIP712-DOMAIN.md).
+      **Two follow-ups this creates:** the testnet executor at
+      `0xFCc4dDa07Bb6BCa833354BbF0c18c7eaa6dFdBfc` still carries the old domain,
+      so the spot, rotation and lifecycle drills will fail their own domain check
+      until it is redeployed (correctly, and loudly). And confirm in a wallet
+      that a rebalance actually renders -- that is the entire point and no
+      Foundry test can assert it.
+- [x] ~~The deploy script would put testnet scaffolding on mainnet.~~ **Gated.**
+      The 1:1 stub swap adapter, the stub yield adapter and a single-updater
+      oracle were guarded only by `console2.log` warnings printed *after* a
+      successful deploy. `MainnetSafety.check` now reverts on chain 4663 unless
+      both adapters are real and the oracle is at least 2-of-3. `minQuorum` is
+      immutable, so what the script deploys is what mainnet keeps.
+      **Testnet is running quorum 1 against 2 updaters today** -- that is fine
+      there and is exactly what the gate refuses on mainnet, so you need three
+      updater keys before a mainnet deploy.
+- [ ] **`ZorphaBuyback.setRouter()` has never been called.** `router()` is the
+      zero address on testnet, so any buyback reverts with `RouterNotSet()`.
+      Owner is the Timelock, so this is a scheduled governance action, not a
+      transaction you can send directly. Nothing in the portal offers a trigger
+      button, so no failing transaction is invited -- but the buyback copy does
+      say anyone can trigger one once the threshold is met, which is not true
+      until the router is set.
+- [ ] **Both deployer and manager signer keys are burned.** Recorded in
+      [BURNED-KEYS.md](BURNED-KEYS.md), enforced by
+      `script/check-burned-keys.sh`. Regenerate before mainnet; the gate will
+      block the deploy otherwise.
+
+---
+
 ## Phase 0 — Before anything
 
 - [ ] **Governance address that is not the deployer.** Both deploy scripts
@@ -36,7 +100,8 @@ real venues correctly.
 - [ ] `AIRDROP_CLAIM_DEADLINE` set to a future unix timestamp:
       `date -d '+90 days' +%s`
 
-**Gate:** `forge test` is green with zero failures.
+**Gate:** `forge test` is green with zero failures. 192 tests as of
+2026-09-02, two invariant suites included.
 
 ---
 
@@ -102,14 +167,96 @@ because the point is to test the whole stack rather than the contracts alone.
       **without anyone having called `evaluateFees`**.
 - [ ] `claimFees()` moves the accrued amount to the treasury.
 
-**Spot vault (`zqHOOD`)**
-- [ ] Deposit, then have the manager sign an EIP-712 rebalance.
-- [ ] Submit it through `StrategyExecutor` from a different address — submission
-      is permissionless by design.
-- [ ] Receipt event emitted; it appears in the portal's receipt list.
-- [ ] Replay the same signature: must revert on the nonce.
-- [ ] Submit an expired signature: must revert on expiry.
-- [ ] Exceed the daily rate limit: must revert.
+**Spot vault (`zqHOOD`)** — `./script/testnet-spot-setup.sh <gov>` then
+`./script/testnet-spot-drill.sh <signer> <keeper>`. Run 2026-09-02, all green.
+
+- [x] A manager signs an EIP-712 rebalance and it is accepted, the nonce
+      advances, and it demonstrably **reaches** the target rather than merely
+      being accepted by the executor.
+- [x] Submitted through `StrategyExecutor`. **Not** permissionless:
+      `executeRebalance` is `onlyRole(KEEPER_ROLE)`, so a keeper submits the
+      manager's signature. An earlier version of this line said submission was
+      permissionless by design, which was wrong about the code — and the
+      wrongness hid the fact that `KEEPER_ROLE` was unseated, so nobody could
+      submit at all.
+- [x] Replay the same signature: reverts `NonceAlreadyUsed`.
+- [x] An expired signature: reverts `SignalExpired`.
+- [x] A deadline beyond `MAX_SIGNAL_EXPIRY` (7 days): reverts `ExpiryTooFar`.
+      A signature good for a year is a standing authority, not an instruction.
+- [x] A signature from the **keeper's own key**: reverts `InvalidSignature`.
+      This is the one that matters most — the keeper holds `KEEPER_ROLE` and so
+      may submit, but is not `authorizedSigner` and so may not decide. If it
+      passed, submission authority and signing authority would be the same
+      thing and the whole design would be decorative.
+- [x] A weight above 10000 bps: reverts `InvalidWeight`.
+- [x] Exceed the daily rate limit: four submissions fill the window, the fifth
+      reverts `DailyLimitExceeded`, and the rejected one never reaches the
+      target.
+- [x] Receipt event emitted, and `rebalanceCount` incremented, against a real
+      vault on a clean run.
+
+**Two caveats on the above, both about the stub swap adapter.**
+
+Steps for the executor's own checks run against `NoopRebalancer`, not the
+vault. That is deliberate and stronger: every one of those checks happens in
+`executeRebalance` before it calls the vault, so routing them through a vault
+only entangles them with oracle prices, rebalance thresholds and adapter
+liquidity — any of which can fail a step while the property under test works.
+
+And trade economics are **not tested at all**. `StubSwapAdapter` returns the
+same amount as the input, 1:1 on raw units, ignoring decimals. One trade
+between an 18dp equity and a 6dp stable misvalued the cash leg by eleven orders
+of magnitude — `grossValue` went 1e20 → 2e29 — after which every rebalance
+demands an impossible trade and even a full redemption reverts on slippage.
+The receipt's NAV figures after that first trade are meaningless.
+
+- [ ] **Point `SWAP_ROUTER` at a real venue and re-run.** This is a testnet gap
+      as much as a mainnet one: until it is done, no vault holding two legs can
+      be rebalanced twice or emptied once.
+
+**The escape hatch (`redeemEmergency`)** — proven on chain 2026-09-02, tx
+`0x2baa8c11…0406`.
+
+- [x] A depositor can exit a vault whose swap venue cannot service a redemption
+      and whose oracle has gone stale. Normal `redeem` reverted — first on
+      slippage, later on `InsufficientFreshReports` — and the emergency path
+      still paid out the full asset leg. It reads neither the venue nor the
+      price feed, which is the whole design.
+- [x] The cooldown blocks an immediate second exit, so the hatch cannot be used
+      to drain the asset leg in a loop while the cash leg is stuck.
+- [ ] **Open finding.** The exit forfeits the cash leg, reports the loss as
+      `haircut = 0`, and strands the forfeited balance permanently — there is no
+      rescue path on the vault. Observed: 50e18 asset paid, 50e18 raw cash
+      forfeited, haircut emitted as zero. See
+      [FINDINGS-EMERGENCY-EXIT.md](FINDINGS-EMERGENCY-EXIT.md); four options,
+      none chosen.
+
+**Rotation vault (`zqROT`)** — `./script/testnet-migrate-executor.sh <gov> <signer>`
+once, then `./script/testnet-rotation-drill.sh <signer> <keeper>`. Run
+2026-09-02, all green. First rebalance in the vault's existence.
+
+Found as a launch blocker earlier the same day: `KEEPER_ROLE` on the vault was
+held only by `StrategyExecutor`, the executor called `rebalanceTo(uint16)`, the
+vault exposes `rebalanceTo(uint16[])` — different selectors, so the call
+reverted with empty data and nothing else could reach it. The portal advertised
+it as rotating on a signed mandate while it could not rotate at all. Fixed with
+`executeBasketRebalance`, a distinct EIP-712 type, and the executor redeployed
+on testnet with the old one revoked from all three vaults.
+
+- [x] A signed basket executes, `rebalanceCount` 0 → 1, a receipt is emitted,
+      and the stored weights become **exactly** what was signed, element by
+      element: `[5000, 5000]` → `[7000, 3000]`.
+- [x] Replay: `NonceAlreadyUsed`.
+- [x] A tampered weight: `InvalidSignature`. The array is hashed into the signed
+      struct, so a keeper cannot rewrite the mandate in flight.
+- [x] Reordered weights: `InvalidSignature`. Same elements, same sum, different
+      instruction — a sum-or-length check would have waved it through.
+- [x] A basket summing to 9000: `BadWeights()`, **from the vault**, and the
+      nonce did not advance. The executor deliberately does not duplicate the
+      vault's basket rules, and a vault revert unwinds the whole transaction so
+      a refused basket costs the manager nothing.
+- [x] Wrong length: `"RWRotationVault: length mismatch"`, also from the vault.
+- [x] A spot-form signature cannot be replayed as a basket (unit test).
 
 **Leadership and first loss** — the differentiator, so the one to test hardest
 

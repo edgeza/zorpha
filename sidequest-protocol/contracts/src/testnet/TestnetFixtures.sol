@@ -108,3 +108,31 @@ contract LossyYieldTarget is ERC4626 {
         IERC20(asset()).transfer(SINK, amount);
     }
 }
+
+/// @notice A rebalance target that does nothing, for testing the executor.
+/// @dev    The executor's rate limit, nonce, expiry and signature checks are
+///         its own: it validates all of them and only then calls
+///         `ISpotRebalancer(vault).rebalanceTo(weight)`. Testing those against
+///         a real vault means every submission has to be a trade the vault and
+///         its swap venue can actually service, so the assertion ends up
+///         entangled with oracle prices, rebalance thresholds and adapter
+///         liquidity -- none of which the rate limit has anything to do with.
+///
+///         On testnet 46630 that entanglement broke the rate-limit drill
+///         outright. StubSwapAdapter swaps 1:1 on raw units regardless of
+///         decimals, so one rebalance between an 18dp equity and a 6dp stable
+///         left the cash leg valued eleven orders of magnitude too high; every
+///         subsequent rebalance then demanded an impossible trade, and even a
+///         full redemption reverted on slippage.
+///
+///         So the rate limit gets its own target. It accepts any weight, does
+///         nothing, and counts. Nothing can distort it.
+contract NoopRebalancer {
+    uint256 public calls;
+    uint16 public lastWeight;
+
+    function rebalanceTo(uint16 targetWeightBps) external {
+        calls += 1;
+        lastWeight = targetWeightBps;
+    }
+}

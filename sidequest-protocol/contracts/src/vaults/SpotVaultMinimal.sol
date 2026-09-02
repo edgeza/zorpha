@@ -66,14 +66,25 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         bytes32 commitment
     );
     event PerformanceFeeAccrued(uint256 fee, uint256 navBefore, uint256 navAfter);
+    event HighWaterMarkReset(uint256 nav);
+    event AccruedFeesWrittenDown(uint256 amount, uint256 remaining);
     event PerformanceFeeClaimed(address indexed recipient, uint256 paid, uint256 stillAccrued);
     event CircuitBreakerSet(bool active);
+    /// @param paid       the asset leg paid out, net of the fee share
+    /// @param paidCash    the cash leg paid out, in kind
+    /// @param haircutAssets the fee share retained, in asset units. This used to
+    ///        read zero on a total forfeiture of the cash leg, because
+    ///        `grossOwed` was derived from the asset balance alone and so the
+    ///        haircut could only ever equal the fee. Both legs are paid now, so
+    ///        the fee is genuinely all that is withheld and the field means what
+    ///        it says.
     event EmergencyRedeem(
         address indexed caller,
         address indexed receiver,
         address indexed owner,
         uint256 sharesBurned,
         uint256 paid,
+        uint256 paidCash,
         uint256 haircutAssets
     );
 
@@ -140,7 +151,10 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         returns (uint256)
     {
         _evaluateFees();
-        return super.deposit(assets, receiver);
+        bool wasEmpty = totalSupply() == 0;
+        uint256 shares = super.deposit(assets, receiver);
+        if (wasEmpty) _markFirstEntry();
+        return shares;
     }
 
     function mint(uint256 shares, address receiver)
@@ -150,7 +164,10 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         returns (uint256)
     {
         _evaluateFees();
-        return super.mint(shares, receiver);
+        bool wasEmpty = totalSupply() == 0;
+        uint256 assets = super.mint(shares, receiver);
+        if (wasEmpty) _markFirstEntry();
+        return assets;
     }
 
     function withdraw(uint256 assets, address receiver, address owner)
@@ -322,7 +339,68 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
     ///      `_deposit`/`_withdraw` hooks: ERC-4626 fixes the asset amount via
     ///      `previewRedeem` before those hooks run, so accruing inside them
     ///      lands after the number it is meant to affect has been computed.
+    /// @dev Re-mark the high-water mark to the price the first depositor into an
+    ///      empty vault actually paid.
+    ///
+    ///      The mark only ever ratchets upward, and `_evaluateFees` returns early
+    ///      while supply is zero because the empty-vault NAV is a `10 ** _assetDec`
+    ///      sentinel rather than a real price. Together those leave the mark
+    ///      wherever the last depositor's high point was, so the next depositor
+    ///      into an emptied vault pays no performance fee until they have climbed
+    ///      back to a gain that was somebody else's. Proven in
+    ///      `test_FeeAccrual_AfterEmptying_ChargesTheNextDepositor`, where the
+    ///      mark stood at 2.0 while the incoming depositor had bought in at 0.9.
+    ///
+    ///      Reading `getNavPerShare()` is safe here and not in `_evaluateFees`:
+    ///      supply is non-zero by the time this runs, so it returns a real price.
+    function _markFirstEntry() internal {
+        uint256 nav = getNavPerShare();
+        if (nav != highWaterMark) {
+            highWaterMark = nav;
+            emit HighWaterMarkReset(nav);
+        }
+    }
+
+    /// @dev Cap the outstanding fee claim at the value actually behind it, but
+    ///      only while the vault is empty.
+    ///
+    ///      `performanceFeeAccrued` is a fixed number in asset units and
+    ///      `grossValue()` is a live balance. Nothing binds them, so a price move
+    ///      against the leg a fee was struck in can leave the claim larger than
+    ///      the assets backing it. While shareholders exist that gap is at least
+    ///      priced in: `totalAssets()` nets the claim, so anyone entering buys at
+    ///      a NAV that already reflects it.
+    ///
+    ///      Once the vault empties, that stops being true. `getNavPerShare()`
+    ///      falls back to a `10 ** _assetDec` sentinel that ignores the claim
+    ///      entirely, so an incoming depositor pays a price decoupled from an
+    ///      encumbrance their own principal then settles -- measured at 10% of
+    ///      the deposit in `test_UnclaimedFee_DilutesTheNextDepositor`. The floor
+    ///      in `totalAssets()` is where the information is lost, and no share
+    ///      price can carry it because there are no shares.
+    ///
+    ///      So reconcile it here. There are no shareholders left to protect, and
+    ///      a claim larger than the assets behind it is not a claim on the vault,
+    ///      it is a lien on whoever deposits next.
+    ///
+    ///      This deliberately does NOT touch the non-empty case, where the same
+    ///      divergence leaves holders bearing a loss the fee recipient is
+    ///      insulated from. That is unfair but it is a dilution among parties who
+    ///      were present when the fee was struck, and correcting it means
+    ///      denominating the claim in shares -- a change to what the fee
+    ///      recipient owns. See docs/FINDINGS-FEE-CLAIM-BACKING.md, option 3.
+    function _reconcileFeeClaimWhenEmpty() internal {
+        if (totalSupply() != 0) return;
+        uint256 accrued = performanceFeeAccrued;
+        uint256 backing = grossValue();
+        if (accrued <= backing) return;
+        performanceFeeAccrued = backing;
+        emit AccruedFeesWrittenDown(accrued - backing, backing);
+    }
+
     function _evaluateFees() internal {
+        // Before the early return below, which fires on every empty vault.
+        _reconcileFeeClaimWhenEmpty();
         uint256 nav = getNavPerShare();
         if (nav <= highWaterMark) return;
         uint256 alpha = nav - highWaterMark;
@@ -353,10 +431,18 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         emit PerformanceFeeClaimed(feeRecipient, paid, performanceFeeAccrued);
     }
 
+    /// @notice Forgive part of the outstanding performance-fee claim.
+    /// @dev This is the only lever that can reconcile a claim which has outgrown
+    ///      the value backing it -- see docs/FINDINGS-FEE-CLAIM-BACKING.md. It
+    ///      previously emitted nothing, so an admin could reduce the protocol's
+    ///      claim to zero leaving no trace an indexer or a depositor could
+    ///      follow. The write-down is legitimate; its invisibility was not.
     function writeDownAccruedFees(uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
         uint256 accrued = performanceFeeAccrued;
         require(amount > 0 && amount <= accrued, "SpotVaultMinimal: bad write-down");
-        performanceFeeAccrued = accrued - amount;
+        uint256 remaining = accrued - amount;
+        performanceFeeAccrued = remaining;
+        emit AccruedFeesWrittenDown(amount, remaining);
     }
 
     function setSwapAdapter(address adapter_) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -377,10 +463,12 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         emit CircuitBreakerSet(active);
     }
 
+    /// @return paid     the asset leg transferred to `receiver`
+    /// @return paidCash  the cash leg transferred to `receiver`, in kind
     function redeemEmergency(uint256 shares, address receiver, address owner)
         external
         nonReentrant
-        returns (uint256 paid)
+        returns (uint256 paid, uint256 paidCash)
     {
         if (isCircuitBreakerActive) revert EmergencyBreakerActive();
         require(shares > 0, "SpotVaultMinimal: zero shares");
@@ -401,10 +489,27 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         uint256 supply = totalSupply();
         require(supply > 0, "SpotVaultMinimal: empty vault");
         uint256 bal = IERC20(asset()).balanceOf(address(this));
+        uint256 cashBal = cashAsset.balanceOf(address(this));
 
         uint256 grossOwed = (shares * bal) / supply;
         uint256 feeShare = (shares * performanceFeeAccrued) / supply;
         uint256 owed = grossOwed > feeShare ? grossOwed - feeShare : 0;
+
+        // The cash leg is paid IN KIND: a pro-rata slice of the balance, with no
+        // oracle read and no venue call, which is what keeps this function usable
+        // in exactly the conditions it exists for.
+        //
+        // It used to pay the asset leg only and silently forfeit this. That
+        // stranded the cash permanently -- there is no sweep or rescue on this
+        // contract -- while `totalAssets()` went on counting it, so it also
+        // mispriced the next depositor's entry. A depositor reading the receipt
+        // saw `haircut: 0` on a total forfeiture of half their position. See
+        // docs/FINDINGS-EMERGENCY-EXIT.md; this is option 3.
+        //
+        // The cost is that the depositor receives two tokens instead of one. That
+        // is a UX cost, not a safety one, and it is strictly preferable to
+        // confiscation.
+        uint256 cashOwed = (shares * cashBal) / supply;
 
         _burn(owner, shares);
         uint256 accrued = performanceFeeAccrued;
@@ -412,9 +517,11 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         performanceFeeAccrued = accrued - feeShare;
         paid = owed;
         if (paid > 0) IERC20(asset()).safeTransfer(receiver, paid);
+        if (cashOwed > 0) cashAsset.safeTransfer(receiver, cashOwed);
 
         uint256 haircut = grossOwed > paid ? grossOwed - paid : 0;
-        emit EmergencyRedeem(msg.sender, receiver, owner, shares, paid, haircut);
+        emit EmergencyRedeem(msg.sender, receiver, owner, shares, paid, cashOwed, haircut);
+        return (paid, cashOwed);
     }
 
     function setEmergencyRedeemCooldown(uint256 cooldown) external onlyRole(RISK_COUNCIL_ROLE) {
