@@ -20,6 +20,7 @@ import {
   markResolved,
   pingDatabase,
   recordCursorError,
+  dryRunTally,
   type RebalanceRow,
   type VaultRow,
 } from './supabase.js';
@@ -372,10 +373,50 @@ async function main(): Promise<void> {
     chunkSize: config.blockChunkSize.toString(),
   });
 
-  startHealthServer();
-
   await assertChainId();
   log('info', 'chain id verified', { chainId: config.chainId });
+
+  // A dry run is one cycle, no health server, no writes, and a summary. It
+  // exists because the indexing path could not be executed at all without a
+  // Supabase service-role key, so the component between "every rebalance is a
+  // public receipt" and an empty receipts feed was the one component nobody
+  // could try.
+  //
+  // What it proves: the RPC is reachable, every vault types correctly, the
+  // event ABIs still match what the contracts emit, getLogs returns the
+  // receipts, and each one decodes into a well-formed row.
+  //
+  // What it does NOT prove: the writes, the cursor store, the unique
+  // constraints, or manager attribution -- attribution reads from the `vaults`
+  // table, which a dry run has no access to.
+  if (config.dryRun) {
+    await runCycle();
+
+    const t = dryRunTally;
+    log('info', 'DRY RUN complete, nothing was written', {
+      receiptsFound: t.rebalances,
+      reputationEvents: t.reputation,
+      managersTouched: t.managers.size,
+    });
+    for (const sample of t.samples) {
+      log('info', 'sample row (not inserted)', { row: JSON.parse(
+        JSON.stringify(sample, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)),
+      ) });
+    }
+    if (t.rebalances === 0) {
+      log('warn', 'no receipts found', {
+        hint:
+          'Either the vaults have never rebalanced in the scanned range, or ' +
+          'START_BLOCK is ahead of the events. The scan starts at START_BLOCK ' +
+          'and covers at most 20 windows of BLOCK_CHUNK_SIZE per cycle.',
+        startBlock: config.startBlock.toString(),
+        chunkSize: config.blockChunkSize.toString(),
+      });
+    }
+    return;
+  }
+
+  startHealthServer();
   health.ready = true;
 
   while (!shuttingDown) {

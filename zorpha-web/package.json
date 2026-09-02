@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "check:tokenomics": "node scripts/check-tokenomics.mjs"
+    "check:tokenomics": "node scripts/check-tokenomics.mjs",
+    "logo:crop": "node script/crop-logo.js"
   },
   "dependencies": {
     "@coinbase/wallet-sdk": "^4.3.7",
