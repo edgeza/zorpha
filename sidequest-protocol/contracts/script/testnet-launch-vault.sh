@@ -58,7 +58,7 @@ die()  { printf '\n  \033[31mx %s\033[0m\n\n' "$1" >&2; exit 1; }
 # missing helper must fail loudly, so this uses node, which the deploy scripts
 # already depend on, and errors if node is gone.
 command -v node >/dev/null || die "node is required (the deploy scripts need it too)"
-lt() { node -e 'process.exit(BigInt(process.argv[1]) < BigInt(process.argv[2]) ? 0 : 1)' "$1" "$2"; }
+lt() { node -e 'process.exit(BigInt(process.argv[1]) < BigInt(process.argv[2]) ? 0 : 1)' -- "$1" "$2"; }
 
 env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2-; }
 num()    { awk '{print $1}'; }

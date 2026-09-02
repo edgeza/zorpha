@@ -1,0 +1,3 @@
+# Shell scripts run under Git Bash and WSL; CRLF breaks the shebang and every
+# quoted string. Enforce LF regardless of the editor or tool that wrote them.
+*.sh text eol=lf

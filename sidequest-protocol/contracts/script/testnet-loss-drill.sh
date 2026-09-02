@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prove the first-loss waterfall on a live chain.
+# Prove the first-loss waterfall on a live chain, in both regimes.
 #
 # testnet-launch-vault.sh shows the escrow gets FUNDED. This shows it ABSORBS,
 # which is the part the whole protocol is for and the part that was previously
@@ -16,12 +16,28 @@
 # and it is visible BEFORE anyone withdraws. On withdrawal the vault holds less
 # than it owes and FirstLossEscrow.absorb() makes up the difference.
 #
-# Usage:
-#   ./script/testnet-loss-drill.sh zorpha-gov
+# Two regimes, one formula. With UNCOVERED = max(0, loss - escrow):
 #
-# The account acts as both leader and depositor. That is not a weaker test: the
-# assertions are on the escrow balance and on rawAssets vs totalAssets, which
-# are unambiguous regardless of who holds the shares.
+#   full coverage     loss <= escrow   totalAssets unchanged, escrow pays loss
+#   partial coverage  loss >  escrow   totalAssets falls by exactly UNCOVERED,
+#                                      escrow pays everything it has, and the
+#                                      depositor takes only the remainder
+#
+# Both are asserted with the same arithmetic. The second is the case the fuzz
+# test testFuzz_DepositorNeverLosesMoreThanTheUncoveredShortfall covers off
+# chain; here it runs against the real adapter.
+#
+# Usage:
+#   ./script/testnet-loss-drill.sh zorpha-gov                        # full
+#   DEPOSIT_AMOUNT=2000000000 LOSS_AMOUNT=1500000000 \
+#     ./script/testnet-loss-drill.sh zorpha-gov                      # partial
+#
+# For partial coverage the deposit must exceed the seed, because the venue can
+# only lose what it holds, and the seed is 1,000 USDG. The script checks.
+#
+# The account acts as both leader and depositor. The assertions are on the
+# escrow balance and on rawAssets vs totalAssets, which are unambiguous
+# regardless of who holds the shares.
 
 set -euo pipefail
 
@@ -55,13 +71,16 @@ info() { printf '    %s\n' "$1"; }
 die()  { printf '\n  \033[31mx %s\033[0m\n\n' "$1" >&2; exit 1; }
 
 command -v node >/dev/null || die "node is required"
-lt()  { node -e 'process.exit(BigInt(process.argv[1]) < BigInt(process.argv[2]) ? 0 : 1)' "$1" "$2"; }
-sub() { node -e 'process.stdout.write((BigInt(process.argv[1]) - BigInt(process.argv[2])).toString())' "$1" "$2"; }
+bi()  { node -e 'const [a,op,b]=process.argv.slice(1);const A=BigInt(a),B=BigInt(b);
+  const f={"+":()=>A+B,"-":()=>A-B,"*":()=>A*B,"/":()=>A/B,"min":()=>A<B?A:B,"max":()=>A>B?A:B}[op];
+  process.stdout.write(f().toString())' -- "$1" "$2" "$3"; }
+lt()  { node -e 'process.exit(BigInt(process.argv[1]) < BigInt(process.argv[2]) ? 0 : 1)' -- "$1" "$2"; }
 eq()  { [[ "$1" == "$2" ]]; }
 
 env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2-; }
 num()    { awk '{print $1}'; }
 call()   { cast call "$@" --rpc-url "$RPC" | num; }
+send()   { cast send "$@" --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null; }
 
 [[ -f "$WEB_ENV" ]] || die "no $WEB_ENV -- run the deploy first"
 
@@ -107,39 +126,41 @@ bold "1/6  Approve the venue"
 if [[ "$(call "$LAUNCHER" 'approvedTarget(address)(bool)' "$LOSSY")" == "true" ]]; then
   ok "already approved"
 else
-  cast send "$LAUNCHER" 'setTargetApproved(address,bool)' "$LOSSY" true \
-    --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null
+  send "$LAUNCHER" 'setTargetApproved(address,bool)' "$LOSSY" true
   ok "approved"
 fi
 
 BOND=$(call "$LAUNCHER" 'bondAmount()(uint256)')
 SEED=$(call "$LAUNCHER" 'minSeedEscrow()(uint256)')
 DEPOSIT="${DEPOSIT_AMOUNT:-$SEED}"
-# A loss the escrow can absorb in full. The partial-coverage case -- where the
-# depositor takes the remainder -- is covered by the fuzz test in
-# FirstLossEscrow.t.sol; this drill is about proving the path runs at all.
-LOSS="${LOSS_AMOUNT:-$(node -e 'process.stdout.write((BigInt(process.argv[1])/5n).toString())' "$DEPOSIT")}"
+LOSS="${LOSS_AMOUNT:-$(bi "$DEPOSIT" / 5)}"
+
+# The venue holds only the deposit (the seed sits in the escrow, not the
+# venue), so it cannot lose more than that.
+lt "$DEPOSIT" "$LOSS" && die "LOSS_AMOUNT ($LOSS) exceeds DEPOSIT_AMOUNT ($DEPOSIT); the venue cannot lose what it does not hold"
+
+UNCOVERED=$(bi "$(bi "$LOSS" - "$SEED")" max 0)
+if eq "$UNCOVERED" 0; then MODE="full coverage"; else MODE="PARTIAL coverage, $UNCOVERED uncovered"; fi
 
 info "bond $(cast to-unit "$BOND" ether) ZOR, seed $SEED, deposit $DEPOSIT, loss $LOSS"
+info "regime: $MODE"
 
 # --- 2. Launch -------------------------------------------------------------
 bold "2/6  Launch a vault against it"
 
-NEED=$(node -e 'process.stdout.write((BigInt(process.argv[1])+BigInt(process.argv[2])).toString())' "$SEED" "$DEPOSIT")
+NEED=$(bi "$SEED" + "$DEPOSIT")
 HAVE=$(call "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
 if lt "$HAVE" "$NEED"; then
-  cast send "$ASSET" 'mint(address,uint256)' "$ACTOR" "$NEED" \
-    --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null
+  send "$ASSET" 'mint(address,uint256)' "$ACTOR" "$NEED"
   ok "minted $NEED"
 fi
 
-cast send "$ZOR"   'approve(address,uint256)' "$LAUNCHER" "$BOND" --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null
-cast send "$ASSET" 'approve(address,uint256)' "$LAUNCHER" "$SEED" --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null
+send "$ZOR"   'approve(address,uint256)' "$LAUNCHER" "$BOND"
+send "$ASSET" 'approve(address,uint256)' "$LAUNCHER" "$SEED"
 
 SALT=0x$(openssl rand -hex 32)
-cast send "$LAUNCHER" 'launchYieldVault(address,uint256,string,string,bytes32)' \
-  "$LOSSY" "$SEED" "Zorpha Loss Drill Vault" "zqDRILL" "$SALT" \
-  --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null
+send "$LAUNCHER" 'launchYieldVault(address,uint256,string,string,bytes32)' \
+  "$LOSSY" "$SEED" "Zorpha Loss Drill Vault" "zqDRILL" "$SALT"
 
 COUNT=$(call "$LAUNCHER" 'launchCount()(uint256)')
 RECORD=$(cast call "$LAUNCHER" \
@@ -156,8 +177,8 @@ ok "escrow seeded with $ESCROW_START"
 
 # --- 3. Deposit ------------------------------------------------------------
 bold "3/6  Deposit"
-cast send "$ASSET" 'approve(address,uint256)' "$VAULT" "$DEPOSIT" --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null
-cast send "$VAULT" 'deposit(uint256,address)' "$DEPOSIT" "$ACTOR" --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null
+send "$ASSET" 'approve(address,uint256)' "$VAULT" "$DEPOSIT"
+send "$VAULT" 'deposit(uint256,address)' "$DEPOSIT" "$ACTOR"
 
 SHARES=$(call "$VAULT" 'balanceOf(address)(uint256)' "$ACTOR")
 RAW0=$(call "$VAULT" 'rawAssets()(uint256)')
@@ -165,16 +186,16 @@ SUP0=$(call "$VAULT" 'escrowSupport()(uint256)')
 TOT0=$(call "$VAULT" 'totalAssets()(uint256)')
 NAV0=$(call "$VAULT" 'getNavPerShare()(uint256)')
 
-ok "shares      $SHARES"
-ok "rawAssets   $RAW0"
+ok "shares        $SHARES"
+ok "rawAssets     $RAW0"
 ok "escrowSupport $SUP0  (nothing to support yet)"
-ok "totalAssets $TOT0"
-ok "nav/share   $NAV0"
+ok "totalAssets   $TOT0"
+ok "nav/share     $NAV0"
 eq "$SUP0" "0" || die "the escrow is supporting $SUP0 before any loss has happened"
 
 # --- 4. The loss -----------------------------------------------------------
 bold "4/6  Make the venue lose $LOSS"
-cast send "$LOSSY" 'lose(uint256)' "$LOSS" --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null
+send "$LOSSY" 'lose(uint256)' "$LOSS"
 
 RAW1=$(call "$VAULT" 'rawAssets()(uint256)')
 SUP1=$(call "$VAULT" 'escrowSupport()(uint256)')
@@ -187,43 +208,65 @@ info "totalAssets   $TOT0 -> $TOT1"
 info "nav/share     $NAV0 -> $NAV1"
 
 lt "$RAW1" "$RAW0" || die "rawAssets did not fall; the venue did not actually lose anything"
-ok "the venue lost value: rawAssets fell by $(sub "$RAW0" "$RAW1")"
+ok "the venue lost value: rawAssets fell by $(bi "$RAW0" - "$RAW1")"
 
-[[ "$SUP1" != "0" ]] || die "escrowSupport is still 0 -- the leader's capital is NOT backing this vault"
-ok "the leader's capital stepped in: escrowSupport is now $SUP1"
+EXPECTED_SUPPORT=$(bi "$LOSS" min "$ESCROW_START")
+eq "$SUP1" "$EXPECTED_SUPPORT" \
+  || die "escrowSupport is $SUP1, expected $EXPECTED_SUPPORT (min of loss and escrow)"
+ok "the leader's capital stepped in: escrowSupport is $SUP1"
 
-# This is the assertion that matters. If totalAssets moved, the depositor
-# already took the loss and the subordination did nothing.
-eq "$TOT1" "$TOT0" || die "totalAssets moved $TOT0 -> $TOT1. The depositor absorbed the loss, not the leader."
-ok "totalAssets UNCHANGED at $TOT1 -- the depositor has not lost anything"
-eq "$NAV1" "$NAV0" || die "nav/share moved $NAV0 -> $NAV1"
-ok "nav/share UNCHANGED at $NAV1"
+# THE assertion, in both regimes. totalAssets may fall by the uncovered part
+# and not one unit more. If it fell further, the depositor absorbed a loss the
+# leader's capital should have taken. If it fell less, the vault is reporting
+# assets it does not have.
+EXPECTED_TOT=$(bi "$TOT0" - "$UNCOVERED")
+eq "$TOT1" "$EXPECTED_TOT" \
+  || die "totalAssets $TOT0 -> $TOT1, expected $EXPECTED_TOT. The depositor bore $(bi "$TOT0" - "$TOT1") of a $LOSS loss with $ESCROW_START of escrow."
+if eq "$UNCOVERED" 0; then
+  ok "totalAssets UNCHANGED at $TOT1 -- the depositor has not lost anything"
+  eq "$NAV1" "$NAV0" || die "nav/share moved $NAV0 -> $NAV1 under full coverage"
+  ok "nav/share UNCHANGED at $NAV1"
+else
+  ok "totalAssets fell by exactly the uncovered $UNCOVERED and no more"
+  lt "$NAV1" "$NAV0" || die "nav/share did not fall under partial coverage"
+  ok "nav/share fell, as it must once the buffer is exhausted"
+fi
 
 # --- 5. Withdraw -----------------------------------------------------------
 bold "5/6  Redeem everything"
 BEFORE=$(call "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
-cast send "$VAULT" 'redeem(uint256,address,address)' "$SHARES" "$ACTOR" "$ACTOR" \
-  --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null
+send "$VAULT" 'redeem(uint256,address,address)' "$SHARES" "$ACTOR" "$ACTOR"
 AFTER=$(call "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
-RECEIVED=$(sub "$AFTER" "$BEFORE")
+RECEIVED=$(bi "$AFTER" - "$BEFORE")
+DEPOSITOR_LOSS=$(bi "$DEPOSIT" - "$RECEIVED")
 
 ok "received $RECEIVED for $SHARES shares"
+info "depositor's loss $DEPOSITOR_LOSS  (uncovered part of the venue's loss: $UNCOVERED)"
 lt "$RECEIVED" "$RAW1" && die "received $RECEIVED, less than the vault's own $RAW1 -- absorption did not happen"
 ok "received more than the vault held on its own ($RAW1)"
+
+# One unit of rounding either way on a redeem is ERC-4626; more is a bug.
+DIFF=$(bi "$DEPOSITOR_LOSS" - "$UNCOVERED")
+case "$DIFF" in -1|0|1) ok "depositor lost exactly the uncovered part ($DIFF rounding)";;
+  *) die "depositor lost $DEPOSITOR_LOSS but only $UNCOVERED was uncovered";; esac
 
 # --- 6. The escrow paid ----------------------------------------------------
 bold "6/6  Who paid"
 ESCROW_END=$(call "$ESCROW" 'available()(uint256)')
-PAID=$(sub "$ESCROW_START" "$ESCROW_END")
+PAID=$(bi "$ESCROW_START" - "$ESCROW_END")
 
 info "escrow  $ESCROW_START -> $ESCROW_END"
-info "paid    $PAID"
+info "paid    $PAID  (expected $EXPECTED_SUPPORT)"
 
-[[ "$PAID" != "0" ]] || die "the escrow paid NOTHING. The waterfall did not run."
-ok "the leader's capital paid $PAID so the depositor did not have to"
+eq "$PAID" "$EXPECTED_SUPPORT" || die "the escrow paid $PAID, expected $EXPECTED_SUPPORT"
+if eq "$UNCOVERED" 0; then
+  ok "the leader's capital paid the whole $PAID so the depositor did not have to"
+else
+  eq "$ESCROW_END" 0 || die "escrow still holds $ESCROW_END under partial coverage; it should be exhausted"
+  ok "the leader's capital paid everything it had ($PAID); the depositor took only the $UNCOVERED beyond it"
+fi
 
-bold "Drill passed"
-echo "  The venue lost $LOSS. The depositor got $RECEIVED back and the leader's"
-echo "  escrow fell by $PAID. That is the subordination working on a live chain,"
-echo "  not in a test with a mocked venue."
+bold "Drill passed ($MODE)"
+echo "  The venue lost $LOSS. The leader's escrow paid $PAID. The depositor"
+echo "  got $RECEIVED back and bore $DEPOSITOR_LOSS. Conservation exact."
 echo

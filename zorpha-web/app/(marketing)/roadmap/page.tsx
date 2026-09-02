@@ -79,8 +79,8 @@ const PHASES: Phase[] = [
     items: [
       'Governor contract wired to the existing timestamp-keyed checkpoints',
       'Season-by-season ecosystem emissions voted rather than assumed',
-      'Manager bonding, so a manager has capital at risk alongside depositors',
-      'Permissionless vault creation behind a bond and a review period',
+      'Manager bonding — live on testnet ahead of schedule as the vault launcher: a 10,000 $ZOR bond plus first-loss capital that absorbs losses before any depositor',
+      'Permissionless yield-vault creation behind that bond — live on testnet; spot and rotation vaults stay governance-gated for now',
       'ERC-7540 asynchronous deposits for strategies that cannot settle instantly',
     ],
   },
@@ -162,8 +162,8 @@ export default function RoadmapPage() {
           />
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
             {[
-              ['Manager bonding', 'Managers should have capital at risk. It needs a slashing design that cannot be gamed by self-dealing.'],
-              ['Permissionless vaults', 'Wanted, but a long tail of unreviewed strategies would undermine the one thing this protocol is for.'],
+              ['Permissionless spot and rotation vaults', 'Anyone can launch a yield vault behind a bond and subordinated capital. Equity strategies still go through governance: a long tail of unreviewed mandates on tokenised stocks is a different risk from a curated ERC-4626 venue.'],
+              ['A protocol-run house vault', 'One flagship vault the protocol itself operates, open to everyone. Wanted, but only after the leader vaults have a track record to design it against.'],
               ['AI-signed rebalances', 'The signing path is agnostic about who holds the key. Marketing it before there is a track record would be backwards.'],
               ['Cross-chain deployment', 'One chain, done properly, before several done partially.'],
             ].map(([title, body]) => (
