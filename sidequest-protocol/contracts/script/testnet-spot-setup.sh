@@ -224,30 +224,24 @@ info "threshold       $(call "$VAULT" 'rebalanceThresholdBps()(uint16)') bps of 
 # inflates the cash leg eleven orders of magnitude, after which every rebalance
 # demands an impossible trade. So the limit gets its own no-op target.
 bold "6/6  Rate-limit target"
-CACHE=".noop-rebalancer-$CHAIN_ID"
-if [[ -f "$CACHE" ]] && [[ -n "$(cat "$CACHE")" ]]; then
-  NOOP=$(cat "$CACHE")
-  CODE=$(cast code "$NOOP" --rpc-url "$RPC")
-  [[ ${#CODE} -gt 2 ]] || die "cached $NOOP has no code; delete $CACHE and re-run"
-  ok "reusing $NOOP"
-else
-  # --constructor-args would go last, but this one takes none.
-  OUT=$(forge create src/testnet/TestnetFixtures.sol:NoopRebalancer         --rpc-url "$RPC" --account "$ACCOUNT" --broadcast --json)
-  NOOP=$(MSYS_NO_PATHCONV=1 node -e 'process.stdout.write(JSON.parse(process.argv[1]).deployedTo || "")' -- "$OUT")
-  [[ -n "$NOOP" ]] || die "could not read the deployed address"
-  printf '%s' "$NOOP" > "$CACHE"
-  ok "deployed $NOOP"
-fi
+# A FRESH one every run, deliberately not cached.
+#
+# The executor keys nonces and the sliding 24h window by target address, so
+# reusing a target means the second run of the day starts with its window
+# already spent and the very first submission fails on the rate limit. A new
+# address is a clean window and clean nonces for about 100k gas, which is a
+# better trade than a drill that can only be run once a day.
+info "deploying a fresh NoopRebalancer (clean nonce and rate-limit window)"
+OUT=$(forge create src/testnet/TestnetFixtures.sol:NoopRebalancer       --rpc-url "$RPC" --account "$ACCOUNT" --broadcast --json)
+NOOP=$(MSYS_NO_PATHCONV=1 node -e 'process.stdout.write(JSON.parse(process.argv[1]).deployedTo || "")' -- "$OUT")
+[[ -n "$NOOP" ]] || die "could not read the deployed address"
+printf '%s' "$NOOP" > ".noop-rebalancer-$CHAIN_ID"
+ok "deployed $NOOP"
 
 EXEC=$(env_of NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS)
 RL_LIMIT="${RATE_LIMIT:-4}"
-CUR=$(try "$EXEC" 'dailyLimit(address)(uint256)' "$NOOP")
-if [[ "${CUR:-0}" != "$RL_LIMIT" ]]; then
-  send "$EXEC" 'setDailyLimit(address,uint256)' "$NOOP" "$RL_LIMIT"
-  ok "dailyLimit for the noop target set to $RL_LIMIT"
-else
-  ok "dailyLimit already $RL_LIMIT"
-fi
+send "$EXEC" 'setDailyLimit(address,uint256)' "$NOOP" "$RL_LIMIT"
+ok "dailyLimit $RL_LIMIT"
 
 bold "Ready"
 echo "  The oracle has a price, the adapter has both legs, and the vault holds"
