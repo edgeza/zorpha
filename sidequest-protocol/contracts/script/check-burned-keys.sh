@@ -60,20 +60,34 @@ fi
 ZERO=0x0000000000000000000000000000000000000000000000000000000000000000
 FINDINGS=0
 
-# Every role the protocol defines. hasRole against a contract that is not an
-# AccessControl reverts, which try() swallows.
-ROLES=(
-  "DEFAULT_ADMIN:$ZERO"
-  "DEPLOYER_ROLE:$(cast keccak 'DEPLOYER_ROLE')"
-  "KEEPER_ROLE:$(cast keccak 'KEEPER_ROLE')"
-  "RISK_COUNCIL_ROLE:$(cast keccak 'RISK_COUNCIL_ROLE')"
-  "ADAPTER_SETTER_ROLE:$(cast keccak 'ADAPTER_SETTER_ROLE')"
-  "GOVERNANCE_ROLE:$(cast keccak 'GOVERNANCE_ROLE')"
-  "PROPOSER_ROLE:$(cast keccak 'PROPOSER_ROLE')"
-  "EXECUTOR_ROLE:$(cast keccak 'EXECUTOR_ROLE')"
-  "CANCELLER_ROLE:$(cast keccak 'CANCELLER_ROLE')"
-  "ORACLE_UPDATER_ROLE:$(cast keccak 'ORACLE_UPDATER_ROLE')"
+# Role names, read out of the contracts rather than listed here.
+#
+# The hand-written version of this list was wrong twice over: it invented
+# ORACLE_UPDATER_ROLE, which does not exist -- the real name is UPDATER_ROLE --
+# and it omitted SWEEPER_ROLE, which is what gates sweeping the airdrop. So the
+# phantom check reported an ordinary deploy-time grant as a finding, and the
+# burned-key check would have called a key clear while it held the sweeper role.
+#
+# A list of things the code already declares will drift from the code, and the
+# drift shows up as false findings, which is the fastest way to make a check
+# worth ignoring. Every role here is a keccak256("NAME") literal in src/, so
+# read them from there.
+mapfile -t ROLE_NAMES < <(
+  grep -rhoE 'keccak256\("[A-Z_]+"\)' src     | sed -E 's/^keccak256\("//; s/"\)$//'     | sort -u
 )
+
+# TimelockController's roles come from OpenZeppelin rather than a literal in
+# src/, so they are the one part that must still be named.
+ROLE_NAMES+=(PROPOSER_ROLE EXECUTOR_ROLE CANCELLER_ROLE TIMELOCK_ADMIN_ROLE)
+
+[[ ${#ROLE_NAMES[@]} -gt 4 ]]   || die "no role declarations found in src/ -- the grep is broken, not the chain"
+
+# hasRole against a contract that is not an AccessControl reverts, which try()
+# swallows, so a role that does not exist on a given contract is simply silent.
+ROLES=("DEFAULT_ADMIN:$ZERO")
+for nm in "${ROLE_NAMES[@]}"; do
+  ROLES+=("$nm:$(cast keccak "$nm")")
+done
 
 CONTRACTS=(
   "ZOR:NEXT_PUBLIC_ZOR_ADDRESS"

@@ -341,15 +341,26 @@ contract DeployVaultsV1 is Script {
     ///      asserted "no deployer authority may survive this script" and
     ///      passed. On testnet 46630 the compromised deploy key could still
     ///      call deployYieldVault months later. See docs/BURNED-KEYS.md.
-    function _allRoles() internal pure returns (bytes32[7] memory) {
+    ///      Solidity cannot grep, so unlike the shell checkers this list is
+    ///      literal and has to be kept in step with src/. Verify it with:
+    ///        grep -rhoE 'keccak256\("[A-Z_]+"\)' src | sort -u
+    ///      The first version of this list invented ORACLE_UPDATER_ROLE, which
+    ///      does not exist -- the real name is UPDATER_ROLE -- and omitted
+    ///      SWEEPER_ROLE, GUARDIAN_ROLE and VAULT_ROLE. A wrong entry is
+    ///      harmless (renounceRole on a role you do not hold is a no-op) but a
+    ///      MISSING one is the whole bug this function exists to prevent.
+    function _allRoles() internal pure returns (bytes32[10] memory) {
         return [
             bytes32(0x00), // DEFAULT_ADMIN_ROLE
+            keccak256("ADAPTER_SETTER_ROLE"),
             keccak256("DEPLOYER_ROLE"),
+            keccak256("GOVERNANCE_ROLE"),
+            keccak256("GUARDIAN_ROLE"),
             keccak256("KEEPER_ROLE"),
             keccak256("RISK_COUNCIL_ROLE"),
-            keccak256("ADAPTER_SETTER_ROLE"),
-            keccak256("GOVERNANCE_ROLE"),
-            keccak256("ORACLE_UPDATER_ROLE")
+            keccak256("SWEEPER_ROLE"),
+            keccak256("UPDATER_ROLE"),
+            keccak256("VAULT_ROLE")
         ];
     }
 
@@ -365,7 +376,7 @@ contract DeployVaultsV1 is Script {
         if (!ac.hasRole(adminRole, gov)) {
             ac.grantRole(adminRole, gov);
         }
-        bytes32[7] memory roles = _allRoles();
+        bytes32[10] memory roles = _allRoles();
         for (uint256 i = 0; i < roles.length; i++) {
             // Admin last: renouncing it first would forfeit the right to
             // renounce the others on a contract where admin gates them.
@@ -378,7 +389,7 @@ contract DeployVaultsV1 is Script {
 
     /// @dev Assert the deployer holds no role at all on `target`.
     function _assertStripped(address target, address deployer, string memory what) internal view {
-        bytes32[7] memory roles = _allRoles();
+        bytes32[10] memory roles = _allRoles();
         for (uint256 i = 0; i < roles.length; i++) {
             require(
                 !IAccessControl(target).hasRole(roles[i], deployer),
