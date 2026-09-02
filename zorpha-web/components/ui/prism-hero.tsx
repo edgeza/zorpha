@@ -320,8 +320,19 @@ export function PrismHero({
   }, [reducedMotion, staticProgress]);
 
   // Shared by both copies of the wordmark, so they cannot drift apart.
+  // leading MUST leave room for the glyphs' full ink height.
+  //
+  // At leading-[0.86] the line box was shorter than the type, so ascenders and
+  // descenders overflowed it -- and since `background-clip: text` clips a
+  // background that is only ever painted across the element's own box, every
+  // overflowing part had nothing to clip and came out unpainted. That showed up
+  // as the Z, the p and the h being sliced off with stray marks where the box
+  // edge cut them: exactly the three letters in "Zorpha" that reach furthest.
+  //
+  // Tight leading bought nothing here anyway. This is a single line, so
+  // line-height only sets the box height; it does not tighten the letterforms.
   const wordType =
-    'font-display font-medium leading-[0.86] tracking-[-0.03em] ' +
+    'font-display font-medium leading-[1.06] tracking-[-0.03em] ' +
     'text-[clamp(4.25rem,17vw,13rem)]';
 
   return (

@@ -7,6 +7,18 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   reactStrictMode: true,
 
+  // `next dev` and `next build` both write `.next`, so running one while the
+  // other is live leaves a half-production, half-dev tree: the dev server asks
+  // for `app/portal/layout.js` and finds only `layout-8ed2efd6.js`, every core
+  // chunk 404s, the app never hydrates, and every on-chain value renders as the
+  // server-side "--" placeholder. It looks exactly like broken contract reads
+  // and is not.
+  //
+  // Setting NEXT_DIST_DIR gives a second build tree, so a verification server
+  // can run beside a build without either corrupting the other. Unset in normal
+  // use, and Vercel never sets it, so production is untouched.
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
+
   images: {
     remotePatterns: [{ protocol: 'https', hostname: '**' }],
   },

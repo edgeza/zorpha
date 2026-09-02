@@ -1,10 +1,11 @@
 {
   "name": "zorpha-web",
   "version": "1.0.0",
-  "description": "Zorpha ($ZOR) — marketing site and protocol portal",
+  "description": "Zorpha ($ZOR) \u2014 marketing site and protocol portal",
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:verify": "node scripts/dev-verify.mjs",
     "prebuild": "node scripts/check-tokenomics.mjs",
     "build": "next build",
     "start": "next start",

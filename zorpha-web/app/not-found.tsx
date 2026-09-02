@@ -4,7 +4,7 @@ import { Logo } from '@/components/ui/Primitives';
 export default function NotFound() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center px-5 text-center">
-      <Logo className="h-10 w-10" />
+      <Logo className="h-10 w-auto" />
       <p className="mt-8 font-mono text-2xs uppercase tracking-[0.2em] text-ink-500">Error 404</p>
       <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
         Nothing at this address

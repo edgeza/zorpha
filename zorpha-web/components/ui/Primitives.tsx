@@ -1,26 +1,35 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
-/** The Zorpha mark: a hexagonal aperture with an offset core. */
-export function Logo({ className = 'h-7 w-7' }: { className?: string }) {
+/**
+ * The Zorpha mark: a faceted prism.
+ *
+ * Sized by HEIGHT with width:auto, because the artwork is taller than it is
+ * wide (101x115). Forcing it into a square box -- which the previous `h-7 w-7`
+ * did -- would either squash it or letterbox it off-centre.
+ *
+ * Served from /zorpha-mark.png, which is public/logo_trans.png cropped to its
+ * artwork. The original carries transparent padding across 60% of its width, so
+ * used directly the mark rendered at under half the size of its box and sat
+ * visibly left of centre next to the wordmark. Regenerate with:
+ *
+ *   node script/crop-logo.js public/logo_trans.png public/zorpha-mark.png
+ *
+ * `priority` because this is above the fold on every page and is the one image
+ * a visitor should never watch load in.
+ */
+export function Logo({ className = 'h-7 w-auto' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
-      <defs>
-        <linearGradient id="zor-mark" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#a48dff" />
-          <stop offset="55%" stopColor="#6f4ae8" />
-          <stop offset="100%" stopColor="#22d3ee" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M16 2.6 27.5 9.3v13.4L16 29.4 4.5 22.7V9.3L16 2.6Z"
-        fill="none"
-        stroke="url(#zor-mark)"
-        strokeWidth="2"
-        strokeLinejoin="round"
-      />
-      <path d="M16 10.4 22 13.9v7L16 24.4l-6-3.5v-7l6-3.5Z" fill="url(#zor-mark)" opacity="0.9" />
-    </svg>
+    <Image
+      src="/zorpha-mark.png"
+      alt=""
+      width={101}
+      height={115}
+      priority
+      className={className}
+      aria-hidden="true"
+    />
   );
 }
 
