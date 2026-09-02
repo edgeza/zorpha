@@ -190,6 +190,32 @@ contract SpotVaultMinimalTest is Test {
         vault.redeemEmergency(1, alice, alice);
     }
 
+    /// The assertion that would have caught the worst bug in this codebase on
+    /// day one: put N of `asset()` in, take every share back out, count N of
+    /// `asset()` returned.
+    ///
+    /// `RWRotationVault` returned 2 HOOD for 10 deposited, because its
+    /// `totalAssets()` was denominated in a different token from `asset()` and
+    /// no conversion was overridden. Nine of its tests passed either side of
+    /// that, all of them internally consistent in either base units or shares.
+    /// Only a single-unit round trip shows it. See
+    /// docs/FINDINGS-ROTATION-UNITS.md.
+    ///
+    /// This vault is believed consistent. Nothing pinned it.
+    function test_Units_DepositRedeemRoundTrip() public {
+        uint256 before_ = wbtc.balanceOf(alice);
+        uint256 shares = _deposit();
+        vm.prank(alice);
+        vault.redeem(shares, alice, alice);
+
+        assertEq(
+            wbtc.balanceOf(alice), before_,
+            "a clean round trip must return exactly what went in"
+        );
+        assertEq(vault.totalSupply(), 0, "and burn every share");
+        assertGt(shares, 0, "shares were actually minted");
+    }
+
     function test_FeeAccrual_BelowHWM_NoAccrual() public {
         _deposit();
         // First rebalance at HWM = 1.0 underlying; nav below should not accrue.

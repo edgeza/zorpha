@@ -44,6 +44,19 @@ here because a decision that lives only in a findings doc does not get made.
       justified the forfeiture never actually required it. No residue, nothing to
       recover, and the haircut field now means what it says.
       [FINDINGS-EMERGENCY-EXIT.md](FINDINGS-EMERGENCY-EXIT.md).
+- [x] ~~The rotation vault destroyed 80% of a deposit on a clean round trip.~~
+      **Fixed.** `totalAssets()` was denominated in `baseAsset` while `asset()`
+      is `tokens[0]`, and no ERC-4626 conversion was overridden -- so shares were
+      sized against one token and paid out in another. 10 HOOD in, 2 HOOD out,
+      with no fee and no price movement. It was live on the deployed vault
+      (18-decimal asset, 6-decimal base) and listed in the portal; `totalSupply`
+      was zero, so nobody lost money. [FINDINGS-ROTATION-UNITS.md](FINDINGS-ROTATION-UNITS.md).
+      **Redeploy the rotation vault before it takes a deposit**, and unlist the
+      current one.
+- [x] ~~Audit every contract that subtracts an accrued fee from a live balance.~~
+      Done: three of three were affected. The rotation vault had both the
+      equalisation bug -- where it overcharges the **first** depositor, not just
+      a later cohort -- and the fee-claim backing bug at 19.5% of the deposit.
 - [ ] **Auditor review of both fixes above.** Each changes what somebody
       receives: the first what the fee recipient can claim, the second what a
       depositor is paid. Both move value toward the depositor, which is the safe

@@ -45,6 +45,33 @@ contract YieldVaultTest is Test {
         assertEq(usdc.balanceOf(address(vault)), 0, "vault balance zero after deposit");
     }
 
+    /// The assertion that would have caught the worst bug in this codebase on
+    /// day one: put N of `asset()` in, take every share back out, count N of
+    /// `asset()` returned.
+    ///
+    /// `RWRotationVault` returned 2 HOOD for 10 deposited, because its
+    /// `totalAssets()` was denominated in a different token from `asset()` and
+    /// no conversion was overridden. Nine of its tests passed either side of
+    /// that, all of them internally consistent in either base units or shares.
+    /// Only a single-unit round trip shows it. See
+    /// docs/FINDINGS-ROTATION-UNITS.md.
+    ///
+    /// This vault is believed consistent. Nothing pinned it.
+    function test_Units_DepositRedeemRoundTrip() public {
+        uint256 amount = 100_000 * 1e6;
+        uint256 before_ = usdc.balanceOf(alice);
+        uint256 shares = _deposit(amount);
+        vm.prank(alice);
+        vault.redeem(shares, alice, alice);
+
+        assertEq(
+            usdc.balanceOf(alice), before_,
+            "a clean round trip must return exactly what went in"
+        );
+        assertEq(vault.totalSupply(), 0, "and burn every share");
+        assertGt(shares, 0, "shares were actually minted");
+    }
+
     function test_Rebalance_EmitsReceipt_AndIncrementsCount() public {
         _deposit(100_000 * 1e6);
 

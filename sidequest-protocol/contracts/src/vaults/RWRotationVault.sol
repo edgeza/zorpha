@@ -51,6 +51,9 @@ contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
     address public feeRecipient;
     bool    public isCircuitBreakerActive;
 
+    event HighWaterMarkReset(uint256 nav);
+    event AccruedFeesWrittenDown(uint256 amount, uint256 remaining);
+
     event Rebalanced(
         uint16[] targetBps,
         uint256 navInBase,
@@ -134,7 +137,10 @@ contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
         returns (uint256)
     {
         _evaluateFees();
-        return super.deposit(assets, receiver);
+        bool wasEmpty = totalSupply() == 0;
+        uint256 shares = super.deposit(assets, receiver);
+        if (wasEmpty) _markFirstEntry();
+        return shares;
     }
 
     function mint(uint256 shares, address receiver)
@@ -144,7 +150,10 @@ contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
         returns (uint256)
     {
         _evaluateFees();
-        return super.mint(shares, receiver);
+        bool wasEmpty = totalSupply() == 0;
+        uint256 assets = super.mint(shares, receiver);
+        if (wasEmpty) _markFirstEntry();
+        return assets;
     }
 
     function withdraw(uint256 assets, address receiver, address owner)
@@ -207,15 +216,57 @@ contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
         return v;
     }
 
-    function totalAssets() public view override returns (uint256) {
+    /// @notice Vault value net of the accrued fee claim, in BASE units.
+    /// @dev    Both terms are base-denominated, so the subtraction is done here
+    ///         and the conversion afterwards. Everything in the fee subsystem --
+    ///         `grossValue`, `performanceFeeAccrued`, `highWaterMark`,
+    ///         `getNavPerShare` and the payout in `claimFees` -- is in base
+    ///         units and stays that way.
+    function netValueInBase() public view returns (uint256) {
         uint256 gross = grossValue();
         return gross > performanceFeeAccrued ? gross - performanceFeeAccrued : 0;
     }
 
+    /// @notice Total assets, in `asset()` units, as ERC-4626 requires.
+    ///
+    /// @dev    This used to return `netValueInBase()` directly, which is a
+    ///         different token from `asset()`.
+    ///
+    ///         `asset()` is `tokens[0]` -- the ERC-4626 unit a depositor pays in
+    ///         and is paid out in. `grossValue()` is denominated in `baseAsset`.
+    ///         No conversion function is overridden, so OpenZeppelin's ERC4626
+    ///         sized every share against a base-denominated total and then moved
+    ///         `asset()` tokens by that number. The two differ by both a decimal
+    ///         gap and the oracle price, and the error is silent: nothing
+    ///         reverts, the depositor is simply paid the wrong amount.
+    ///
+    ///         Measured before the fix, on a vault with no fee, no price
+    ///         movement and a sole depositor: **10 HOOD in, 2 HOOD out.** 80% of
+    ///         principal destroyed on a deposit followed immediately by a
+    ///         redemption. On the vault deployed to testnet 46630 the gap is
+    ///         wider still -- an 18-decimal asset against a 6-decimal base --
+    ///         and it was listed in the portal as a live vault. `totalSupply`
+    ///         was zero, so nobody lost money; the first depositor would have.
+    ///
+    ///         Nothing caught it because no test compared a deposit against its
+    ///         own redemption in a single unit. Nine tests passed either side of
+    ///         it. See `test_Units_DepositRedeemRoundTrip`.
+    ///
+    ///         This matches `SpotVaultMinimal`, whose `grossValue()` converts
+    ///         its cash leg INTO asset units for exactly this reason.
+    ///
+    ///         Reverting on a stale oracle is not a new failure mode: `grossValue`
+    ///         already prices every leg, so this function could always revert.
+    function totalAssets() public view override returns (uint256) {
+        return baseToToken(0, netValueInBase());
+    }
+
+    /// @notice NAV per share, in BASE units. Compared against `highWaterMark`,
+    ///         which the constructor seeds as `10 ** baseDecimals`.
     function getNavPerShare() public view returns (uint256) {
         uint256 supply = totalSupply();
         if (supply == 0) return 10 ** baseDecimals;
-        return (totalAssets() * (10 ** decimals())) / supply;
+        return (netValueInBase() * (10 ** decimals())) / supply;
     }
 
     function maxDeposit(address) public view override returns (uint256) {
@@ -316,7 +367,53 @@ contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
     ///      `_deposit`/`_withdraw` hooks: ERC-4626 fixes the asset amount via
     ///      `previewRedeem` before those hooks run, so accruing inside them
     ///      lands after the number it is meant to affect has been computed.
+    /// @dev Set the high-water mark to the price the first depositor into an
+    ///      empty vault actually paid.
+    ///
+    ///      The mark only ratchets up, and `getNavPerShare()` returns a
+    ///      `10 ** baseDecimals` sentinel once supply is zero. Together those
+    ///      leave the mark wherever the last cohort's high point was, so a
+    ///      depositor entering an emptied vault pays no performance fee until
+    ///      they have re-earned somebody else's gain.
+    ///
+    ///      Third of the three vaults to get this. See
+    ///      docs/FINDINGS-EQUALISATION.md -- the audit item said to check every
+    ///      contract that subtracts an accrued fee from a live balance, and all
+    ///      three did.
+    function _markFirstEntry() internal {
+        uint256 nav = getNavPerShare();
+        if (nav != highWaterMark) {
+            highWaterMark = nav;
+            emit HighWaterMarkReset(nav);
+        }
+    }
+
+    /// @dev Cap the outstanding fee claim at the value behind it, while empty.
+    ///
+    ///      `performanceFeeAccrued` is a fixed number in base units and
+    ///      `grossValue()` is live, so a price move against the legs a fee was
+    ///      struck in can leave the claim larger than what backs it. With
+    ///      shareholders present that gap is priced into the share anyone buys.
+    ///      Once the vault empties it is not: `getNavPerShare()` falls back to a
+    ///      sentinel that cannot carry the encumbrance, and `netValueInBase()`
+    ///      floors at zero. The next depositor settles the difference --
+    ///      measured at 19.5% of the deposit in
+    ///      `test_UnclaimedFee_DoesNotDiluteTheNextDepositor`.
+    ///
+    ///      See docs/FINDINGS-FEE-CLAIM-BACKING.md. Deliberately does not touch
+    ///      the non-empty case, which is a fee policy rather than a bug.
+    function _reconcileFeeClaimWhenEmpty() internal {
+        if (totalSupply() != 0) return;
+        uint256 accrued = performanceFeeAccrued;
+        uint256 backing = grossValue();
+        if (accrued <= backing) return;
+        performanceFeeAccrued = backing;
+        emit AccruedFeesWrittenDown(accrued - backing, backing);
+    }
+
     function _evaluateFees() internal {
+        // Before the early return below, which fires on every empty vault.
+        _reconcileFeeClaimWhenEmpty();
         uint256 nav = getNavPerShare();
         if (nav <= highWaterMark) return;
 
