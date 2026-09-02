@@ -241,10 +241,40 @@ reason() {
 NOW=$(cast block latest --field timestamp --rpc-url "$RPC")
 GOOD_EXPIRY=$(bi "$NOW" add 3600)
 
+WEIGHT="${SPOT_TARGET_BPS:-5000}"
+
+# ─── Room in the window ─────────────────────────────────────────────────────
+# Checked before anything depends on it, and placed here rather than in the
+# preflight because sign_for, would_succeed and reason are all defined above
+# this line and below that one.
+#
+# The drill spends LIMIT submissions -- one in step 1, the rest in step 7 --
+# and then needs one more to be REJECTED. A target whose window is already
+# full has no room for the first, so step 1 fails with DailyLimitExceeded
+# while reporting "a valid instruction was REJECTED", which points squarely at
+# the signature path and is entirely misleading. That is exactly what a re-run
+# against an earlier run's target produced.
+#
+# Simulated rather than inferred from the call counter: `calls` is all-time, so
+# a target used yesterday would look full when its 24h window is clear. Asking
+# the contract what it would do is the only honest test.
+PROBE_NONCE=$(bi "$NONCE0" add 1)
+PROBE_EXPIRY=$(bi "$(cast block latest --field timestamp --rpc-url "$RPC")" add 600)
+PROBE_SIG=$(sign_for "$NOOP" "$WEIGHT" "$PROBE_NONCE" "$PROBE_EXPIRY")
+if ! would_succeed "$NOOP" "$WEIGHT" "$PROBE_NONCE" "$PROBE_EXPIRY" "$PROBE_SIG"; then
+  die "this rate-limit target cannot accept a submission: $(reason)
+     It has been called $CALLS0 time(s) against a limit of $LIMIT, so there is
+     no room for the $LIMIT submissions this drill needs plus the one that must
+     be rejected.
+
+     Get a fresh target. The setup script deploys one on every run precisely
+     because the window is per-address and lasts 24 hours:
+       ./script/testnet-spot-setup.sh <governance-keystore>"
+fi
+ok "the window has room for $LIMIT submissions plus one rejection"
 # ─── 1. A correctly signed rebalance ────────────────────────────────────────
 bold "1/8  A correctly signed instruction is accepted"
 
-WEIGHT="${SPOT_TARGET_BPS:-5000}"
 N1=$(bi "$NONCE0" add 1)
 SIG=$(sign_for "$NOOP" "$WEIGHT" "$N1" "$GOOD_EXPIRY")
 info "weight $WEIGHT bps, nonce $N1, expiry $GOOD_EXPIRY"
