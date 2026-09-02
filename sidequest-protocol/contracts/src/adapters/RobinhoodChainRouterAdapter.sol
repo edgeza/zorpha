@@ -4,6 +4,8 @@ pragma solidity ^0.8.28;
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {AggregatorV3Interface} from "../oracle/MedianOracle.sol";
 
 /// @notice Uniswap `SwapRouter02`, as deployed on Robinhood Chain at
 ///         0xcaf681a66d020601342297493863e78c959e5cb2.
@@ -151,26 +153,96 @@ contract StubSwapAdapter is ISpotSwapAdapter, AccessControl {
 
     address public immutable asset;
     address public immutable cash;
+    AggregatorV3Interface public immutable oracle;
 
-    constructor(address asset_, address cash_, address admin_) {
-        require(asset_ != address(0) && cash_ != address(0) && admin_ != address(0), "zero addr");
+    uint8 private immutable _assetDec;
+    uint8 private immutable _cashDec;
+    uint8 private immutable _priceDec;
+
+    error UnsupportedPair(address tokenIn, address tokenOut);
+    error BadOraclePrice(int256 answer);
+    error StubSlippage(uint256 out, uint256 minOut);
+
+    constructor(address asset_, address cash_, address oracle_, address admin_) {
+        require(
+            asset_ != address(0) && cash_ != address(0) && oracle_ != address(0) && admin_ != address(0),
+            "zero addr"
+        );
         asset = asset_;
         cash = cash_;
+        oracle = AggregatorV3Interface(oracle_);
+        _assetDec = IERC20Metadata(asset_).decimals();
+        _cashDec = IERC20Metadata(cash_).decimals();
+        _priceDec = AggregatorV3Interface(oracle_).decimals();
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
     }
 
-    function swap(address tokenIn, address tokenOut, uint256 amountIn, uint256)
+    /// @notice Swap at the oracle price with no slippage and no depth limit.
+    ///
+    /// @dev    This used to return `amountIn` unchanged -- 1:1 on RAW units,
+    ///         ignoring both decimals and price -- and that was not a harmless
+    ///         simplification. It permanently corrupted any vault it touched.
+    ///
+    ///         Selling 50e18 of an 18-decimal equity paid back 50e18 raw units
+    ///         of a 6-decimal stable: fifty trillion nominal dollars. Since
+    ///         SpotVaultMinimal.grossValue() denominates both legs in asset
+    ///         units, that cash leg came back valued eleven orders of magnitude
+    ///         too high -- measured on testnet 46630, grossValue went from 1e20
+    ///         to 2e29 in a single rebalance. Every rebalance after it then
+    ///         demanded a trade nothing could service, and a full redemption by
+    ///         the only depositor reverted on slippage. The vault could be
+    ///         neither rebalanced nor emptied again.
+    ///
+    ///         The docstring above the old version claimed it "keeps the
+    ///         rebalance path non-reverting so tests can exercise the vault's
+    ///         accounting". It did the opposite of both halves. Worth noting
+    ///         that test/mocks/MockSpotAdapter.sol had the correct maths all
+    ///         along, which is why the unit suite stayed green while the
+    ///         testnet fixture destroyed vaults: the test double was more
+    ///         faithful than the deploy default.
+    ///
+    ///         The formulas below are character-for-character the vault's own
+    ///         `assetToCash` and `cashToAsset`. They have to be: the vault
+    ///         computes `minOut` from its conversion and then requires the
+    ///         return to clear it, so an adapter that rounds differently fails
+    ///         the vault's slippage check on a trade that should have settled.
+    ///
+    ///         Still a stub, and still not a market: zero slippage, unbounded
+    ///         depth, and it pays out of its own balance so it must be
+    ///         pre-funded. Set SWAP_ROUTER before this touches real assets.
+    function swap(address tokenIn, address tokenOut, uint256 amountIn, uint256 minOut)
         external
         onlyRole(VAULT_ROLE)
-        returns (uint256)
+        returns (uint256 out)
     {
-        require(
-            (tokenIn == asset && tokenOut == cash) || (tokenIn == cash && tokenOut == asset),
-            "StubSwapAdapter: unsupported pair"
-        );
-        // 1:1 mock swap (testnet stub; not a real market).
+        if (amountIn == 0) return 0;
+
+        uint256 p = _price();
+        if (tokenIn == asset && tokenOut == cash) {
+            out = (amountIn * (10 ** _cashDec) * p) / ((10 ** _assetDec) * (10 ** _priceDec));
+        } else if (tokenIn == cash && tokenOut == asset) {
+            out = (amountIn * (10 ** _assetDec) * (10 ** _priceDec)) / ((10 ** _cashDec) * p);
+        } else {
+            revert UnsupportedPair(tokenIn, tokenOut);
+        }
+
+        // Refuse rather than under-deliver. The vault checks this too, but
+        // failing here names the adapter as the cause instead of surfacing as
+        // a bare "slippage" from inside the vault.
+        if (out < minOut) revert StubSlippage(out, minOut);
+
         IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
-        IERC20(tokenOut).safeTransfer(msg.sender, amountIn);
-        return amountIn;
+        IERC20(tokenOut).safeTransfer(msg.sender, out);
+    }
+
+    /// @dev Deliberately no staleness check. The vault already enforces its own
+    ///      `maxOracleStaleness` before it ever calls in here, and a second,
+    ///      independently-configured window would be a way for the adapter to
+    ///      refuse a trade the vault considered fresh.
+    function _price() internal view returns (uint256) {
+        (, int256 answer, , , ) = oracle.latestRoundData();
+        if (answer <= 0) revert BadOraclePrice(answer);
+        return uint256(answer);
     }
 }
+

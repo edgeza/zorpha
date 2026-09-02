@@ -141,7 +141,13 @@ contract DeployVaultsV1 is Script {
             );
             r.swapIsReal = true;
         } else {
-            r.swapAdapter = address(new StubSwapAdapter(stockToken1, usdc, deployer));
+            // The stub now prices off the same oracle the vault uses, so a
+            // rebalance settles at a sane value instead of 1:1 on raw units.
+            // It is still not a market -- zero slippage, unbounded depth, pays
+            // out of its own balance -- so it must be pre-funded.
+            r.swapAdapter = address(
+                new StubSwapAdapter(stockToken1, usdc, address(r.oracle), deployer)
+            );
         }
 
         // ─── Factory owned by the deployer for the duration of this script.
