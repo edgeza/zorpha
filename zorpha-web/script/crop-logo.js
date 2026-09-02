@@ -5,14 +5,27 @@
 // filters, find the bounding box of pixels that are not transparent, then write
 // a fresh 8-bit RGBA PNG of just that region.
 //
-// Usage: node crop-logo.js <in.png> <out.png>
+// Usage:
+//   npm run logo:crop                       (from zorpha-web/)
+//   node script/crop-logo.js                (from zorpha-web/)
+//   node script/crop-logo.js in.png out.png (explicit paths)
+//
+// Paths resolve against the PACKAGE ROOT, not the shell's working directory.
+// Passing them as bare relative paths meant the documented command only worked
+// if you happened to be standing in zorpha-web/, and from the repo root it
+// failed with MODULE_NOT_FOUND before it could even say why.
 
 const fs = require('fs');
+const path = require('path');
 const zlib = require('zlib');
 
-const [inPath, outPath] = process.argv.slice(2);
-if (!inPath || !outPath) {
-  console.error('usage: node crop-logo.js <in.png> <out.png>');
+const ROOT = path.resolve(__dirname, '..');
+const args = process.argv.slice(2);
+const inPath = path.resolve(ROOT, args[0] || 'public/logo_trans.png');
+const outPath = path.resolve(ROOT, args[1] || 'public/zorpha-mark.png');
+
+if (!fs.existsSync(inPath)) {
+  console.error('no such source image: ' + inPath);
   process.exit(1);
 }
 
