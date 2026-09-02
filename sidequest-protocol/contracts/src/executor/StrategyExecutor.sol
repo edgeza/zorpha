@@ -3,9 +3,17 @@ pragma solidity ^0.8.28;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
-/// @notice Minimal interface for the vault's rebalance entrypoint.
+/// @notice Minimal interface for a single-weight vault's rebalance entrypoint.
 interface ISpotRebalancer {
     function rebalanceTo(uint16 targetWeightBps) external;
+}
+
+/// @notice And for a basket vault's, which takes a weight per token.
+/// @dev    RWRotationVault exposes this form. It is a different selector from
+///         ISpotRebalancer.rebalanceTo, which is why calling the latter against
+///         a rotation vault reverts with empty data.
+interface IBasketRebalancer {
+    function rebalanceTo(uint16[] calldata weightsBps) external;
 }
 
 /// @title StrategyExecutor
@@ -43,6 +51,14 @@ contract StrategyExecutor is AccessControl {
     bytes32 public constant REBALANCE_TYPEHASH =
         keccak256("Rebalance(address vault,uint16 targetWeightBps,uint256 nonce,uint256 expiry)");
 
+    /// @notice EIP-712 type hash for a basket rebalance command.
+    /// @dev    A distinct type, not a variant of the one above: signing over a
+    ///         weight array is a different authorisation from signing over a
+    ///         single weight, and sharing a typehash would let a signature for
+    ///         one be replayed as the other.
+    bytes32 public constant BASKET_REBALANCE_TYPEHASH =
+        keccak256("BasketRebalance(address vault,uint16[] weightsBps,uint256 nonce,uint256 expiry)");
+
     /// @notice Authorized strategy signer. Initialized to deployer; governance
     ///         transfers via `setAuthorizedSigner`.
     address public authorizedSigner;
@@ -65,6 +81,12 @@ contract StrategyExecutor is AccessControl {
         address indexed vault,
         uint16          targetWeightBps,
         uint256         nonce,
+        address indexed keeper
+    );
+    event BasketRebalanceExecuted(
+        address indexed vault,
+        uint16[] weightsBps,
+        uint256 nonce,
         address indexed keeper
     );
     event SignalRejected(address indexed vault, string reason);
@@ -120,33 +142,9 @@ contract StrategyExecutor is AccessControl {
     {
         if (vault == address(0)) revert ZeroVault();
         if (targetWeightBps > 10000) revert InvalidWeight(targetWeightBps);
-        if (block.timestamp > expiry) revert SignalExpired(expiry, block.timestamp);
-        uint256 maxExpiryReb = block.timestamp + MAX_SIGNAL_EXPIRY;
-        if (expiry > maxExpiryReb) revert ExpiryTooFar(expiry, maxExpiryReb);
-        if (nonces[vault] >= nonce) revert NonceAlreadyUsed(vault, nonce);
-
-        // Sliding 24h rate limit.
-        uint256 limit = dailyLimit[vault];
-        if (limit > 0) {
-            uint256[] storage ts = recentRebalanceTimestamps[vault];
-            uint256 cutoff = _windowCutoff();
-
-            // Entries are appended in timestamp order, so anything expired sits
-            // at the front. Compact in place preserving order, then pop the
-            // tail. The previous revision did `delete` followed by re-push,
-            // which zeroes every slot and then pays to write each survivor a
-            // second time.
-            uint256 write;
-            for (uint256 read = 0; read < ts.length; read++) {
-                if (ts[read] > cutoff) {
-                    if (write != read) ts[write] = ts[read];
-                    write++;
-                }
-            }
-            while (ts.length > write) ts.pop();
-
-            if (ts.length >= limit) revert DailyLimitExceeded(ts.length, limit);
-        }
+        // Shared with executeBasketRebalance, so the two paths cannot drift.
+        _checkTimingAndNonce(vault, nonce, expiry);
+        _enforceRateLimit(vault);
 
         bytes32 structHash = keccak256(
             abi.encode(REBALANCE_TYPEHASH, vault, targetWeightBps, nonce, expiry)
@@ -163,6 +161,108 @@ contract StrategyExecutor is AccessControl {
         emit RebalanceExecuted(vault, targetWeightBps, nonce, msg.sender);
         return true;
     }
+    /// @notice Validate and execute a signed basket rebalance.
+    ///
+    ///         The reason this exists: `RWRotationVault.rebalanceTo` takes
+    ///         `uint16[]`, not `uint16`. `executeRebalance` above calls
+    ///         `ISpotRebalancer.rebalanceTo(uint16)`, a different selector, so
+    ///         it reverts with empty data against a rotation vault. And since
+    ///         the deploy grants `KEEPER_ROLE` on each vault only to this
+    ///         executor, nothing else could call the array form either: the
+    ///         rotation vault shipped unable to rebalance by any route, while
+    ///         the portal advertised it as rotating on a signed mandate.
+    ///
+    ///         Deliberately does NOT validate the basket. The vault owns that:
+    ///         it requires `length == tokens.length` and `sum == 10000`, and
+    ///         this contract cannot know the token count without a call. A
+    ///         partial check here -- the sum but not the length -- would look
+    ///         like validation while still letting a mismatched basket through
+    ///         to revert deeper. A vault revert unwinds the whole transaction
+    ///         including the nonce and rate-limit writes, so nothing is
+    ///         consumed by a rejected basket.
+    function executeBasketRebalance(
+        address vault,
+        uint16[] calldata weightsBps,
+        uint256 nonce,
+        uint256 expiry,
+        bytes   calldata signature
+    )
+        external
+        whenNotPaused
+        onlyRole(KEEPER_ROLE)
+        returns (bool)
+    {
+        if (vault == address(0)) revert ZeroVault();
+        _checkTimingAndNonce(vault, nonce, expiry);
+        _enforceRateLimit(vault);
+
+        bytes32 structHash = keccak256(
+            abi.encode(BASKET_REBALANCE_TYPEHASH, vault, _hashWeights(weightsBps), nonce, expiry)
+        );
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR(), structHash));
+        _verifySignature(digest, signature);
+
+        // CEI: consume before the external call, same as the spot path.
+        nonces[vault] = nonce;
+        recentRebalanceTimestamps[vault].push(block.timestamp);
+
+        IBasketRebalancer(vault).rebalanceTo(weightsBps);
+
+        emit BasketRebalanceExecuted(vault, weightsBps, nonce, msg.sender);
+        return true;
+    }
+
+    /// @dev EIP-712 hash of a `uint16[]`.
+    ///
+    ///      An array's encodeData is the keccak of its elements' encodeData
+    ///      concatenated, and each element is encoded to a full 32 bytes.
+    ///      Widening to uint256 first is what produces that padding:
+    ///      `abi.encodePacked` on a `uint16[]` would emit two bytes per
+    ///      element and hash to something no compliant signer would ever
+    ///      produce.
+    function _hashWeights(uint16[] calldata weightsBps) internal pure returns (bytes32) {
+        uint256[] memory padded = new uint256[](weightsBps.length);
+        for (uint256 i = 0; i < weightsBps.length; i++) {
+            padded[i] = weightsBps[i];
+        }
+        return keccak256(abi.encodePacked(padded));
+    }
+
+    /// @dev Expiry, expiry cap and nonce. Shared so the two entrypoints cannot
+    ///      drift apart -- the bug this whole change addresses came from two
+    ///      call paths that were meant to match and did not.
+    function _checkTimingAndNonce(address vault, uint256 nonce, uint256 expiry) internal view {
+        if (block.timestamp > expiry) revert SignalExpired(expiry, block.timestamp);
+        uint256 maxExpiry = block.timestamp + MAX_SIGNAL_EXPIRY;
+        if (expiry > maxExpiry) revert ExpiryTooFar(expiry, maxExpiry);
+        if (nonces[vault] >= nonce) revert NonceAlreadyUsed(vault, nonce);
+    }
+
+    /// @dev Sliding 24h window: compact out anything older than the cutoff,
+    ///      then refuse if the survivors already fill the limit.
+    function _enforceRateLimit(address vault) internal {
+        uint256 limit = dailyLimit[vault];
+        if (limit == 0) return;
+
+        uint256[] storage ts = recentRebalanceTimestamps[vault];
+        uint256 cutoff = _windowCutoff();
+
+        // Entries are appended in timestamp order, so anything expired sits at
+        // the front. Compact in place preserving order, then pop the tail. An
+        // earlier revision did `delete` followed by re-push, which zeroes every
+        // slot and then pays to write each survivor a second time.
+        uint256 write;
+        for (uint256 read = 0; read < ts.length; read++) {
+            if (ts[read] > cutoff) {
+                if (write != read) ts[write] = ts[read];
+                write++;
+            }
+        }
+        while (ts.length > write) ts.pop();
+
+        if (ts.length >= limit) revert DailyLimitExceeded(ts.length, limit);
+    }
+
 
     // ─── Admin functions ─────────────────────────────────────────────────
 
