@@ -51,7 +51,11 @@ cast wallet import <name> --interactive
 
 # Or generate into a keystore directly, so it is never printed at all.
 # The path and name are positional, not flags.
-cast wallet new ~/.foundry/keystores <name>
+cast wallet new ~/.foundry/keystores mykey            # bash / Git Bash
+
+# PowerShell does not expand "~" for a native executable, so it arrives
+# literally and cast reports "~/.foundry/keystores is not a directory":
+cast wallet new "$env:USERPROFILE\.foundry\keystores" mykey
 ```
 
 The second is the safer default and is what the guides should say.

@@ -74,6 +74,18 @@ contract DeployVaultsV1 is Script {
         address swapRouter = vm.envOr("SWAP_ROUTER", address(0));
         uint24 swapFeeTier = uint24(vm.envOr("SWAP_FEE_TIER", uint256(500)));
 
+        // Who may submit a signed rebalance, and who may pull the pause.
+        // Default to governance so a deploy is never left with these unseated;
+        // on mainnet these should be a keeper bot and a guardian multisig, not
+        // the Safe doing both jobs.
+        address keeper = vm.envOr("KEEPER", gov);
+        address guardian = vm.envOr("GUARDIAN", gov);
+        // Rebalances per vault per rolling 24h. Zero disables the limit
+        // entirely -- `if (limit > 0)` in the executor -- so it must not be
+        // the default.
+        uint256 dailyLimit = vm.envOr("DAILY_REBALANCE_LIMIT", uint256(4));
+        require(dailyLimit > 0, "DAILY_REBALANCE_LIMIT of 0 disables the rate limit");
+
         address stockToken1 = vm.envAddress("STOCK_TOKEN_1");
         address stockToken2 = vm.envOr("STOCK_TOKEN_2", address(0));
         address stockFeed1 = vm.envOr("STOCK_FEED_1", address(0));
@@ -221,6 +233,26 @@ contract DeployVaultsV1 is Script {
         //     timelock, and the deployer renounces its own.
         _handOver(address(r.oracle), gov, deployer);
         _handOver(address(r.factory), gov, deployer);
+        // Seat the executor's own roles BEFORE handing it over, or nothing
+        // can ever be granted again without a governance transaction.
+        //
+        // This was missing entirely. The deploy granted KEEPER_ROLE on each
+        // VAULT to the executor -- so the executor could drive the vaults --
+        // and never granted KEEPER_ROLE on the EXECUTOR to anybody, so
+        // executeRebalance was callable by nobody and the spot and rotation
+        // vaults shipped frozen. GUARDIAN_ROLE was unseated the same way,
+        // which meant the emergency pause existed and could not be pulled.
+        // Found on testnet 46630 after the fact; see the assertions below.
+        r.executor.grantRole(r.executor.KEEPER_ROLE(), keeper);
+        r.executor.grantRole(r.executor.GUARDIAN_ROLE(), guardian);
+
+        // And give the rate limit a value, because 0 means "no limit".
+        r.executor.setDailyLimit(address(r.spotVault), dailyLimit);
+        r.executor.setDailyLimit(address(r.yieldVault), dailyLimit);
+        if (address(r.rotationVault) != address(0)) {
+            r.executor.setDailyLimit(address(r.rotationVault), dailyLimit);
+        }
+
         _handOver(address(r.executor), gov, deployer);
         _handOver(r.swapAdapter, gov, deployer);
         if (r.yieldIsReal) _handOver(r.yieldAdapter, gov, deployer);
@@ -257,6 +289,19 @@ contract DeployVaultsV1 is Script {
             _assertStripped(address(r.rotationVault), deployer, "rotation vault");
         }
         require(r.oracle.minQuorum() <= r.oracle.updaterCount(), "oracle quorum unsatisfiable");
+
+        // A role nobody holds is a feature that does not exist. These four
+        // assertions are the ones whose absence let the executor ship inert.
+        require(
+            IAccessControl(address(r.executor)).hasRole(r.executor.KEEPER_ROLE(), keeper),
+            "nobody can submit a rebalance"
+        );
+        require(
+            IAccessControl(address(r.executor)).hasRole(r.executor.GUARDIAN_ROLE(), guardian),
+            "nobody can pull the pause"
+        );
+        require(r.executor.dailyLimit(address(r.spotVault)) > 0, "spot vault has no rate limit");
+        require(r.executor.dailyLimit(address(r.yieldVault)) > 0, "yield vault has no rate limit");
 
         console2.log("=== Zorpha vault layer deployed ===");
         console2.log("Oracle         ", address(r.oracle));

@@ -104,8 +104,12 @@ because the point is to test the whole stack rather than the contracts alone.
 
 **Spot vault (`zqHOOD`)**
 - [ ] Deposit, then have the manager sign an EIP-712 rebalance.
-- [ ] Submit it through `StrategyExecutor` from a different address — submission
-      is permissionless by design.
+- [ ] Submit it through `StrategyExecutor`. **Not** permissionless:
+      `executeRebalance` is `onlyRole(KEEPER_ROLE)` on the executor, so a keeper
+      submits the manager's signature. An earlier version of this line said
+      submission was permissionless by design, which was simply wrong about the
+      code — and the wrongness hid the fact that KEEPER_ROLE was unseated, so
+      nobody could submit at all.
 - [ ] Receipt event emitted; it appears in the portal's receipt list.
 - [ ] Replay the same signature: must revert on the nonce.
 - [ ] Submit an expired signature: must revert on expiry.
