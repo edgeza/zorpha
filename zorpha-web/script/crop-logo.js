@@ -5,15 +5,23 @@
 // filters, find the bounding box of pixels that are not transparent, then write
 // a fresh 8-bit RGBA PNG of just that region.
 //
-// Usage:
-//   npm run logo:crop                       (from zorpha-web/)
-//   node script/crop-logo.js                (from zorpha-web/)
-//   node script/crop-logo.js in.png out.png (explicit paths)
+// Usage -- the working directory MATTERS, because node has to find this file
+// before any of its own path handling can help:
 //
-// Paths resolve against the PACKAGE ROOT, not the shell's working directory.
-// Passing them as bare relative paths meant the documented command only worked
-// if you happened to be standing in zorpha-web/, and from the repo root it
-// failed with MODULE_NOT_FOUND before it could even say why.
+//   from the repo root:
+//     node zorpha-web/script/crop-logo.js
+//     npm --prefix zorpha-web run logo:crop
+//
+//   from zorpha-web/:
+//     node script/crop-logo.js
+//     npm run logo:crop
+//
+// The ARGUMENTS resolve against the package root, so they never need adjusting
+// and both default. That is a narrower guarantee than it first appears, and
+// worth being precise about: making the arguments location-independent does
+// nothing for the path to the script itself. `node script/crop-logo.js` from
+// the repo root still fails with MODULE_NOT_FOUND, and `npm run logo:crop`
+// there fails because the repo root has no package.json at all.
 
 const fs = require('fs');
 const path = require('path');

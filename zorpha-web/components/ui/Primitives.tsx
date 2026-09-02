@@ -14,7 +14,8 @@ import type { ReactNode } from 'react';
  * used directly the mark rendered at under half the size of its box and sat
  * visibly left of centre next to the wordmark. Regenerate with:
  *
- *   npm run logo:crop          (from zorpha-web/, paths are built in)
+ *   npm --prefix zorpha-web run logo:crop     (from the repo root)
+ *   npm run logo:crop                         (from zorpha-web/)
  *
  * `priority` because this is above the fold on every page and is the one image
  * a visitor should never watch load in.
