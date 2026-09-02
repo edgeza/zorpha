@@ -409,7 +409,7 @@ contract ZorphaBuybackTest is Test {
     }
 
     /// FINDING C-01 regression, part 1. The shipped contract emitted
-    /// BuybackExecuted(usdcSpent = full balance) while performing no swap at
+    /// BuybackExecuted(usdgSpent = full balance) while performing no swap at
     /// all: USDC was never spent and no ZOR was ever bought. A buyback must
     /// actually reduce total supply.
     function test_ExecuteActuallyBuysAndBurns() public {
@@ -424,7 +424,7 @@ contract ZorphaBuybackTest is Test {
         assertEq(usdc.balanceOf(address(buyback)), 0, "USDC must leave the contract");
         assertEq(token.totalSupply(), supplyBefore - 50_000e18, "supply must actually fall");
         assertEq(token.balanceOf(address(buyback)), 0, "nothing left unburned");
-        assertEq(buyback.totalUsdcSpent(), 5_000e6);
+        assertEq(buyback.totalUsdgSpent(), 5_000e6);
         assertEq(buyback.totalZorBurned(), 50_000e18);
     }
 
@@ -484,11 +484,11 @@ contract ZorphaBuybackTest is Test {
     /// FINDING C-01 regression, part 3. The old contract blocked USDC from
     /// `rescueToken` and had no other exit, so every dollar of fee revenue that
     /// arrived before a ZOR market existed was permanently stranded.
-    function test_UsdcCanAlwaysBeRecovered() public {
+    function test_UsdgCanAlwaysBeRecovered() public {
         usdc.mint(address(buyback), 7_500e6);
 
         vm.prank(timelock);
-        buyback.withdrawUsdc(treasury, 7_500e6);
+        buyback.withdrawUsdg(treasury, 7_500e6);
         assertEq(usdc.balanceOf(treasury), 7_500e6, "fee revenue must never be strandable");
     }
 
@@ -499,7 +499,7 @@ contract ZorphaBuybackTest is Test {
 
         vm.prank(keeper);
         vm.expectRevert();
-        buyback.withdrawUsdc(keeper, 1);
+        buyback.withdrawUsdg(keeper, 1);
 
         vm.prank(keeper);
         vm.expectRevert();

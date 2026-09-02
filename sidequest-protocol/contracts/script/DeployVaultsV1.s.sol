@@ -5,6 +5,7 @@ import {Script, console2} from "forge-std/Script.sol";
 
 import {Timelock} from "../src/governance/Timelock.sol";
 import {MedianOracle} from "../src/oracle/MedianOracle.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {MainnetSafety} from "../src/lib/MainnetSafety.sol";
 import {StrategyExecutor} from "../src/executor/StrategyExecutor.sol";
 import {VaultFactory, SpotVaultParams, RWRotationVaultParams, YieldVaultParams} from "../src/VaultFactory.sol";
@@ -164,8 +165,8 @@ contract DeployVaultsV1 is Script {
                     cashAsset: usdc,
                     oracle: stockFeed1 == address(0) ? defaultOracle : stockFeed1,
                     maxOracleStaleness: 1 hours,
-                    name: "Zorpha HOOD Long/Flat Vault",
-                    symbol: "zqHOOD",
+                    name: string.concat("Zorpha ", _symbolOf(stockToken1), " Long/Flat Vault"),
+                    symbol: string.concat("zq", _symbolOf(stockToken1)),
                     rebalanceThresholdBps: 200,
                     maxSlippageBps: 100,
                     performanceFeeBps: 2000,
@@ -200,7 +201,10 @@ contract DeployVaultsV1 is Script {
                         oracles: oracles,
                         maxOracleStaleness: 1 hours,
                         initialWeightsBps: weights,
-                        name: "Zorpha RWA Rotation Vault",
+                        // A basket has no single asset to take a name from,
+                        // so this one names the unit it is measured in
+                        // rather than any one holding.
+                        name: string.concat("Zorpha Rotation Vault (", _symbolOf(usdc), " base)"),
                         symbol: "zqROT",
                         performanceFeeBps: 2000,
                         feeRecipient: treasury,
@@ -212,14 +216,14 @@ contract DeployVaultsV1 is Script {
             r.rotationVault.grantRole(r.rotationVault.KEEPER_ROLE(), address(r.executor));
         }
 
-        // ─── Vault 3: USDC yield slot.
+        // ─── Vault 3: stable yield slot.
         r.yieldVault = YieldVault(
             r.factory.deployYieldVault(
                 YieldVaultParams({
                     asset: usdc,
                     adapter: r.yieldAdapter,
-                    name: "Zorpha USDC Yield Vault",
-                    symbol: "zqUSD",
+                    name: string.concat("Zorpha ", _symbolOf(usdc), " Yield Vault"),
+                    symbol: string.concat("zq", _symbolOf(usdc)),
                     performanceFeeBps: 1000,
                     feeRecipient: treasury,
                     admin: deployer
@@ -370,6 +374,23 @@ contract DeployVaultsV1 is Script {
     ///      SWEEPER_ROLE, GUARDIAN_ROLE and VAULT_ROLE. A wrong entry is
     ///      harmless (renounceRole on a role you do not hold is a no-op) but a
     ///      MISSING one is the whole bug this function exists to prevent.
+    /// @dev Read a token's own symbol, for naming a vault after what it holds.
+    ///
+    ///      Names used to be hardcoded, and drifted from reality immediately.
+    ///      The vault deployed to testnet 46630 is called
+    ///      "Zorpha HOOD Long/Flat Vault" and holds "Test Apple" (tAAPL) --
+    ///      the wrong company -- while the yield vault is
+    ///      "Zorpha USDC Yield Vault" holding tUSDG, on a chain that has no
+    ///      canonical USDC deployment at all.
+    ///
+    ///      Deriving the name means it cannot disagree with the asset, whatever
+    ///      STOCK_TOKEN_1 and USDG_TOKEN are set to. It also takes the host
+    ///      chain operator's own ticker out of a product name, which is a
+    ///      trademark question rather than an engineering one.
+    function _symbolOf(address token) internal view returns (string memory) {
+        return IERC20Metadata(token).symbol();
+    }
+
     function _allRoles() internal pure returns (bytes32[10] memory) {
         return [
             bytes32(0x00), // DEFAULT_ADMIN_ROLE

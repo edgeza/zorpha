@@ -20,12 +20,12 @@ import { formatAddress } from '@/lib/format';
 type Row = { vault: string; target: string; nav: string; manager: string; nonce: number };
 
 const SAMPLE: Row[] = [
-  { vault: 'zqHOOD', target: '70%', nav: '1.04182', manager: '0x8f2ab41c9d0e4c19', nonce: 42 },
+  { vault: 'zqEQ', target: '70%', nav: '1.04182', manager: '0x8f2ab41c9d0e4c19', nonce: 42 },
   { vault: 'zqROT', target: '20 / 80', nav: '0.99871', manager: '0x3c71de90ab2f7741', nonce: 17 },
   { vault: 'zqUSD', target: '—', nav: '1.00240', manager: '0x91b0ff23c7de5a08', nonce: 8 },
-  { vault: 'zqHOOD', target: '0%', nav: '1.03994', manager: '0x8f2ab41c9d0e4c19', nonce: 41 },
+  { vault: 'zqEQ', target: '0%', nav: '1.03994', manager: '0x8f2ab41c9d0e4c19', nonce: 41 },
   { vault: 'zqROT', target: '50 / 50', nav: '1.00113', manager: '0x3c71de90ab2f7741', nonce: 16 },
-  { vault: 'zqHOOD', target: '100%', nav: '1.02760', manager: '0x8f2ab41c9d0e4c19', nonce: 40 },
+  { vault: 'zqEQ', target: '100%', nav: '1.02760', manager: '0x8f2ab41c9d0e4c19', nonce: 40 },
 ];
 
 function Cell({ row }: { row: Row }) {

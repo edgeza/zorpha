@@ -252,7 +252,7 @@ export default function WhitepaperPage() {
               <P>
                 Every vault is an ERC-4626 share token over a single underlying asset, with a fixed
                 mandate set at deployment. Three types exist: a long/flat vault rotating one
-                tokenised equity against cash, a rotation vault reweighting a basket of equities
+                Stock Token against cash, a rotation vault reweighting a basket of Stock Tokens
                 against a base asset, and a yield vault routing idle stablecoin through a pluggable
                 adapter. Vaults are deployed through a gated factory rather than permissionlessly,
                 which is a deliberate limitation discussed in section 10.
@@ -591,9 +591,13 @@ ZOR.burn(zorBurned)          // reduces totalSupply`}
                 target within the vault&rsquo;s limits until it is rotated.
               </P>
               <P>
-                <strong className="text-ink-100">Underlying assets.</strong> Tokenised equities can
-                fall, be halted, be delisted, or diverge from the price of the asset they
-                reference.
+                <strong className="text-ink-100">Underlying assets.</strong> The equity vaults hold
+                Robinhood Stock Tokens, which Robinhood documents as tokenised debt securities
+                issued by Robinhood Assets (Jersey) Limited. They give economic exposure to a share
+                and confer no legal or beneficial ownership of it, no shareholder rights and no
+                votes. They can fall, be halted, be delisted, or diverge from the price of the
+                share they reference, and they carry their issuer&rsquo;s credit risk on top of
+                that. Deployment on Robinhood Chain implies no relationship with Robinhood.
               </P>
               <P>
                 <strong className="text-ink-100">Governance.</strong> Privileged roles exist. A

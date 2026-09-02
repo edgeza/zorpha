@@ -80,7 +80,13 @@ contract DeployZorphaToken is Script {
         bytes32 airdropRoot = vm.envBytes32("AIRDROP_MERKLE_ROOT");
         uint256 claimDeadline = vm.envUint("AIRDROP_CLAIM_DEADLINE");
         uint256 timelockDelay = vm.envOr("TIMELOCK_DELAY", uint256(48 hours));
-        uint256 buybackThreshold = vm.envOr("BUYBACK_THRESHOLD_USDC", uint256(1_000 * 1e6));
+        // BUYBACK_THRESHOLD_USDG, with the old USDC spelling still honoured so a
+        // saved .env or an in-flight runbook does not break on the rename. Same
+        // pattern as USDG_TOKEN / USDC_TOKEN in deploy-and-verify.sh.
+        uint256 buybackThreshold = vm.envOr(
+            "BUYBACK_THRESHOLD_USDG",
+            vm.envOr("BUYBACK_THRESHOLD_USDC", uint256(1_000 * 1e6))
+        );
 
         require(liquidityRecipient != address(0), "LIQUIDITY_RECIPIENT unset");
         require(airdropRoot != bytes32(0), "AIRDROP_MERKLE_ROOT unset");

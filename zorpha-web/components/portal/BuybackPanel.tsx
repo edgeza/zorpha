@@ -20,7 +20,7 @@ export function BuybackPanel() {
   const { data: usdcSpent } = useReadContract({
     abi: buybackAbi,
     address: contracts.buyback,
-    functionName: 'totalUsdcSpent',
+    functionName: 'totalUsdgSpent',
     query: { enabled: deployed },
   });
 

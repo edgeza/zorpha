@@ -12,9 +12,9 @@ export const metadata: Metadata = {
 
 const VAULTS = [
   {
-    symbol: 'zqHOOD',
+    symbol: 'zqEQ',
     name: 'Long / Flat Equity',
-    body: 'Holds a single tokenised equity or sits in cash. The manager sets a target exposure in basis points; the vault will not act on a target that moves less than its rebalance threshold, which stops fee-generating churn.',
+    body: 'Holds a single Stock Token or sits in cash. The manager sets a target exposure in basis points; the vault will not act on a target that moves less than its rebalance threshold, which stops fee-generating churn.',
     specs: [
       ['Mandate', 'One asset versus USDG, 0–100% exposure'],
       ['Pricing', 'Single oracle, staleness-checked, fails closed'],
@@ -25,7 +25,7 @@ const VAULTS = [
   {
     symbol: 'zqROT',
     name: 'RWA Rotation',
-    body: 'Holds a basket of tokenised equity exposure against a USDG base and reweights between them. Target weights are stored onchain, so the intended portfolio is public before the trades settle.',
+    body: 'Holds a basket of Stock Tokens against a USDG base and reweights between them. Target weights are stored onchain, so the intended portfolio is public before the trades settle.',
     specs: [
       ['Mandate', 'N-asset basket, weights sum to 100%'],
       ['Pricing', 'One oracle per asset, each staleness-checked'],

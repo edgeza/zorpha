@@ -28,7 +28,7 @@
 #
 # Optional env:
 #   TIMELOCK_DELAY           default 172800 (48h)
-#   BUYBACK_THRESHOLD_USDC   default 1000e6
+#   BUYBACK_THRESHOLD_USDG   default 1000e6 (BUYBACK_THRESHOLD_USDC also accepted)
 #   ORACLE_UPDATERS          comma-separated updater addresses (phase B)
 #   ORACLE_QUORUM            median quorum (phase B), must be <= updater count
 #   STOCK_TOKEN_1/2, STOCK_FEED_1/2                        (phase B)

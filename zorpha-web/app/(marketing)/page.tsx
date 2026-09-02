@@ -37,15 +37,15 @@ const STEPS = [
 
 const VAULTS = [
   {
-    symbol: 'zqHOOD',
-    name: 'HOOD Long/Flat',
-    mandate: 'Rotates a single tokenised equity between full exposure and cash.',
+    symbol: 'zqEQ',
+    name: 'Long / Flat Equity',
+    mandate: 'Moves a single Stock Token between full exposure and cash.',
     detail: 'Oracle-gated · 1% max slippage · 20% performance fee',
   },
   {
     symbol: 'zqROT',
     name: 'RWA Rotation',
-    mandate: 'Reweights a basket of tokenised equity exposure against a USDG base.',
+    mandate: 'Reweights a basket of Stock Tokens against a USDG base.',
     detail: 'Per-asset oracles · basket weights onchain · 20% performance fee',
   },
   {

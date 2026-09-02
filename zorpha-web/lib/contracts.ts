@@ -212,7 +212,7 @@ export const merkleDistributorAbi = [
 export const buybackAbi = [
   {
     type: 'function',
-    name: 'totalUsdcSpent',
+    name: 'totalUsdgSpent',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ type: 'uint256' }],

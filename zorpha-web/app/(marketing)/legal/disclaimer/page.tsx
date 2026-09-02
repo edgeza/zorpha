@@ -86,9 +86,24 @@ export default function DisclaimerPage() {
             vault exposure to a harmful target within the vault&rsquo;s limits until it is rotated.
           </li>
           <li>
-            <strong className="text-ink-200">Underlying asset risk.</strong> Tokenised equities can
-            fall in value, be halted, be delisted, or diverge in price from the asset they
-            reference.
+            <strong className="text-ink-200">What a Stock Token is, and is not.</strong> The equity
+            vaults hold Robinhood Stock Tokens. Per Robinhood&rsquo;s own documentation these are
+            tokenised <em>debt securities</em> issued by Robinhood Assets (Jersey) Limited. They
+            provide economic exposure to an underlying share and confer{' '}
+            <strong className="text-ink-200">no legal or beneficial ownership</strong> of it, no
+            shareholder rights and no voting rights. They are not shares, and a vault share is not
+            a share in a company.
+          </li>
+          <li>
+            <strong className="text-ink-200">Underlying asset risk.</strong> A Stock Token can fall
+            in value, be halted, be delisted, or diverge in price from the share it references. It
+            also carries the credit risk of its issuer, which an actual share does not.
+          </li>
+          <li>
+            <strong className="text-ink-200">Jurisdiction.</strong> Stock Tokens carry the
+            issuer&rsquo;s own eligibility restrictions. Deployment on Robinhood Chain is not a
+            listing, an endorsement, or any integration with the Robinhood brokerage app, and
+            Zorpha has no relationship with Robinhood.
           </li>
           <li>
             <strong className="text-ink-200">Liquidity risk.</strong> There may be no market in
