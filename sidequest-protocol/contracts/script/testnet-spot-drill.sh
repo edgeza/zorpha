@@ -166,22 +166,22 @@ REBALANCE_TYPEHASH=$(call "$EXEC" 'REBALANCE_TYPEHASH()(bytes32)')
 
 # digest = keccak256(0x1901 || domainSeparator || structHash)
 digest_for() {
-  local weight=$1 nonce=$2 expiry=$3
+  local target=$1 weight=$2 nonce=$3 expiry=$4
   local sh
   sh=$(cast keccak "$(cast abi-encode 'f(bytes32,address,uint16,uint256,uint256)' \
-        "$REBALANCE_TYPEHASH" "$VAULT" "$weight" "$nonce" "$expiry")")
+        "$REBALANCE_TYPEHASH" "$target" "$weight" "$nonce" "$expiry")")
   cast keccak "$(printf '0x1901%s%s' "${DOMAIN#0x}" "${sh#0x}")"
 }
 
 # --no-hash: the digest is already the 32 bytes to sign. Without it cast would
 # apply the personal_sign prefix and produce a signature the contract rejects.
 sign_for() {
-  cast wallet sign --no-hash --account "$SIGNER_ACCT" "$(digest_for "$1" "$2" "$3")"
+  cast wallet sign --no-hash --account "$SIGNER_ACCT" "$(digest_for "$1" "$2" "$3" "$4")"
 }
 
 submit() {
   cast send "$EXEC" 'executeRebalance(address,uint16,uint256,uint256,bytes)' \
-    "$VAULT" "$1" "$2" "$3" "$4" \
+    "$1" "$2" "$3" "$4" "$5" \
     --rpc-url "$RPC" --account "$KEEPER_ACCT" >/dev/null 2>"$ERRFILE"
 }
 
@@ -206,9 +206,9 @@ THRESH=$(call "$VAULT" 'rebalanceThresholdBps()(uint16)')
 info "current target $CUR_WEIGHT bps -> $WEIGHT bps, threshold $THRESH bps of tvl"
 
 N1=$(bi "$NONCE0" add 1)
-SIG=$(sign_for "$WEIGHT" "$N1" "$GOOD_EXPIRY")
+SIG=$(sign_for "$VAULT" "$WEIGHT" "$N1" "$GOOD_EXPIRY")
 info "weight 5000 bps, nonce $N1, expiry $GOOD_EXPIRY"
-submit "$WEIGHT" "$N1" "$GOOD_EXPIRY" "$SIG" || die "a valid rebalance was REJECTED: $(reason)
+submit "$VAULT" "$WEIGHT" "$N1" "$GOOD_EXPIRY" "$SIG" || die "a valid rebalance was REJECTED: $(reason)
      $(tail -2 "$ERRFILE")"
 ok "executed"
 
@@ -222,7 +222,7 @@ ok "vault rebalanceCount $COUNT0 -> $COUNT1"
 # The same bytes again. If this succeeds, any observer can repeat a manager's
 # instruction at a moment of their choosing.
 bold "2/7  The same signature again must revert"
-if submit "$WEIGHT" "$N1" "$GOOD_EXPIRY" "$SIG"; then
+if submit "$VAULT" "$WEIGHT" "$N1" "$GOOD_EXPIRY" "$SIG"; then
   die "REPLAY SUCCEEDED. A captured signature can be re-executed at will."
 fi
 ok "replay reverted: $(reason)"
@@ -231,8 +231,8 @@ ok "replay reverted: $(reason)"
 bold "3/7  An expired signature must revert"
 N2=$(bi "$N1" add 1)
 PAST=$(bi "$NOW" sub 60)
-SIG_OLD=$(sign_for "$WEIGHT" "$N2" "$PAST")
-if submit "$WEIGHT" "$N2" "$PAST" "$SIG_OLD"; then
+SIG_OLD=$(sign_for "$VAULT" "$WEIGHT" "$N2" "$PAST")
+if submit "$VAULT" "$WEIGHT" "$N2" "$PAST" "$SIG_OLD"; then
   die "an EXPIRED signature executed. Deadlines are not enforced."
 fi
 ok "expired reverted: $(reason)"
@@ -241,8 +241,8 @@ ok "expired reverted: $(reason)"
 # A signature good for a year is a standing authority, not an instruction.
 bold "4/7  A deadline beyond the cap must revert"
 TOO_FAR=$(bi "$(bi "$NOW" add "$MAX_EXPIRY")" add 86400)
-SIG_FAR=$(sign_for "$WEIGHT" "$N2" "$TOO_FAR")
-if submit "$WEIGHT" "$N2" "$TOO_FAR" "$SIG_FAR"; then
+SIG_FAR=$(sign_for "$VAULT" "$WEIGHT" "$N2" "$TOO_FAR")
+if submit "$VAULT" "$WEIGHT" "$N2" "$TOO_FAR" "$SIG_FAR"; then
   die "a deadline $((86400 / 3600))h beyond MAX_SIGNAL_EXPIRY was accepted."
 fi
 ok "expiry cap enforced: $(reason)"
@@ -251,9 +251,9 @@ ok "expiry cap enforced: $(reason)"
 # The keeper signs its own instruction. It has KEEPER_ROLE, so it may submit --
 # but it is not the authorized signer, so it may not decide.
 bold "5/7  A signature from the wrong key must revert"
-DIGEST=$(digest_for "$WEIGHT" "$N2" "$GOOD_EXPIRY")
+DIGEST=$(digest_for "$VAULT" "$WEIGHT" "$N2" "$GOOD_EXPIRY")
 SIG_WRONG=$(cast wallet sign --no-hash --account "$KEEPER_ACCT" "$DIGEST")
-if submit "$WEIGHT" "$N2" "$GOOD_EXPIRY" "$SIG_WRONG"; then
+if submit "$VAULT" "$WEIGHT" "$N2" "$GOOD_EXPIRY" "$SIG_WRONG"; then
   die "the KEEPER signed its own rebalance and it EXECUTED. Submission
      authority and signing authority are not separated."
 fi
@@ -267,48 +267,75 @@ if submit 10001 "$N2" "$GOOD_EXPIRY" "$SIG_BAD"; then
 fi
 ok "weight bound enforced: $(reason)"
 
-# ─── 7. Rate limit ──────────────────────────────────────────────────────────
-# One rebalance is already spent from step 1, so fill the rest of the window
-# and then try once more.
+# --- 7. Rate limit ---------------------------------------------------------
+# Against a no-op target, not the vault.
+#
+# The rate limit is the executor's own property: executeRebalance validates
+# expiry, nonce, signature and the sliding 24h window itself, and only then
+# calls rebalanceTo. Asserting it against a real vault means every submission
+# has to be a trade the vault and its swap venue can service, which entangles
+# the assertion with oracle prices, rebalance thresholds and adapter liquidity.
+#
+# On this deployment that entanglement is fatal, not merely awkward.
+# StubSwapAdapter swaps 1:1 on RAW units regardless of decimals, so the single
+# real trade in step 1 left the 6dp cash leg valued eleven orders of magnitude
+# too high: grossValue went from 1e20 to 2e29. Every rebalance after that
+# demands a trade nothing can service, and even a full redemption reverts on
+# slippage. The first version of this step assumed repeating the same weight
+# would be a harmless no-op; submission 2 of 4 failed instead, for reasons with
+# nothing to do with rate limiting.
+#
+# So measure the limit where nothing can distort it. NoopRebalancer accepts any
+# weight and does nothing, and the executor keys nonces and the window by
+# target address, so this is a clean slate.
 bold "7/7  The rolling rate limit must bite"
-# The same weight, deliberately, so these submissions do NOT trade.
-#
-# The rate limit is enforced by the executor before it calls the vault at all:
-# expiry, nonce, signature and the sliding window are all checked in
-# executeRebalance, and only then does it reach rebalanceTo. So a submission
-# that takes the vault's sub-threshold early return still consumes a nonce and
-# a rate-limit slot, which is exactly what this step is measuring.
-#
-# Not trading is also the safer choice with the stub adapter. It swaps 1:1 on
-# raw units regardless of decimals, so every trade between an 18dp equity and a
-# 6dp stable leaves the vault holding a nonsense cash balance and a distorted
-# grossValue. Four more real trades would compound that and the loop could then
-# fail for accounting reasons that have nothing to do with the rate limit.
-RL_WEIGHT="$WEIGHT"
-info "rate-limit submissions repeat $RL_WEIGHT bps: no trade, but each still"
-info "consumes a nonce and a slot, which is what the limit is enforced on"
-REMAINING=$(bi "$LIMIT" sub 1)
-info "limit $LIMIT, one already used; submitting $REMAINING more, then one too many"
-NEXT="$N1"
-for ((i = 0; i < REMAINING; i++)); do
+
+NOOP_CACHE=".noop-rebalancer-$CHAIN_ID"
+[[ -f "$NOOP_CACHE" ]] || die "no $NOOP_CACHE. Run ./script/testnet-spot-setup.sh first."
+NOOP=$(cat "$NOOP_CACHE")
+NOOP_LIMIT=$(call "$EXEC" 'dailyLimit(address)(uint256)' "$NOOP")
+[[ "$NOOP_LIMIT" != "0" ]] || die "the noop target has no dailyLimit; re-run the setup"
+NOOP_NONCE=$(call "$EXEC" 'nonces(address)(uint256)' "$NOOP")
+CALLS0=$(call "$NOOP" 'calls()(uint256)')
+
+info "target $NOOP"
+info "limit $NOOP_LIMIT, nonce $NOOP_NONCE, calls so far $CALLS0"
+
+# Fill the window exactly, then go one over.
+NEXT="$NOOP_NONCE"
+for ((i = 1; i <= NOOP_LIMIT; i++)); do
   NEXT=$(bi "$NEXT" add 1)
-  S=$(sign_for "$RL_WEIGHT" "$NEXT" "$GOOD_EXPIRY")
-  submit "$RL_WEIGHT" "$NEXT" "$GOOD_EXPIRY" "$S" \
-    || die "rebalance $((i + 2)) of $LIMIT was rejected before the limit: $(reason)"
-  info "  $((i + 2))/$LIMIT ok"
+  S=$(sign_for "$NOOP" "$WEIGHT" "$NEXT" "$GOOD_EXPIRY")
+  submit "$NOOP" "$WEIGHT" "$NEXT" "$GOOD_EXPIRY" "$S" \
+    || die "submission $i of $NOOP_LIMIT was rejected BEFORE the limit: $(reason)"
+  info "  $i/$NOOP_LIMIT accepted"
 done
 
+CALLS1=$(call "$NOOP" 'calls()(uint256)')
+eq "$CALLS1" "$(bi "$CALLS0" add "$NOOP_LIMIT")" \
+  || die "the target was called $(bi "$CALLS1" sub "$CALLS0") times, expected $NOOP_LIMIT"
+ok "all $NOOP_LIMIT accepted, and every one reached the target"
+
 NEXT=$(bi "$NEXT" add 1)
-S=$(sign_for "$RL_WEIGHT" "$NEXT" "$GOOD_EXPIRY")
-if submit "$RL_WEIGHT" "$NEXT" "$GOOD_EXPIRY" "$S"; then
-  die "rebalance $((LIMIT + 1)) succeeded against a limit of $LIMIT.
+S=$(sign_for "$NOOP" "$WEIGHT" "$NEXT" "$GOOD_EXPIRY")
+if submit "$NOOP" "$WEIGHT" "$NEXT" "$GOOD_EXPIRY" "$S"; then
+  die "submission $(bi "$NOOP_LIMIT" add 1) succeeded against a limit of $NOOP_LIMIT.
      The rate limit does not bite, so a compromised signer is unbounded."
 fi
-ok "rebalance $((LIMIT + 1)) reverted: $(reason)"
+ok "submission $(bi "$NOOP_LIMIT" add 1) reverted: $(reason)"
+
+eq "$(call "$NOOP" 'calls()(uint256)')" "$CALLS1" \
+  || die "the rejected submission still reached the target"
+ok "and the rejected one never reached the target"
 
 bold "Drill passed"
 echo "  A signed instruction executes once, and only once, only from the"
 echo "  authorized signer, only before its deadline, only within the weight"
-echo "  bound, and only $LIMIT times a day. The keeper can submit and cannot"
-echo "  decide."
+echo "  bound, and only $NOOP_LIMIT times a rolling day. The keeper can submit"
+echo "  and cannot decide."
+echo
+echo "  What this does NOT prove: trade economics. StubSwapAdapter has none --"
+echo "  it swaps 1:1 on raw units and ignores decimals, so the receipt's NAV"
+echo "  figures after step 1 are nonsense and the vault is now un-redeemable"
+echo "  on this testnet. That needs SWAP_ROUTER pointed at a real venue."
 echo

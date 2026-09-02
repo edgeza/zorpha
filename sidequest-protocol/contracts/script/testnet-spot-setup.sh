@@ -112,7 +112,7 @@ info "swap     $SWAP   (stub: 1:1, must be pre-funded)"
 info "actor    $ACTOR"
 
 # ─── 1. Seat an oracle updater that is not the burned key ───────────────────
-bold "1/5  Oracle updater"
+bold "1/6  Oracle updater"
 U_ROLE=$(cast keccak "UPDATER_ROLE")
 if eq "$(call "$ORACLE" 'hasRole(bytes32,address)(bool)' "$U_ROLE" "$ACTOR")" true; then
   ok "already an updater"
@@ -130,7 +130,7 @@ fi
 info "updaterCount $(call "$ORACLE" 'updaterCount()(uint256)'), minQuorum $(call "$ORACLE" 'minQuorum()(uint256)')"
 
 # ─── 2. Post a price ───────────────────────────────────────────────────────
-bold "2/5  Price report"
+bold "2/6  Price report"
 MIN=$(call "$ORACLE" 'minAnswer()(int256)')
 MAX=$(call "$ORACLE" 'maxAnswer()(int256)')
 DEC=$(call "$ORACLE" 'decimals()(uint8)')
@@ -150,7 +150,7 @@ info "$ROUND"
 # ─── 3. Fund the swap adapter ──────────────────────────────────────────────
 # It swaps 1:1 out of its own balance, so it needs both legs. This is a stub
 # standing in for a router; on mainnet the router holds nothing on our behalf.
-bold "3/5  Fund the stub swap adapter"
+bold "3/6  Fund the stub swap adapter"
 # Sized in RAW UNITS off the deposit, not in nominal token amounts.
 #
 # The stub "returns the same amount as the input" -- 1:1 on raw units, with no
@@ -181,7 +181,7 @@ for pair in "$ASSET:$FUND_RAW:equity" "$CASH:$FUND_RAW:cash"; do
 done
 
 # ─── 4. Deposit, so there is something to rebalance ────────────────────────
-bold "4/5  Deposit into the vault"
+bold "4/6  Deposit into the vault"
 # Skip if the vault is already funded. Re-running setup used to stack another
 # deposit on top every time -- harmless but it grows the vault, spends gas, and
 # makes the figures in the drill's output drift from run to run for no reason.
@@ -205,7 +205,7 @@ fi
 # grossValue is the figure `rebalanceTo` gates on. If it is still zero, or it
 # reverts, the drill will pass its signature checks and prove nothing about
 # trading.
-bold "5/5  Can it rebalance?"
+bold "5/6  Can it rebalance?"
 TVL=$(try "$VAULT" 'grossValue()(uint256)')
 [[ -n "$TVL" && "$TVL" != "0" ]] \
   || die "grossValue is still ${TVL:-reverting}. rebalanceTo would take the
@@ -215,6 +215,39 @@ info "totalSupply     $(call "$VAULT" 'totalSupply()(uint256)')"
 info "rebalanceCount  $(call "$VAULT" 'rebalanceCount()(uint256)')"
 info "targetWeightBps $(call "$VAULT" 'targetWeightBps()(uint16)')"
 info "threshold       $(call "$VAULT" 'rebalanceThresholdBps()(uint16)') bps of tvl"
+
+# ─── 6. A rate-limit target the vault cannot distort ───────────────────────
+# The executor's rate limit is its own property -- it validates the window
+# before calling the vault at all -- but testing it against the real vault
+# entangles the assertion with oracle prices, rebalance thresholds and adapter
+# liquidity. On this deployment that entanglement is fatal: one stub swap
+# inflates the cash leg eleven orders of magnitude, after which every rebalance
+# demands an impossible trade. So the limit gets its own no-op target.
+bold "6/6  Rate-limit target"
+CACHE=".noop-rebalancer-$CHAIN_ID"
+if [[ -f "$CACHE" ]] && [[ -n "$(cat "$CACHE")" ]]; then
+  NOOP=$(cat "$CACHE")
+  CODE=$(cast code "$NOOP" --rpc-url "$RPC")
+  [[ ${#CODE} -gt 2 ]] || die "cached $NOOP has no code; delete $CACHE and re-run"
+  ok "reusing $NOOP"
+else
+  # --constructor-args would go last, but this one takes none.
+  OUT=$(forge create src/testnet/TestnetFixtures.sol:NoopRebalancer         --rpc-url "$RPC" --account "$ACCOUNT" --broadcast --json)
+  NOOP=$(MSYS_NO_PATHCONV=1 node -e 'process.stdout.write(JSON.parse(process.argv[1]).deployedTo || "")' -- "$OUT")
+  [[ -n "$NOOP" ]] || die "could not read the deployed address"
+  printf '%s' "$NOOP" > "$CACHE"
+  ok "deployed $NOOP"
+fi
+
+EXEC=$(env_of NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS)
+RL_LIMIT="${RATE_LIMIT:-4}"
+CUR=$(try "$EXEC" 'dailyLimit(address)(uint256)' "$NOOP")
+if [[ "${CUR:-0}" != "$RL_LIMIT" ]]; then
+  send "$EXEC" 'setDailyLimit(address,uint256)' "$NOOP" "$RL_LIMIT"
+  ok "dailyLimit for the noop target set to $RL_LIMIT"
+else
+  ok "dailyLimit already $RL_LIMIT"
+fi
 
 bold "Ready"
 echo "  The oracle has a price, the adapter has both legs, and the vault holds"
