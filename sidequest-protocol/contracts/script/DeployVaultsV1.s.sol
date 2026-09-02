@@ -5,6 +5,7 @@ import {Script, console2} from "forge-std/Script.sol";
 
 import {Timelock} from "../src/governance/Timelock.sol";
 import {MedianOracle} from "../src/oracle/MedianOracle.sol";
+import {MainnetSafety} from "../src/lib/MainnetSafety.sol";
 import {StrategyExecutor} from "../src/executor/StrategyExecutor.sol";
 import {VaultFactory, SpotVaultParams, RWRotationVaultParams, YieldVaultParams} from "../src/VaultFactory.sol";
 import {ReputationRegistry} from "../src/reputation/ReputationRegistry.sol";
@@ -295,6 +296,20 @@ contract DeployVaultsV1 is Script {
             _assertStripped(address(r.rotationVault), deployer, "rotation vault");
         }
         require(r.oracle.minQuorum() <= r.oracle.updaterCount(), "oracle quorum unsatisfiable");
+
+        // Testnet scaffolding must not reach mainnet. The three conditions and
+        // the reasoning live in `MainnetSafety`, as a library so a test can
+        // exercise the real check rather than a copy of it -- see
+        // test/lib/MainnetSafety.t.sol. Until now these were guarded only by
+        // the console warnings printed below, which arrive after the
+        // transactions have landed.
+        MainnetSafety.check(
+            block.chainid,
+            r.swapIsReal,
+            r.yieldIsReal,
+            r.oracle.updaterCount(),
+            r.oracle.minQuorum()
+        );
 
         // A role nobody holds is a feature that does not exist. These four
         // assertions are the ones whose absence let the executor ship inert.

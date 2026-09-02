@@ -63,6 +63,22 @@ here because a decision that lives only in a findings doc does not get made.
       until it is redeployed (correctly, and loudly). And confirm in a wallet
       that a rebalance actually renders -- that is the entire point and no
       Foundry test can assert it.
+- [x] ~~The deploy script would put testnet scaffolding on mainnet.~~ **Gated.**
+      The 1:1 stub swap adapter, the stub yield adapter and a single-updater
+      oracle were guarded only by `console2.log` warnings printed *after* a
+      successful deploy. `MainnetSafety.check` now reverts on chain 4663 unless
+      both adapters are real and the oracle is at least 2-of-3. `minQuorum` is
+      immutable, so what the script deploys is what mainnet keeps.
+      **Testnet is running quorum 1 against 2 updaters today** -- that is fine
+      there and is exactly what the gate refuses on mainnet, so you need three
+      updater keys before a mainnet deploy.
+- [ ] **`ZorphaBuyback.setRouter()` has never been called.** `router()` is the
+      zero address on testnet, so any buyback reverts with `RouterNotSet()`.
+      Owner is the Timelock, so this is a scheduled governance action, not a
+      transaction you can send directly. Nothing in the portal offers a trigger
+      button, so no failing transaction is invited -- but the buyback copy does
+      say anyone can trigger one once the threshold is met, which is not true
+      until the router is set.
 - [ ] **Both deployer and manager signer keys are burned.** Recorded in
       [BURNED-KEYS.md](BURNED-KEYS.md), enforced by
       `script/check-burned-keys.sh`. Regenerate before mainnet; the gate will
