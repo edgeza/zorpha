@@ -115,6 +115,27 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
     // so this needs a compromised governance action to reach; guarding it costs
     // one storage slot and removes the window entirely.
 
+    // slither: reentrancy-no-eth on the `highWaterMark` write below.
+    //
+    // `_markFirstEntry` has to run AFTER `super.deposit`, and that is not a
+    // style choice: it reads `getNavPerShare()`, which returns the
+    // `10 ** decimals()` sentinel while supply is zero. Reading it before the
+    // mint would record the sentinel as the mark and disable performance fees
+    // for the life of the contract, which is the exact bug the early return in
+    // `_evaluateFees` exists to prevent. So the order cannot be inverted.
+    //
+    // Unreachable as reported. Both entrypoints are `nonReentrant`, so an
+    // adapter calling back into deposit/mint/withdraw/redeem reverts. The only
+    // other readers of `highWaterMark` are `_evaluateFees` (reached solely
+    // through those same guarded entrypoints and the keeper-only
+    // `evaluateFees`) and `highWaterMarkValue`, a view.
+    //
+    // What remains is narrower and worth stating: a malicious adapter could
+    // under-report `totalAssets()` during its own callback, so the mark records
+    // a NAV lower than reality and future gains are overcharged. Installing an
+    // adapter is timelocked, so that needs a compromised governance action --
+    // the same precondition the block above already accepts for the hooks.
+    // slither-disable-next-line reentrancy-no-eth
     function deposit(uint256 assets, address receiver)
         public
         override
@@ -128,6 +149,27 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         return shares;
     }
 
+    // slither: reentrancy-no-eth on the `highWaterMark` write below.
+    //
+    // `_markFirstEntry` has to run AFTER `super.deposit`, and that is not a
+    // style choice: it reads `getNavPerShare()`, which returns the
+    // `10 ** decimals()` sentinel while supply is zero. Reading it before the
+    // mint would record the sentinel as the mark and disable performance fees
+    // for the life of the contract, which is the exact bug the early return in
+    // `_evaluateFees` exists to prevent. So the order cannot be inverted.
+    //
+    // Unreachable as reported. Both entrypoints are `nonReentrant`, so an
+    // adapter calling back into deposit/mint/withdraw/redeem reverts. The only
+    // other readers of `highWaterMark` are `_evaluateFees` (reached solely
+    // through those same guarded entrypoints and the keeper-only
+    // `evaluateFees`) and `highWaterMarkValue`, a view.
+    //
+    // What remains is narrower and worth stating: a malicious adapter could
+    // under-report `totalAssets()` during its own callback, so the mark records
+    // a NAV lower than reality and future gains are overcharged. Installing an
+    // adapter is timelocked, so that needs a compromised governance action --
+    // the same precondition the block above already accepts for the hooks.
+    // slither-disable-next-line reentrancy-no-eth
     function mint(uint256 shares, address receiver)
         public
         override

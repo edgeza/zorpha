@@ -240,6 +240,8 @@ contract StubSwapAdapter is ISpotSwapAdapter, AccessControl {
     ///      independently-configured window would be a way for the adapter to
     ///      refuse a trade the vault considered fresh.
     function _price() internal view returns (uint256) {
+        // Only `answer` is used, deliberately, for the reason above.
+        // slither-disable-next-line unused-return
         (, int256 answer, , , ) = oracle.latestRoundData();
         if (answer <= 0) revert BadOraclePrice(answer);
         return uint256(answer);

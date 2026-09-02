@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /*
  * ─────────────────────────────────────────────────────────────────────────────
@@ -104,8 +105,14 @@ contract LossyYieldTarget is ERC4626 {
     /// @notice Simulate a loss. Same shares outstanding, fewer assets behind
     ///         them, so the share price falls exactly as it would if the
     ///         venue's holdings had fallen in value.
+    /// @dev    safeTransfer, not transfer. The bare call ignored the return
+    ///         value, so a token that reports failure instead of reverting
+    ///         would leave this function claiming a loss it had not taken --
+    ///         and the loss drills would then assert against a vault whose
+    ///         assets never moved. Fixture code, but a fixture that lies makes
+    ///         every drill built on it worthless.
     function lose(uint256 amount) external {
-        IERC20(asset()).transfer(SINK, amount);
+        SafeERC20.safeTransfer(IERC20(asset()), SINK, amount);
     }
 }
 
