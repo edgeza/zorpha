@@ -111,6 +111,38 @@ because the point is to test the whole stack rather than the contracts alone.
 - [ ] Submit an expired signature: must revert on expiry.
 - [ ] Exceed the daily rate limit: must revert.
 
+**Leadership and first loss** — the differentiator, so the one to test hardest
+
+- [x] A leader posts the bond and the seed and gets a vault:
+      `./script/testnet-launch-vault.sh <keystore-account>`.
+      Asserts the escrow is funded and that the vault points back at it, rather
+      than trusting the receipt.
+- [x] The escrow absorbs a loss before any depositor does:
+      `./script/testnet-loss-drill.sh <keystore-account>`.
+
+      This could not be tested at all until 2026-09-02. `TestYieldTarget` has
+      only `accrue()`, so no testnet venue could lose money and the one
+      mechanism the protocol exists for was unexercisable outside unit tests
+      with a mocked venue. `LossyYieldTarget` exists for this.
+
+      The drill asserts the mechanism, not that the transactions succeeded:
+      `totalAssets() = rawAssets() + escrowSupport()`, so after a loss
+      `rawAssets` falls, `escrowSupport` rises to the high-water mark, and
+      `totalAssets` does **not** move. It fails if `totalAssets` or nav/share
+      changes — if either does, the depositor absorbed the loss and the
+      subordination did nothing.
+
+      First run, testnet 46630: venue destroyed 200 tUSDG, depositor redeemed
+      the full 1,000, escrow fell 1,000 → 800, burn sink holds exactly 200.
+      Conservation exact.
+
+- [ ] **Partial coverage.** A loss LARGER than the escrow, where the depositor
+      takes only the uncovered remainder. Covered by
+      `testFuzz_DepositorNeverLosesMoreThanTheUncoveredShortfall` but not yet on
+      chain. Drill it with `LOSS_AMOUNT` set above the seed.
+- [ ] `reclaimBond` after the withdrawal timelock.
+- [ ] A second leader launching against the same target does not collide.
+
 **Oracle**
 - [ ] Let a price go stale past `maxOracleStaleness`, attempt a rebalance,
       confirm it **reverts** rather than trading on a stale price.
