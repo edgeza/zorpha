@@ -212,7 +212,11 @@ fi
 bold "3/7  A fresh, fair venue"
 REUSED=0
 if [[ -f "$CACHE" ]] && [[ -n "$(cat "$CACHE")" ]]; then
-  read -r NEW_ADAPTER VENUE < "$CACHE"
+  # `|| true`: read returns 1 at EOF with no trailing newline, having
+  # already assigned both variables. Under set -e that exits the script
+  # silently, mid-step, with nothing printed. Belt and braces with the
+  # newline the writer now emits.
+  read -r NEW_ADAPTER VENUE < "$CACHE" || true
   AC=$(cast code "$NEW_ADAPTER" --rpc-url "$RPC" 2>/dev/null || echo 0x)
   VC=$(cast code "$VENUE" --rpc-url "$RPC" 2>/dev/null || echo 0x)
   if [[ ${#AC} -gt 2 && ${#VC} -gt 2 ]]; then
@@ -240,7 +244,7 @@ if [[ "$REUSED" == "0" ]]; then
   NEW_ADAPTER=$(created "$OUT")
   [[ -n "$NEW_ADAPTER" ]] || die "could not read the adapter address"
   ok "deployed adapter $NEW_ADAPTER over it"
-  printf '%s %s' "$NEW_ADAPTER" "$VENUE" > "$CACHE"
+  printf '%s %s\n' "$NEW_ADAPTER" "$VENUE" > "$CACHE"
 fi
 same "$(call "$NEW_ADAPTER" 'target()(address)')" "$VENUE" || die "adapter target mismatch"
 same "$(call "$VENUE" 'asset()(address)')" "$ASSET" || die "venue asset mismatch"
