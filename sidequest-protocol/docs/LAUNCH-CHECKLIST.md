@@ -22,6 +22,43 @@ real venues correctly.
 
 ---
 
+## Open blockers — read before Phase 5
+
+These are not checklist steps. They are findings that should stop a mainnet
+deploy until somebody has decided what to do about them, and they are recorded
+here because a decision that lives only in a findings doc does not get made.
+
+- [ ] **A depositor can lose 9—10% of their principal on entry, silently.**
+      [FINDINGS-FEE-CLAIM-BACKING.md](FINDINGS-FEE-CLAIM-BACKING.md). Affects
+      **both** `SpotVaultMinimal` and `YieldVault`. An unclaimed performance fee
+      is a claim in asset units backed by a balance that moves independently of
+      it; when the two diverge, `totalAssets()` floors at zero rather than
+      reporting the gap, and the next depositor pays the difference. It is not
+      stuck: the claim is paid in full out of that depositor's principal and the
+      books balance afterwards. `YieldVault` has no write-down, so governance
+      cannot forgive it. Reproduced in two passing tests. **This is the one I
+      would not ship past.**
+- [ ] **The emergency exit strands the cash leg and reports the loss as zero.**
+      [FINDINGS-EMERGENCY-EXIT.md](FINDINGS-EMERGENCY-EXIT.md). Forfeiture is by
+      design; reporting it as `haircut: 0` is not, and nothing can ever recover
+      the orphaned balance. Four options, none chosen.
+- [ ] **Auditor review of the equalisation fix.**
+      [FINDINGS-EQUALISATION.md](FINDINGS-EQUALISATION.md). Now applied to both
+      vaults. It changes fee accounting in both directions and must not ship on
+      my say-so.
+- [ ] **EIP-712 blind signing.** The executor's domain is non-standard
+      (`EIP712Domain(uint256 chainId,address executor)`), so wallets cannot
+      render what a manager is signing.
+      [FINDINGS-EIP712-DOMAIN.md](FINDINGS-EIP712-DOMAIN.md). Fixing it
+      invalidates any in-flight signature, so it is cheapest to do before there
+      are any.
+- [ ] **Both deployer and manager signer keys are burned.** Recorded in
+      [BURNED-KEYS.md](BURNED-KEYS.md), enforced by
+      `script/check-burned-keys.sh`. Regenerate before mainnet; the gate will
+      block the deploy otherwise.
+
+---
+
 ## Phase 0 — Before anything
 
 - [ ] **Governance address that is not the deployer.** Both deploy scripts
@@ -36,7 +73,8 @@ real venues correctly.
 - [ ] `AIRDROP_CLAIM_DEADLINE` set to a future unix timestamp:
       `date -d '+90 days' +%s`
 
-**Gate:** `forge test` is green with zero failures.
+**Gate:** `forge test` is green with zero failures. 192 tests as of
+2026-09-02, two invariant suites included.
 
 ---
 
