@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { TOKEN, FLOAT_AT_LAUNCH_PCT } from '@/lib/tokenomics';
 import { formatCompact } from '@/lib/format';
 import { CountUp } from '@/components/motion/CountUp';
@@ -41,41 +40,6 @@ const BUILT_ON = [
   { label: 'Blockscout', detail: 'public explorer' },
 ];
 
-function ArrowRight({ className = 'h-4 w-4' }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <path d="M5 12h14" />
-      <path d="m12 5 7 7-7 7" />
-    </svg>
-  );
-}
-
-function Play({ className = 'h-4 w-4' }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />
-    </svg>
-  );
-}
-
 export function Hero() {
   return (
     <>
@@ -97,18 +61,6 @@ export function Hero() {
               moment it happened. No screenshots. No edits. No quietly deleted calls.
             </span>
           </>
-        }
-        action={
-          <Link href="/portal" className="btn-glass w-full sm:w-auto">
-            Open the portal
-            <ArrowRight />
-          </Link>
-        }
-        secondaryAction={
-          <Link href="/protocol" className="btn-quiet w-full sm:w-auto">
-            How it works
-            <Play />
-          </Link>
         }
         footnote={`Depositing never requires holding ${TOKEN.ticker}.`}
         meta={['Signed rebalances', 'Onchain receipts', '48h timelock']}

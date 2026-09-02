@@ -267,3 +267,55 @@ export async function withAdaptiveRange<T>(
 
   return { results, scannedTo: to };
 }
+
+// ─── Dry-run vault discovery ────────────────────────────────────────────────
+
+/**
+ * Type a vault by which accessor answers, for `DRY_RUN` where there is no
+ * `vaults` table to read.
+ *
+ * `cashAsset` exists only on the spot vault, `baseAsset` only on the rotation
+ * vault, `firstLossEscrow` only on the yield vault. Exactly one must answer:
+ * treating "neither of the first two replied" as yield would let a dropped RPC
+ * call silently mistype a vault, and then decode its receipts with the wrong
+ * event ABI -- which does not throw, it just matches nothing.
+ */
+export async function detectVaultType(
+  address: `0x${string}`,
+): Promise<'spot' | 'rotation' | 'yield' | null> {
+  const client = getPublicClient();
+
+  const probe = async (name: string, outputType: string): Promise<boolean> => {
+    try {
+      await client.readContract({
+        address,
+        abi: [
+          {
+            name,
+            type: 'function',
+            stateMutability: 'view',
+            inputs: [],
+            outputs: [{ type: outputType }],
+          },
+        ] as const,
+        functionName: name,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const [cash, base, escrow] = await Promise.all([
+    probe('cashAsset', 'address'),
+    probe('baseAsset', 'address'),
+    probe('firstLossEscrow', 'address'),
+  ]);
+
+  const matched = [cash, base, escrow].filter(Boolean).length;
+  if (matched !== 1) return null;
+  if (cash) return 'spot';
+  if (base) return 'rotation';
+  return 'yield';
+}
+

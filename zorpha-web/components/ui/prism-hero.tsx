@@ -21,23 +21,17 @@ import { motion, useAnimationControls, useReducedMotion } from 'motion/react';
  *
  * HOW "SHINE THROUGH" IS DONE
  *
- * Two stacked copies of the word:
+ * The word is cut from glass -- see GlassWord below for the four layers and
+ * what each one is for.
  *
- *   1. the base, held a little under full opacity, so the stone behind is
- *      genuinely visible *through* the glyphs. This is the effect proper, and it
- *      works everywhere because it is nothing but alpha.
- *   2. a bloom pass in `mix-blend-mode: screen`, so a facet sitting behind a
- *      letter drives that letter toward white and the stone reads as lighting
- *      the word rather than merely sitting behind it.
- *
- * The bloom is the enhancement, not the mechanism. A blended element composites
- * against its backdrop only within its own stacking context, and the entrance
- * animation puts `will-change: opacity` on an ancestor while it runs -- which
- * creates one. So for the first second the bloom is inert and only the alpha
- * shows; it engages when the springs settle and motion drops `will-change`.
- * That is a deliberate, graceful degradation, and it is why the legibility of
- * the wordmark rests on layer 1 alone. Do not "simplify" this by moving the
- * base colour into the blended layer.
+ * The first attempt was simply a translucent copy of the word plus a
+ * screen-blended bloom. It let the stone through, but a semi-transparent white
+ * word does not read as a material: it reads as faded type, and over a bright
+ * facet it washed out to nothing. The blend was also unreliable, because a
+ * blended element composites only within its own stacking context and the
+ * entrance animation puts `will-change` on an ancestor while it runs. Glass
+ * gets the same transparency from a gradient that is opaque at the rims, so the
+ * letterforms hold their shape whatever passes behind them.
  */
 
 const PrismScene = dynamic(() => import('./prism-scene'), {
@@ -46,6 +40,121 @@ const PrismScene = dynamic(() => import('./prism-scene'), {
   // in over a matching ground is invisible rather than a flash of empty box.
   loading: () => null,
 });
+
+/**
+ * The wordmark, cut from glass.
+ *
+ * Four layers, and every one earns its place. A single translucent <span> was
+ * the first attempt: it let the stone through, but a semi-transparent white word
+ * does not read as a material -- it reads as faded type, and over a bright
+ * facet it washed out to nothing.
+ *
+ *   caustic   a heavily blurred copy in the accent, behind everything: the
+ *             light the slab throws onto the page around itself.
+ *   body      a vertical gradient clipped to the glyphs. Near-opaque at the top
+ *             and bottom rims where a glass edge gathers light, dropping
+ *             through the waist so the crystal shows in the middle of each
+ *             letter. This is the glass, and it is what makes the word legible.
+ *   sweep     a narrow specular band travelling across the letterforms. Static
+ *             glass looks like plastic; it is the moving highlight that reads
+ *             as polish.
+ *   edge      a hairline stroke, so the letterforms keep a defined boundary
+ *             whatever the scene does behind them.
+ *
+ * WHAT IS NOT HERE, AND WHY
+ *
+ * A `backdrop-filter` layer clipped to the text, to blur and saturate the prism
+ * genuinely inside the glyphs. It was implemented and it does not work: the
+ * engine painted the filter over the element's whole box, so the wordmark sat
+ * in a pale blurred rectangle a third of the hero wide. `background-clip: text`
+ * clips a background; it does not clip a backdrop. Removed rather than left
+ * behind a flag, because a knob defaulting to broken is worse than no knob.
+ */
+function GlassWord({
+  word,
+  type,
+  accent,
+  label,
+}: {
+  word: string;
+  type: string;
+  accent: string;
+  label?: string;
+}) {
+  const clip: React.CSSProperties = {
+    WebkitBackgroundClip: 'text',
+    backgroundClip: 'text',
+    color: 'transparent',
+  };
+
+  return (
+    <span className="relative block">
+      {/* caustic */}
+      <span
+        aria-hidden
+        className={`absolute inset-0 block select-none ${type}`}
+        style={{ color: accent, filter: 'blur(34px)', opacity: 0.5 }}
+      >
+        {word}
+      </span>
+
+      {/* body -- the real heading, and the ONLY copy of the word that is not
+          aria-hidden. The decorative layers are siblings of it, never children:
+          nested inside, they made the heading's text content read
+          "ZorphaZorphaZorphaZorpha" for anything walking the DOM rather than
+          the accessibility tree, crawlers included. */}
+      <h1
+        aria-label={label}
+        className={`relative block ${type}`}
+        style={{
+          ...clip,
+          backgroundImage:
+            'linear-gradient(176deg,' +
+            'rgba(255,255,255,1) 0%,' +
+            'rgba(252,251,255,0.97) 14%,' +
+            'rgba(233,229,255,0.93) 33%,' +
+            'rgba(210,199,255,0.87) 50%,' +
+            'rgba(230,223,255,0.94) 67%,' +
+            'rgba(253,252,255,0.98) 88%,' +
+            'rgba(255,255,255,1) 100%)',
+          // Two shadows, not a glow: a tight dark one to seat the slab against
+          // the scene behind it, and a wide accent one for the bloom.
+          filter: `drop-shadow(0 2px 2px rgba(6,6,10,0.7)) drop-shadow(0 0 52px ${accent}59)`,
+        }}
+      >
+        {word}
+      </h1>
+
+      {/* sweep */}
+      <span
+        aria-hidden
+        className={`animate-glass-sweep absolute inset-0 block select-none motion-reduce:animate-none ${type}`}
+        style={{
+          ...clip,
+          backgroundImage:
+            'linear-gradient(100deg, transparent 38%, rgba(255,255,255,0.92) 50%, transparent 62%)',
+          backgroundSize: '220% 100%',
+          backgroundRepeat: 'no-repeat',
+        }}
+      >
+        {word}
+      </span>
+
+      {/* edge */}
+      <span
+        aria-hidden
+        className={`absolute inset-0 block select-none ${type}`}
+        style={{
+          color: 'transparent',
+          WebkitTextStrokeWidth: '0.7px',
+          WebkitTextStrokeColor: 'rgba(255,255,255,0.5)',
+        }}
+      >
+        {word}
+      </span>
+    </span>
+  );
+}
 
 /** Springs rather than duration curves -- the settle is what reads as costly. */
 const ENTER = {
@@ -74,8 +183,6 @@ export interface PrismHeroProps {
   footnote?: React.ReactNode;
   /** Small facts strip along the bottom. */
   meta?: string[];
-  /** How much of the stone shows through the glyphs. 0 opaque, 1 ghostly. */
-  shine?: number;
   /** Strength of the chromatic split. 0.2 subtle, 0.8 heavy. */
   dispersion?: number;
   /** Glass tint. Keep it close to white for a neutral crystal. */
@@ -106,10 +213,9 @@ export function PrismHero({
   secondaryAction,
   footnote,
   meta,
-  shine = 0.24,
   dispersion = 0.42,
   tint = '#ffffff',
-  echoOpacity = 0.28,
+  echoOpacity = 0,
   background = '#06060a',
   foreground = '#f6f6fb',
   accent = '#a48dff',
@@ -214,8 +320,19 @@ export function PrismHero({
   }, [reducedMotion, staticProgress]);
 
   // Shared by both copies of the wordmark, so they cannot drift apart.
+  // leading MUST leave room for the glyphs' full ink height.
+  //
+  // At leading-[0.86] the line box was shorter than the type, so ascenders and
+  // descenders overflowed it -- and since `background-clip: text` clips a
+  // background that is only ever painted across the element's own box, every
+  // overflowing part had nothing to clip and came out unpainted. That showed up
+  // as the Z, the p and the h being sliced off with stray marks where the box
+  // edge cut them: exactly the three letters in "Zorpha" that reach furthest.
+  //
+  // Tight leading bought nothing here anyway. This is a single line, so
+  // line-height only sets the box height; it does not tighten the letterforms.
   const wordType =
-    'font-display font-medium leading-[0.86] tracking-[-0.03em] ' +
+    'font-display font-medium leading-[1.06] tracking-[-0.03em] ' +
     'text-[clamp(4.25rem,17vw,13rem)]';
 
   return (
@@ -248,7 +365,7 @@ export function PrismHero({
           // Tuned against the rendered page, not guessed: the copy column puts
           // the wordmark a little above the band's centre, and the stone has to
           // sit behind the WORD rather than behind the whole section.
-          lift={0.46}
+          lift={0.78}
           active={onScreen}
           sceneChildren={sceneChildren}
         />
@@ -281,12 +398,14 @@ export function PrismHero({
         aria-hidden
         className="pointer-events-none absolute inset-0 z-10"
         style={{
-          // Held fully clear down to 46%, which is where the wordmark ends.
-          // Ramping from 34% instead dimmed the stone's own midriff and cost
-          // most of the effect to protect text that was not there yet.
+          // Deliberately late and gentle. An earlier, heavier ramp from 34%
+          // was half the reason the stone stopped looking like glass -- it ate
+          // the lower facets to protect copy that mostly is not there. It now
+          // holds fully clear to 58% and never fully opaque until the very
+          // bottom, where it doubles as the seam fade into the next section.
           background:
-            `linear-gradient(to bottom, transparent 46%, ${background}b3 63%, ` +
-            `${background}f2 80%, ${background} 100%)`,
+            `linear-gradient(to bottom, transparent 58%, ${background}80 74%, ` +
+            `${background}d9 88%, ${background} 100%)`,
         }}
       />
 
@@ -325,39 +444,13 @@ export function PrismHero({
 
         <div aria-hidden className="flex-1" />
 
-        {/* The wordmark, with the stone directly behind it. */}
+        {/* The wordmark, cut from glass, with the stone directly behind it.
+            Every decorative copy of the word lives inside GlassWord and is
+            aria-hidden, so the heading's own text content stays exactly
+            "Zorpha" for anything that walks the DOM rather than the
+            accessibility tree -- crawlers included. */}
         <motion.div variants={ENTER} className="relative mx-auto w-full text-center">
-          <h1
-            aria-label={wordLabel}
-            className={`relative block ${wordType}`}
-            style={{
-              color: foreground,
-              // Held under 1 so the crystal is visible through the letterforms.
-              opacity: 1 - shine * 0.62,
-              // A soft accent bloom, so the word looks lit by the stone even on
-              // the frames where no facet happens to sit behind a glyph.
-              textShadow: `0 0 70px ${accent}4d, 0 0 140px ${accent}26`,
-            }}
-          >
-            {word}
-          </h1>
-          {/* Bloom pass. Inert while the entrance runs; see the file header.
-              Deliberately a SIBLING of the heading rather than a child: nested
-              inside it, this second copy made the heading's text content read
-              "ZorphaZorpha" for anything that walks the DOM rather than the
-              accessibility tree -- crawlers included. aria-hidden fixes the
-              screen reader, not the document. */}
-          <span
-            aria-hidden
-            className={`pointer-events-none absolute inset-0 block ${wordType}`}
-            style={{
-              color: foreground,
-              mixBlendMode: 'screen',
-              opacity: shine * 0.85,
-            }}
-          >
-            {word}
-          </span>
+          <GlassWord word={word} type={wordType} accent={accent} label={wordLabel} />
         </motion.div>
 
         <div className="mx-auto mt-7 w-full max-w-2xl text-center">

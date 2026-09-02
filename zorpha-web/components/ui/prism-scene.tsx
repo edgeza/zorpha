@@ -99,73 +99,6 @@ function useWordTexture(text: string, color: string, fontFamily: string) {
 }
 
 /**
- * Soft radial glow, built procedurally, sitting furthest back in the stack.
- *
- * WHY THIS IS NOT DECORATION
- *
- * A crystal at transmission 1 and roughness 0.03 is almost purely refractive:
- * it shows what is BEHIND it rather than reflecting the rig in front. Behind it
- * is a near-black page, so across its rotation the stone kept passing through
- * angles where every facet refracted nothing and it disappeared from the hero
- * entirely -- verified by sampling three frames four seconds apart, one of
- * which was effectively blank.
- *
- * Giving it a lit field to refract fixes the cause rather than the symptom, and
- * it does so on brand: the core is the violet accent, so the dispersion splits
- * brand colour through the letterforms instead of splitting grey.
- */
-function makeGlow(color: string): THREE.CanvasTexture | null {
-  if (typeof document === 'undefined') return null;
-
-  const S = 512;
-  const canvas = document.createElement('canvas');
-  canvas.width = S;
-  canvas.height = S;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-
-  // Via THREE.Color so any CSS colour form the caller passes works, not just
-  // the 6-digit hex that string concatenation would silently require.
-  const c = new THREE.Color(color);
-  const rgb = [c.r, c.g, c.b].map((v) => Math.round(v * 255)).join(',');
-
-  // Falls to nothing well inside the plane's edge, so this reads as a halo
-  // around the stone rather than a violet wash over the whole band -- at a
-  // wider falloff it lit the description too and cost that text its crispness.
-  const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-  g.addColorStop(0, `rgba(${rgb},0.85)`);
-  g.addColorStop(0.24, `rgba(${rgb},0.4)`);
-  g.addColorStop(0.55, `rgba(${rgb},0.1)`);
-  g.addColorStop(1, `rgba(${rgb},0)`);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, S, S);
-
-  const t = new THREE.CanvasTexture(canvas);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.needsUpdate = true;
-  return t;
-}
-
-function Backlight({ color, z, size }: { color: string; z: number; size: number }) {
-  const texture = React.useMemo(() => makeGlow(color), [color]);
-  React.useEffect(() => () => texture?.dispose(), [texture]);
-  if (!texture) return null;
-
-  return (
-    <mesh position={[0, 0, z]} renderOrder={-2}>
-      <planeGeometry args={[size, size]} />
-      <meshBasicMaterial
-        map={texture}
-        transparent
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-        toneMapped={false}
-      />
-    </mesh>
-  );
-}
-
-/**
  * A dim copy of the wordmark placed BEHIND the crystal, so the stone has
  * something of the brand to refract.
  *
@@ -232,13 +165,12 @@ function Crystal({
   // Size against the *smaller* viewport axis so it never dominates a portrait
   // phone the way a fixed world-radius does.
   //
-  // The upper clamp is deliberately tight. Sized to fit/4.6 the stone spilled
-  // well past the wordmark and put bright white facets directly behind the
-  // description, which is unreadable however good it looks in a still. It has
-  // to frame the word, not the column.
+  // Sized against the WORDMARK's cap height rather than the viewport. Left to
+  // fit/4.5 the silhouette ran roughly three times the height of the word,
+  // which stopped being a stone behind type and became a stone with type on it.
   const portrait = viewport.width < viewport.height;
   const fit = Math.min(viewport.width, viewport.height);
-  const baseScale = THREE.MathUtils.clamp(fit / 5.6, portrait ? 0.32 : 0.46, 0.95);
+  const baseScale = THREE.MathUtils.clamp(fit / 5.8, portrait ? 0.32 : 0.46, 1.0);
 
   React.useEffect(() => {
     if (reducedMotion) return;
@@ -289,16 +221,30 @@ function Crystal({
     <mesh ref={ref} position={[0, 0, z]}>
       {/* 20 flat facets. Slightly elongated so it reads as cut, not a ball. */}
       <icosahedronGeometry args={[1.32, 0]} />
+      {/* A real gemstone is visible against a dark room because of what it
+          REFLECTS, not because of what is behind it. At transmission 1 this
+          stone had nothing to show but a near-black page, so it vanished --
+          and the fix is reflection, not a glow plane parked behind it.
+          transmission is pulled just off full and the environment's
+          contribution pushed hard, so the lightformers read as specular edges
+          on every facet. clearcoat sharpens those into highlights; iridescence
+          adds the thin-film shift that makes glass look like a prism rather
+          than a bag of water. */}
       <MeshTransmissionMaterial
-        transmission={1}
+        transmission={0.96}
         thickness={1.35}
-        roughness={0.03}
-        ior={1.92}
+        roughness={0.02}
+        ior={2.05}
+        envMapIntensity={2.0}
+        clearcoat={1}
+        clearcoatRoughness={0.06}
+        iridescence={0.26}
+        iridescenceIOR={1.5}
         chromaticAberration={dispersion}
         anisotropy={0.25}
-        distortion={0.18}
-        distortionScale={0.35}
-        temporalDistortion={0.06}
+        distortion={0.16}
+        distortionScale={0.32}
+        temporalDistortion={0.05}
         backside={spec.backside}
         backsideThickness={0.5}
         samples={spec.samples}
@@ -405,9 +351,9 @@ const QUALITY: Record<Quality, QualitySpec> = {
   // buffer resolution are the two knobs that actually cost money. samples:2 /
   // res:128 left visible colour speckle on the facets; 3/192 is still far
   // cheaper than the desktop tier but reads clean.
-  low: { samples: 3, resolution: 192, motes: 30, backside: false, maxDpr: 1.25 },
-  medium: { samples: 4, resolution: 256, motes: 55, backside: true, maxDpr: 1.5 },
-  high: { samples: 6, resolution: 512, motes: 90, backside: true, maxDpr: 1.75 },
+  low: { samples: 4, resolution: 256, motes: 30, backside: false, maxDpr: 1.5 },
+  medium: { samples: 6, resolution: 384, motes: 55, backside: true, maxDpr: 1.75 },
+  high: { samples: 10, resolution: 768, motes: 90, backside: true, maxDpr: 2 },
 };
 
 /** Stable subscription so the tier re-evaluates if the window is resized. */
@@ -471,19 +417,25 @@ function Scene({
       {/* Studio rig from lightformers, tinted to the brand so the dispersion
           throws violet and cyan through the wordmark rather than the warm gold
           of a default studio. */}
-      <Environment resolution={256}>
-        <Lightformer intensity={5} position={[0, 5, 4]} scale={[12, 4, 1]} color="#fdfbff" />
-        <Lightformer intensity={3.4} position={[-6, 1, 3]} scale={[4, 9, 1]} color="#a48dff" />
-        <Lightformer intensity={2.8} position={[6, -2, 2]} scale={[5, 6, 1]} color="#5ee9ff" />
-        <Lightformer intensity={2.2} position={[2, 4, -2]} scale={[6, 3, 1]} color="#ff7ad9" />
-        <Lightformer intensity={1.6} position={[0, -4, -3]} scale={[9, 3, 1]} color="#ffffff" />
+      {/* Driven hard, and this is the RIGHT lever.
+          The stone passing through dark rotations wanted more light in the rig,
+          not an additive glow plane in front of it -- that flattened the facets
+          into a flat violet blob and cost the refraction its crispness. Bright
+          lightformers give specular edges that survive any angle while leaving
+          the transmission clean. */}
+      <Environment resolution={512}>
+        <Lightformer intensity={5.5} position={[0, 5, 4]} scale={[14, 5, 1]} color="#f4efff" />
+        <Lightformer intensity={8.5} position={[-6, 1, 3]} scale={[5, 10, 1]} color="#a48dff" />
+        <Lightformer intensity={7.5} position={[6, -1, 3]} scale={[6, 8, 1]} color="#5ee9ff" />
+        <Lightformer intensity={6} position={[2, 4, -2]} scale={[7, 4, 1]} color="#ff7ad9" />
+        <Lightformer intensity={4} position={[-3, -4, 2]} scale={[8, 4, 1]} color="#ffffff" />
+        <Lightformer intensity={3} position={[0, 0, -6]} scale={[10, 10, 1]} color="#8b6dff" />
       </Environment>
 
       <group position={[0, lift, portrait ? -0.8 : 0]}>
         {/* Back to front: the lit field, the word's echo over it, then the stone
             that refracts both. The crisp wordmark is DOM, layered over this
             canvas by prism-hero.tsx. */}
-        <Backlight color={moteColor} z={-4.4} size={6.8} />
         <RefractedEcho texture={texture} z={-3.4} opacity={echoOpacity} />
         <Crystal
           progress={progress}

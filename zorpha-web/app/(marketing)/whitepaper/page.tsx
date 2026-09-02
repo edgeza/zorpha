@@ -377,8 +377,11 @@ export default function WhitepaperPage() {
               <P>
                 All three revert rather than substituting a fallback. The consequence is that an
                 oracle outage makes a vault temporarily unable to rebalance. Redemptions remain
-                available, and an emergency redemption path exists with an explicit haircut for the
-                case where NAV genuinely cannot be established.
+                available, and an emergency redemption path covers the case where NAV genuinely
+                cannot be established: it pays a pro-rata share of every asset the vault holds,
+                in kind, reading neither the oracle nor the swap venue. A depositor receives two
+                tokens rather than one and has to convert the second themselves, which is the
+                cost of an exit that cannot be blocked by a dead price feed or an empty market.
               </P>
               <P>
                 Execution is bounded separately. Each rebalance computes a minimum acceptable

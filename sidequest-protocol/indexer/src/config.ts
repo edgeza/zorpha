@@ -1,7 +1,21 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-const required = ['RPC_URL', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'] as const;
+/**
+ * Dry run: read the chain, decode receipts, write nothing.
+ *
+ * The indexing path had never been executed against the real chain, because
+ * running it at all required a Supabase service-role key -- a secret that
+ * belongs in Railway and nowhere else. So the one component standing between
+ * "every rebalance is a public receipt" and an empty receipts feed was also the
+ * one component nobody could try. `DRY_RUN=1` removes that: no credentials, no
+ * writes, and a printed summary of exactly what would have been inserted.
+ */
+export const dryRun = process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true';
+
+const required = dryRun
+  ? (['RPC_URL'] as const)
+  : (['RPC_URL', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'] as const);
 
 // Accept the older RH_TESTNET_RPC_URL name so an existing Railway service does
 // not break on rename.
@@ -35,6 +49,7 @@ function list(name: string): string[] {
 }
 
 export const config = {
+  dryRun,
   rpcUrl: process.env.RPC_URL!,
   rpcFallbackUrls: list('RPC_URL_FALLBACK'),
   chainId: int('CHAIN_ID', 46630),

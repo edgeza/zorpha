@@ -1,11 +1,43 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from './config.js';
 
-export const supabase: SupabaseClient = createClient(
-  config.supabase.url,
-  config.supabase.serviceRoleKey,
-  { auth: { persistSession: false, autoRefreshToken: false } },
-);
+/**
+ * The client, built on first use rather than at import.
+ *
+ * `createClient` throws on an empty URL, and in `DRY_RUN` there are
+ * deliberately no credentials -- so constructing this at module scope made the
+ * dry run impossible before a single line of it could execute.
+ */
+let _client: SupabaseClient | null = null;
+
+function db(): SupabaseClient {
+  if (config.dryRun) {
+    throw new Error(
+      'supabase: a write path was reached during DRY_RUN. This is a bug in the ' +
+        'dry-run wiring, not a configuration problem -- every writer should be ' +
+        'short-circuited before it gets here.',
+    );
+  }
+  if (_client === null) {
+    _client = createClient(config.supabase.url, config.supabase.serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return _client;
+}
+
+/** Kept for callers that hold the client directly. */
+export function getSupabaseClient(): SupabaseClient {
+  return db();
+}
+
+/** What a dry run would have written, for the summary at the end. */
+export const dryRunTally = {
+  rebalances: 0,
+  managers: new Set<string>(),
+  reputation: 0,
+  samples: [] as unknown[],
+};
 
 /** Postgres unique-violation. Used to treat a re-indexed log as a no-op. */
 const UNIQUE_VIOLATION = '23505';
@@ -55,12 +87,42 @@ export type ReputationRow = {
 };
 
 export async function upsertVault(v: VaultRow): Promise<void> {
-  const { error } = await supabase.from('vaults').upsert(v, { onConflict: 'address' });
+  const { error } = await db().from('vaults').upsert(v, { onConflict: 'address' });
   if (error) throw new Error(`upsertVault failed: ${error.message}`);
 }
 
 export async function getKnownVaults(): Promise<VaultRow[]> {
-  const { data, error } = await supabase
+  if (config.dryRun) {
+    // No `vaults` table to read, so take the list from VAULT_ADDRESSES and
+    // resolve each one's type on chain. `manager_address` is left as the zero
+    // address: attribution comes from the table, so a dry run cannot exercise
+    // it, and inventing a plausible-looking address would make the output look
+    // like it had verified something it has not.
+    const { detectVaultType } = await import('./chain.js');
+    const rows: VaultRow[] = [];
+    for (const address of config.vaultAddresses) {
+      const vault_type = await detectVaultType(address);
+      if (vault_type === null) {
+        throw new Error(
+          `DRY_RUN: could not type ${address}. Exactly one of cashAsset(), ` +
+            'baseAsset() or firstLossEscrow() must answer. Either this is not a ' +
+            'Zorpha vault, or the RPC is dropping calls.',
+        );
+      }
+      rows.push({
+        address,
+        vault_type,
+        name: '(dry run)',
+        symbol: '(dry run)',
+        asset: '0x0000000000000000000000000000000000000000',
+        strategy: '(dry run)',
+        manager_address: '0x0000000000000000000000000000000000000000',
+      });
+    }
+    return rows;
+  }
+
+  const { data, error } = await db()
     .from('vaults')
     .select('address,vault_type,name,symbol,asset,cash,base_asset,oracle,strategy,manager_address');
   if (error) throw new Error(`getKnownVaults failed: ${error.message}`);
@@ -79,7 +141,15 @@ export async function getKnownVaults(): Promise<VaultRow[]> {
 export async function insertRebalances(rows: RebalanceRow[]): Promise<number> {
   if (rows.length === 0) return 0;
 
-  const { data, error } = await supabase
+  if (config.dryRun) {
+    dryRunTally.rebalances += rows.length;
+    for (const r of rows) {
+      if (dryRunTally.samples.length < 5) dryRunTally.samples.push(r);
+    }
+    return rows.length;
+  }
+
+  const { data, error } = await db()
     .from('rebalances')
     // (tx_hash, log_index) is unique; ignoreDuplicates makes a re-scan a no-op
     // instead of an error, which is what makes the whole pipeline idempotent.
@@ -95,7 +165,12 @@ export async function insertRebalances(rows: RebalanceRow[]): Promise<number> {
 
 /** Atomic counter bump. Requires migration 002. */
 export async function bumpManager(address: string, blockTimestamp: string): Promise<void> {
-  const { error } = await supabase.rpc('bump_manager', {
+  if (config.dryRun) {
+    dryRunTally.managers.add(address.toLowerCase());
+    return;
+  }
+
+  const { error } = await db().rpc('bump_manager', {
     p_address: address,
     p_last_seen: blockTimestamp,
   });
@@ -111,7 +186,12 @@ export async function bumpManager(address: string, blockTimestamp: string): Prom
 }
 
 export async function insertReputationPublish(r: ReputationRow): Promise<boolean> {
-  const { error } = await supabase
+  if (config.dryRun) {
+    dryRunTally.reputation += 1;
+    return true;
+  }
+
+  const { error } = await db()
     .from('reputation_publishes')
     .upsert([r], { onConflict: 'contract_address,manager_address,nonce', ignoreDuplicates: true });
   if (error) {
@@ -130,7 +210,9 @@ export async function markChallenged(args: {
   counterCommitment: string;
   challengedAt: string;
 }): Promise<void> {
-  const { error } = await supabase
+  if (config.dryRun) return;
+
+  const { error } = await db()
     .from('reputation_publishes')
     .update({
       challenged: true,
@@ -157,7 +239,9 @@ export async function markResolved(args: {
   arbiter: string;
   resolvedAt: string;
 }): Promise<void> {
-  const { error } = await supabase
+  if (config.dryRun) return;
+
+  const { error } = await db()
     .from('reputation_publishes')
     .update({
       upheld: args.upheld,
@@ -175,7 +259,9 @@ export async function markResolved(args: {
 export type CursorKind = 'vault' | 'registry';
 
 export async function getCursor(kind: CursorKind, address: string): Promise<bigint | null> {
-  const { data, error } = await supabase
+  if (config.dryRun) return null;
+
+  const { data, error } = await db()
     .from('indexer_cursor')
     .select('last_block')
     .eq('source_kind', kind)
@@ -197,7 +283,9 @@ export async function advanceCursor(
   address: string,
   block: bigint,
 ): Promise<void> {
-  const { error } = await supabase.rpc('advance_cursor', {
+  if (config.dryRun) return;
+
+  const { error } = await db().rpc('advance_cursor', {
     p_kind: kind,
     p_address: address,
     p_block: Number(block),
@@ -210,8 +298,10 @@ export async function recordCursorError(
   address: string,
   message: string,
 ): Promise<void> {
+  if (config.dryRun) return;
+
   // Best-effort: never let error reporting mask the original error.
-  const { error } = await supabase.rpc('record_cursor_error', {
+  const { error } = await db().rpc('record_cursor_error', {
     p_kind: kind,
     p_address: address,
     p_error: message.slice(0, 1000),
@@ -221,6 +311,8 @@ export async function recordCursorError(
 
 /** Cheap connectivity probe for the health endpoint. */
 export async function pingDatabase(): Promise<boolean> {
-  const { error } = await supabase.from('vaults').select('address').limit(1);
+  if (config.dryRun) return true;
+
+  const { error } = await db().from('vaults').select('address').limit(1);
   return !error;
 }

@@ -49,7 +49,7 @@ export function SiteFooter() {
         <div className="grid grid-cols-2 gap-10 sm:grid-cols-3 lg:grid-cols-6">
           <div className="col-span-2 lg:col-span-2">
             <div className="flex items-center gap-2.5">
-              <Logo className="h-6 w-6" />
+              <Logo className="h-6 w-auto" />
               <span className="font-display text-base font-semibold text-ink-100">Zorpha</span>
             </div>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-ink-400">
