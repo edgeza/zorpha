@@ -307,4 +307,52 @@ export const vaultLauncherAbi = [
       { name: 'adequatelyCovered', type: 'bool' },
     ],
   },
+  // --- launching -----------------------------------------------------------
+  // The cost of becoming a leader, read from the contract rather than written
+  // into the copy. Governance can change both, and a hardcoded "10,000 $ZOR"
+  // in the UI would go quietly wrong the day it does.
+  {
+    type: 'function',
+    name: 'bondAmount',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'minSeedEscrow',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'approvedTarget',
+    stateMutability: 'view',
+    inputs: [{ type: 'address' }],
+    outputs: [{ type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'zor',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+  },
+  {
+    type: 'function',
+    name: 'launchYieldVault',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'target', type: 'address' },
+      { name: 'seedEscrow', type: 'uint256' },
+      { name: 'name', type: 'string' },
+      { name: 'symbol', type: 'string' },
+      { name: 'salt', type: 'bytes32' },
+    ],
+    outputs: [
+      { name: 'vault', type: 'address' },
+      { name: 'escrow', type: 'address' },
+    ],
+  },
 ] as const;

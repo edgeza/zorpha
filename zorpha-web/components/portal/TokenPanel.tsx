@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { contracts, zorAbi, isDeployed, explorerAddress } from '@/lib/contracts';
 import { formatUnits, formatCompactUnits, formatAddress } from '@/lib/format';
@@ -52,7 +53,17 @@ export function TokenPanel() {
   const { writeContract, data: txHash, isPending, error } = useWriteContract();
   const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
-  if (isSuccess) void refetchDelegate();
+  // In an effect, not in the render body.
+  //
+  // This was `if (isSuccess) void refetchDelegate();` inline, which refetches
+  // during render: the refetch resolves, the component re-renders, isSuccess is
+  // still true, and it refetches again — forever. The visible symptom was the
+  // button sticking on "Activating…" after a delegate transaction had already
+  // confirmed on chain, because the component never settled long enough to read
+  // the new delegatee back.
+  useEffect(() => {
+    if (isSuccess) void refetchDelegate();
+  }, [isSuccess, refetchDelegate]);
 
   const hasDelegated = delegatee && delegatee !== ZERO_ADDRESS;
   const burned =

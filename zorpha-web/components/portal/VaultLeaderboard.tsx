@@ -1,9 +1,25 @@
 'use client';
 
+import Link from 'next/link';
 import { useReadContract, useReadContracts } from 'wagmi';
 import { contracts, vaultLauncherAbi, ZERO_ADDRESS } from '@/lib/contracts';
 import { activeChain } from '@/lib/chains';
 import { formatAddress } from '@/lib/format';
+
+/**
+ * The way in.
+ *
+ * The Leaders page described a permissionless system and offered no way to
+ * join it -- launchYieldVault was reachable only from a shell script. A claim
+ * about openness that a reader cannot act on is not much of a claim.
+ */
+export function LaunchLink({ className = '' }: { className?: string }) {
+  return (
+    <Link href="/portal/leaders/launch" className={`btn-primary btn-sm inline-block ${className}`}>
+      Launch a vault
+    </Link>
+  );
+}
 
 type Row = {
   id: number;
@@ -90,7 +106,11 @@ export function VaultLeaderboard() {
   const launcher = contracts.vaultLauncher;
   const enabled = launcher !== ZERO_ADDRESS;
 
-  const { data: count } = useReadContract({
+  const {
+    data: count,
+    isLoading: countLoading,
+    isError: countError,
+  } = useReadContract({
     address: launcher,
     abi: vaultLauncherAbi,
     functionName: 'launchCount',
@@ -129,6 +149,31 @@ export function VaultLeaderboard() {
     );
   }
 
+  // "Still reading", "could not read" and "genuinely none" are three different
+  // states and were all rendering as "no vaults have been launched yet". That
+  // sentence is a claim about the chain; making it while the RPC call is in
+  // flight or has failed states something untrue, and on a page whose whole
+  // job is showing that leaders exist, it says the opposite of the truth.
+  if (countLoading) {
+    return (
+      <div className="card-pad">
+        <p className="text-sm text-ink-400">Reading the launcher…</p>
+      </div>
+    );
+  }
+
+  if (countError || count === undefined) {
+    return (
+      <div className="card-pad">
+        <p className="text-sm text-ink-400">
+          Could not reach the launcher contract at{' '}
+          <span className="font-mono text-ink-300">{launcher}</span> on {activeChain.name}. This is
+          an RPC problem, not a statement about how many vaults exist.
+        </p>
+      </div>
+    );
+  }
+
   if (total === 0) {
     return (
       <div className="card-pad">
@@ -136,6 +181,7 @@ export function VaultLeaderboard() {
           No vaults have been launched yet. The first one will appear here as soon as somebody
           posts a bond and seeds their first-loss capital.
         </p>
+        <LaunchLink className="mt-4" />
       </div>
     );
   }

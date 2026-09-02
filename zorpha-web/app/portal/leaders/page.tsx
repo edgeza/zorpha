@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { VaultLeaderboard } from '@/components/portal/VaultLeaderboard';
+import { LaunchLink, VaultLeaderboard } from '@/components/portal/VaultLeaderboard';
 import { Callout } from '@/components/ui/Primitives';
 
 export const metadata: Metadata = { title: 'Vault leaders' };
@@ -14,6 +14,7 @@ export default function LeadersPage() {
           post their own capital, which is subordinated to yours: it absorbs losses first, and
           your deposit is not touched until it is gone.
         </p>
+        <LaunchLink className="mt-5" />
       </header>
 
       <VaultLeaderboard />
