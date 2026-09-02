@@ -214,10 +214,31 @@ lt "$RECEIVED" "$(bi "$(bi "$DEPOSIT" add "$CATCHUP")" add "$GAIN")" \
   || die "received the ENTIRE gain ($RECEIVED). Fees are broken. See ERC4626YieldAdapter.t.sol."
 ok "depositor received LESS than the full gain: a fee was taken"
 
-# Allow one base unit of rounding either way on the net figure.
-DIFF=$(bi "$PROFIT" sub "$EXPECTED_NET")
-case "$DIFF" in -1|0|1) ok "net gain matches $FEE_BPS bps fee to within rounding ($DIFF)";;
-  *) die "net gain $PROFIT differs from expected $EXPECTED_NET by $DIFF";; esac
+# Direction first, magnitude second.
+#
+# ERC-4626 rounds against the user on every conversion, and it has to: the
+# reverse is drainable, because anyone could deposit and redeem in a loop and
+# come out ahead of the vault each time. So the depositor coming out a hair
+# BELOW the idealised net is correct, and coming out ABOVE it is the finding.
+# A symmetric "within N either way" check treats those two as equivalent, which
+# is exactly backwards.
+SHORTFALL=$(bi "$EXPECTED_NET" sub "$PROFIT")
+if lt "$SHORTFALL" 0; then
+  die "the depositor received MORE than the fee math allows ($PROFIT vs $EXPECTED_NET).
+     Rounding favours the depositor here, which is drainable in a deposit/redeem loop."
+fi
+ok "rounding favours the vault, not the depositor"
+
+# Three units, and each one is accounted for rather than tuned until green:
+# convertToShares rounds down on deposit, convertToAssets rounds down on
+# redeem, and the fee's own integer division rounds down. Anything beyond that
+# is not rounding.
+ROUNDING_BOUND=3
+if lt "$ROUNDING_BOUND" "$SHORTFALL"; then
+  die "depositor is short by $SHORTFALL, more than the $ROUNDING_BOUND units two ERC-4626
+     conversions and one fee division can explain. Expected $EXPECTED_NET, got $PROFIT."
+fi
+ok "net gain $PROFIT is within $SHORTFALL of the $FEE_BPS bps expectation ($EXPECTED_NET)"
 
 # --- 5. Fee accrued without a keeper ----------------------------------------
 bold "5/6  Fee accrual"
@@ -227,9 +248,15 @@ ACCRUED_DELTA=$(bi "$ACCRUED" sub "$FEE0")
 info "performanceFeeAccrued $FEE0 -> $ACCRUED  (+$ACCRUED_DELTA, expected ~$EXPECTED_FEE)"
 gt "$ACCRUED_DELTA" 0 || die "nothing accrued during this run. A profitable redeem charged no fee."
 ok "fee accrued inside redeem, no evaluateFees() call anywhere"
+# The fee is the protocol's only revenue and half of it funds the buyback, so
+# this is checked tightly. On testnet it lands on the contract's own formula to
+# the unit:  fee = (nav - highWaterMark) * totalSupply * bps / (shareUnit * 1e4)
 DIFF=$(bi "$ACCRUED_DELTA" sub "$EXPECTED_FEE")
-case "$DIFF" in -1|0|1) ok "accrued amount is $FEE_BPS bps of the gain";;
-  *) die "accrued $ACCRUED vs expected $EXPECTED_FEE (diff $DIFF)";; esac
+case "$DIFF" in
+  0)    ok "accrued exactly $FEE_BPS bps of the gain ($ACCRUED_DELTA)";;
+  -1|1) ok "accrued $FEE_BPS bps of the gain, off by $DIFF unit to integer division";;
+  *)    die "accrued $ACCRUED_DELTA, expected $EXPECTED_FEE (off by $DIFF). Not rounding.";;
+esac
 
 # --- 6. Claim to the treasury -----------------------------------------------
 bold "6/6  claimFees"
