@@ -16,7 +16,21 @@
 #                                 stays deliberate rather than automatic.
 #
 # Required env:
-#   PRIVATE_KEY              deployer EOA (testnet ONLY — it holds nothing after)
+#   PRIVATE_KEY              deployer EOA, as a raw key. Testnet ONLY.
+#   DEPLOY_ACCOUNT           deployer as a cast KEYSTORE name, e.g. zorpha-gov.
+#                            Preferred, and REQUIRED on mainnet: PRIVATE_KEY
+#                            means the key sits in an environment variable and
+#                            in shell history, which is how both keys in
+#                            docs/BURNED-KEYS.md were burned. Set one or the
+#                            other, not both.
+#   SKIP_TOKEN=true          redeploy ONLY the vault layer, leaving the token
+#                            layer alone. TIMELOCK and TREASURY are then read
+#                            from zorpha-web/.env.local instead of from a phase
+#                            A run. Needed because VaultFactory compiles the
+#                            vault bytecode INTO itself, so any fix to a vault
+#                            contract requires a new factory -- and re-running
+#                            phase A to get one would orphan the live token,
+#                            the airdrop and the vesting schedules.
 #   GOVERNANCE               multisig Safe. MUST NOT equal the deployer.
 #   USDG_TOKEN               base asset (USDC_TOKEN also accepted)
 #   LIQUIDITY_RECIPIENT      protocol-owned liquidity destination
@@ -52,7 +66,25 @@ require_env() {
   fi
 }
 
-for v in PRIVATE_KEY GOVERNANCE LIQUIDITY_RECIPIENT \
+if [[ -n "${PRIVATE_KEY:-}" && -n "${DEPLOY_ACCOUNT:-}" ]]; then
+  echo "ERROR: set PRIVATE_KEY or DEPLOY_ACCOUNT, not both." >&2
+  exit 1
+fi
+if [[ -z "${PRIVATE_KEY:-}" && -z "${DEPLOY_ACCOUNT:-}" ]]; then
+  echo "ERROR: set DEPLOY_ACCOUNT to a cast keystore name (preferred) or" >&2
+  echo "       PRIVATE_KEY to a raw key (testnet only)." >&2
+  exit 1
+fi
+
+# How every forge/cast call below authenticates. An array so it expands to two
+# words or one, with no quoting games at the call sites.
+if [[ -n "${DEPLOY_ACCOUNT:-}" ]]; then
+  SIGNER_ARGS=(--account "$DEPLOY_ACCOUNT")
+else
+  SIGNER_ARGS=(--private-key "$PRIVATE_KEY")
+fi
+
+for v in GOVERNANCE LIQUIDITY_RECIPIENT \
          AIRDROP_MERKLE_ROOT AIRDROP_CLAIM_DEADLINE RH_TESTNET_RPC_URL; do
   require_env "$v"
 done
@@ -69,7 +101,7 @@ fi
 export USDG_TOKEN="${USDG_TOKEN:-$USDC_TOKEN}"
 export USDC_TOKEN="${USDC_TOKEN:-$USDG_TOKEN}"
 
-DEPLOYER=$(cast wallet address --private-key "$PRIVATE_KEY")
+DEPLOYER=$(cast wallet address "${SIGNER_ARGS[@]}")
 if [[ "${DEPLOYER,,}" == "${GOVERNANCE,,}" ]]; then
   echo "ERROR: GOVERNANCE must not be the deployer EOA." >&2
   echo "  The whole point of the handover assertions is that the deploy key" >&2
@@ -164,25 +196,46 @@ if ! node -e '
   exit 1
 fi
 
-echo "==> [5/7] Phase A — token layer deploy"
-forge script "$TOKEN_SCRIPT" \
+if [[ "${SKIP_TOKEN:-false}" == "true" ]]; then
+  echo "==> [5/7] Phase A — SKIPPED (SKIP_TOKEN=true)"
+  echo "    The live token layer is left exactly as it is. Nothing below"
+  echo "    touches ZOR, the timelock, the treasury, the vesting schedules,"
+  echo "    the buyback or the airdrop distributor."
+  echo ""
+  echo "    This exists because VaultFactory compiles the vault bytecode INTO"
+  echo "    itself: it deploys via Create2 with type(Vault).creationCode, fixed"
+  echo "    at the factory's own compile time. So a fix to any vault contract"
+  echo "    is unreachable until the factory is redeployed, and re-running"
+  echo "    phase A to get one would orphan a token that already has holders."
+  echo ""
+  echo "    Verified on testnet 46630: a rotation vault deployed through the"
+  echo "    live factory after the units fix had no netValueInBase() and"
+  echo "    reported totalAssets() == grossValue(), the broken behaviour."
+  echo ""
+  echo "    Vault deposits must be at zero before doing this. The old vaults"
+  echo "    keep working and keep their balances; they simply stop being the"
+  echo "    ones the portal points at, so anything left in them is stranded"
+  echo "    from a user's point of view."
+else
+  echo "==> [5/7] Phase A — token layer deploy"
+  forge script "$TOKEN_SCRIPT" \
   --rpc-url "$RH_TESTNET_RPC_URL" \
-  --private-key "$PRIVATE_KEY" \
+  "${SIGNER_ARGS[@]}" \
   --broadcast \
   --sig "run()" \
   -vvv
 
-BROADCAST="broadcast/DeployZorphaToken.s.sol/$CHAIN_ID/run-latest.json"
-if [[ ! -f "$BROADCAST" ]]; then
-  echo "ERROR: no broadcast artifact at $BROADCAST" >&2
-  exit 1
-fi
+  BROADCAST="broadcast/DeployZorphaToken.s.sol/$CHAIN_ID/run-latest.json"
+  if [[ ! -f "$BROADCAST" ]]; then
+    echo "ERROR: no broadcast artifact at $BROADCAST" >&2
+    exit 1
+  fi
 
-# Reads a deployed address out of a broadcast artifact, via node rather
-# than jq. jq is a separate install often absent on a fresh machine, and it
-# is only reached AFTER the token layer is live — the worst moment to find
-# out, with a half-finished deploy and no addresses captured.
-addr_of() {
+  # Reads a deployed address out of a broadcast artifact, via node rather
+  # than jq. jq is a separate install often absent on a fresh machine, and it
+  # is only reached AFTER the token layer is live — the worst moment to find
+  # out, with a half-finished deploy and no addresses captured.
+  addr_of() {
   node -e '
     const fs = require("fs");
     const name = process.argv[1], file = process.argv[2];
@@ -190,33 +243,74 @@ addr_of() {
     const hit = (j.transactions || []).find(t => t.contractName === name);
     process.stdout.write(hit && hit.contractAddress ? hit.contractAddress : "");
   ' "$1" "$BROADCAST"
-}
+  }
 
-ZOR_ADDR=$(addr_of Zorpha)
-TIMELOCK_ADDR=$(addr_of Timelock)
-TREASURY_ADDR=$(addr_of ProtocolTreasury)
-BUYBACK_ADDR=$(addr_of ZorphaBuyback)
-INSURANCE_ADDR=$(addr_of InsuranceFund)
-DISTRIBUTOR_ADDR=$(addr_of MerkleDistributor)
-VESTING_ADDR=$(addr_of ZorphaVesting)
+  ZOR_ADDR=$(addr_of Zorpha)
+  TIMELOCK_ADDR=$(addr_of Timelock)
+  TREASURY_ADDR=$(addr_of ProtocolTreasury)
+  BUYBACK_ADDR=$(addr_of ZorphaBuyback)
+  INSURANCE_ADDR=$(addr_of InsuranceFund)
+  DISTRIBUTOR_ADDR=$(addr_of MerkleDistributor)
+  VESTING_ADDR=$(addr_of ZorphaVesting)
 
-echo "    ZOR          $ZOR_ADDR"
-echo "    Timelock     $TIMELOCK_ADDR"
-echo "    Treasury     $TREASURY_ADDR"
-echo "    Buyback      $BUYBACK_ADDR"
-echo "    Insurance    $INSURANCE_ADDR"
-echo "    Distributor  $DISTRIBUTOR_ADDR"
-echo "    Vesting      $VESTING_ADDR"
+  echo "    ZOR          $ZOR_ADDR"
+  echo "    Timelock     $TIMELOCK_ADDR"
+  echo "    Treasury     $TREASURY_ADDR"
+  echo "    Buyback      $BUYBACK_ADDR"
+  echo "    Insurance    $INSURANCE_ADDR"
+  echo "    Distributor  $DISTRIBUTOR_ADDR"
+  echo "    Vesting      $VESTING_ADDR"
+fi
+
+# When phase A was skipped, the same addresses come from whatever the front end
+# is currently pointed at -- which is the definition of "the live deployment".
+if [[ "${SKIP_TOKEN:-false}" == "true" ]]; then
+  env_live() { grep -E "^$1=" "$WEB_ENV" 2>/dev/null | head -1 | cut -d= -f2-; }
+  ZOR_ADDR=$(env_live NEXT_PUBLIC_ZOR_ADDRESS)
+  TIMELOCK_ADDR=$(env_live NEXT_PUBLIC_TIMELOCK_ADDRESS)
+  TREASURY_ADDR=$(env_live NEXT_PUBLIC_TREASURY_ADDRESS)
+  BUYBACK_ADDR=$(env_live NEXT_PUBLIC_BUYBACK_ADDRESS)
+  INSURANCE_ADDR=$(env_live NEXT_PUBLIC_INSURANCE_ADDRESS)
+  DISTRIBUTOR_ADDR=$(env_live NEXT_PUBLIC_MERKLE_DISTRIBUTOR_ADDRESS)
+  VESTING_ADDR=$(env_live NEXT_PUBLIC_VESTING_ADDRESS)
+
+  for pair in "ZOR:$ZOR_ADDR" "Timelock:$TIMELOCK_ADDR" "Treasury:$TREASURY_ADDR"; do
+    if [[ -z "${pair##*:}" ]]; then
+      echo "ERROR: SKIP_TOKEN=true but ${pair%%:*} is not in $WEB_ENV." >&2
+      echo "       The vault script reverts without TIMELOCK and TREASURY, so" >&2
+      echo "       there is nothing to inherit. Run a full deploy instead." >&2
+      exit 1
+    fi
+  done
+
+  echo "    inherited from $WEB_ENV:"
+  echo "    ZOR          $ZOR_ADDR"
+  echo "    Timelock     $TIMELOCK_ADDR"
+  echo "    Treasury     $TREASURY_ADDR"
+fi
 
 # Independent on-chain confirmation of the script's own assertion. If the deploy
 # key still holds supply, stop before anything is announced.
-DEPLOYER_BAL=$(cast call "$ZOR_ADDR" "balanceOf(address)(uint256)" "$DEPLOYER" \
-  --rpc-url "$RH_TESTNET_RPC_URL")
-if [[ "${DEPLOYER_BAL%% *}" != "0" ]]; then
-  echo "FATAL: deployer still holds ZOR ($DEPLOYER_BAL). Distribution failed." >&2
-  exit 1
+#
+# Phase A only. It asserts that DISTRIBUTION worked -- that the key which minted
+# the supply kept none of it -- and that is only a claim about a run which just
+# minted. Under SKIP_TOKEN the deployer is whoever is redeploying the vault
+# layer, and there is no reason they should not hold ZOR: the governance
+# account holds 880,055,000 of it on testnet, so running this unconditionally
+# aborts every vault redeploy with "Distribution failed", which would be both
+# wrong and extremely confusing.
+if [[ "${SKIP_TOKEN:-false}" != "true" ]]; then
+  DEPLOYER_BAL=$(cast call "$ZOR_ADDR" "balanceOf(address)(uint256)" "$DEPLOYER" \
+    --rpc-url "$RH_TESTNET_RPC_URL")
+  if [[ "${DEPLOYER_BAL%% *}" != "0" ]]; then
+    echo "FATAL: deployer still holds ZOR ($DEPLOYER_BAL). Distribution failed." >&2
+    exit 1
+  fi
+  echo "    verified: deployer holds 0 ZOR"
+else
+  echo "    deployer ZOR check skipped: it asserts phase A distribution, which"
+  echo "    did not run. The vault deployer may hold ZOR legitimately."
 fi
-echo "    verified: deployer holds 0 ZOR"
 
 # Verify every contract in a broadcast artifact.
 #
@@ -266,7 +360,13 @@ verify_broadcast() {
 }
 
 echo "==> [6/7] verify token-layer contracts"
-verify_broadcast "$BROADCAST"
+if [[ "${SKIP_TOKEN:-false}" == "true" ]]; then
+  echo "    SKIPPED. Phase A did not run, so there is no new artifact to verify"
+  echo "    and the live token contracts were verified by the deploy that made"
+  echo "    them. \$BROADCAST is unset here and set -u would abort the run."
+else
+  verify_broadcast "$BROADCAST"
+fi
 
 echo "==> [7/7] Phase B — vault layer"
 FACTORY_ADDR=""
@@ -290,7 +390,7 @@ else
   TIMELOCK="$TIMELOCK_ADDR" TREASURY="$TREASURY_ADDR" \
   forge script "$VAULT_SCRIPT" \
     --rpc-url "$RH_TESTNET_RPC_URL" \
-    --private-key "$PRIVATE_KEY" \
+    "${SIGNER_ARGS[@]}" \
     --broadcast \
     --sig "run()" \
     -vvv
