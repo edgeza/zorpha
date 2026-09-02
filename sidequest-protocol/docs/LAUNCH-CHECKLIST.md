@@ -102,18 +102,60 @@ because the point is to test the whole stack rather than the contracts alone.
       **without anyone having called `evaluateFees`**.
 - [ ] `claimFees()` moves the accrued amount to the treasury.
 
-**Spot vault (`zqHOOD`)**
-- [ ] Deposit, then have the manager sign an EIP-712 rebalance.
-- [ ] Submit it through `StrategyExecutor`. **Not** permissionless:
-      `executeRebalance` is `onlyRole(KEEPER_ROLE)` on the executor, so a keeper
-      submits the manager's signature. An earlier version of this line said
-      submission was permissionless by design, which was simply wrong about the
-      code — and the wrongness hid the fact that KEEPER_ROLE was unseated, so
-      nobody could submit at all.
-- [ ] Receipt event emitted; it appears in the portal's receipt list.
-- [ ] Replay the same signature: must revert on the nonce.
-- [ ] Submit an expired signature: must revert on expiry.
-- [ ] Exceed the daily rate limit: must revert.
+**Spot vault (`zqHOOD`)** — `./script/testnet-spot-setup.sh <gov>` then
+`./script/testnet-spot-drill.sh <signer> <keeper>`. Run 2026-09-02, all green.
+
+- [x] A manager signs an EIP-712 rebalance and it is accepted, the nonce
+      advances, and it demonstrably **reaches** the target rather than merely
+      being accepted by the executor.
+- [x] Submitted through `StrategyExecutor`. **Not** permissionless:
+      `executeRebalance` is `onlyRole(KEEPER_ROLE)`, so a keeper submits the
+      manager's signature. An earlier version of this line said submission was
+      permissionless by design, which was wrong about the code — and the
+      wrongness hid the fact that `KEEPER_ROLE` was unseated, so nobody could
+      submit at all.
+- [x] Replay the same signature: reverts `NonceAlreadyUsed`.
+- [x] An expired signature: reverts `SignalExpired`.
+- [x] A deadline beyond `MAX_SIGNAL_EXPIRY` (7 days): reverts `ExpiryTooFar`.
+      A signature good for a year is a standing authority, not an instruction.
+- [x] A signature from the **keeper's own key**: reverts `InvalidSignature`.
+      This is the one that matters most — the keeper holds `KEEPER_ROLE` and so
+      may submit, but is not `authorizedSigner` and so may not decide. If it
+      passed, submission authority and signing authority would be the same
+      thing and the whole design would be decorative.
+- [x] A weight above 10000 bps: reverts `InvalidWeight`.
+- [x] Exceed the daily rate limit: four submissions fill the window, the fifth
+      reverts `DailyLimitExceeded`, and the rejected one never reaches the
+      target.
+- [x] Receipt event emitted, and `rebalanceCount` incremented, against a real
+      vault on a clean run.
+
+**Two caveats on the above, both about the stub swap adapter.**
+
+Steps for the executor's own checks run against `NoopRebalancer`, not the
+vault. That is deliberate and stronger: every one of those checks happens in
+`executeRebalance` before it calls the vault, so routing them through a vault
+only entangles them with oracle prices, rebalance thresholds and adapter
+liquidity — any of which can fail a step while the property under test works.
+
+And trade economics are **not tested at all**. `StubSwapAdapter` returns the
+same amount as the input, 1:1 on raw units, ignoring decimals. One trade
+between an 18dp equity and a 6dp stable misvalued the cash leg by eleven orders
+of magnitude — `grossValue` went 1e20 → 2e29 — after which every rebalance
+demands an impossible trade and even a full redemption reverts on slippage.
+The receipt's NAV figures after that first trade are meaningless.
+
+- [ ] **Point `SWAP_ROUTER` at a real venue and re-run.** This is a testnet gap
+      as much as a mainnet one: until it is done, no vault holding two legs can
+      be rebalanced twice or emptied once.
+
+**Rotation vault (`zqROT`) — cannot be rebalanced by anyone.** Launch blocker.
+`KEEPER_ROLE` on it is held only by `StrategyExecutor`; the executor calls
+`rebalanceTo(uint16)`; the vault exposes `rebalanceTo(uint16[])`. Different
+selectors, so the call reverts with empty data, and nothing else holds the
+role. The portal advertises it as "rotates between approved real-world assets
+on a signed mandate". It cannot rotate. Needs a second executor entrypoint for
+the array form — a contract change, not a configuration fix.
 
 **Leadership and first loss** — the differentiator, so the one to test hardest
 

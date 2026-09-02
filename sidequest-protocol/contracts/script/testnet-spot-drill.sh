@@ -218,23 +218,37 @@ would_succeed() {
 ERRFILE=$(mktemp)
 trap 'rm -f "$ERRFILE"' EXIT
 # Naming the revert matters. A step that reports only "reverted" proves the
-# call failed but not that it failed for the reason under test -- step 5 said
-# exactly that, and the assertion was sound while the message was useless.
+# call failed but not that it failed for the reason under test -- a wrong-signer
+# step that reverted on a malformed nonce would read identically.
 #
-# cast renders a custom error as Name(args) and a require string as
-# Error("msg"), and sometimes decodes neither. In that case print the raw
-# selector, which is still identifiable by hand, rather than a shrug.
+# Four shapes, in order of how much they tell you:
+#   1. cast decoded a custom error      -> Name
+#   2. cast decoded a require string    -> Error("msg")
+#   3. raw data starting 0x08c379a0     -> that IS Error(string); decode it
+#      ourselves rather than reporting the selector, which is what step 8 did
+#      when eth_call returned undecoded data that cast had decoded happily on
+#      the equivalent send
+#   4. anything else                    -> the selector, still identifiable
 #
 # Every capture needs `|| true`: under `set -e` a grep that matches nothing
 # fails, and a failing command substitution in an assignment exits the script.
 reason() {
-  local r
+  local r data
   r=$(grep -oE '[A-Z][A-Za-z]+\(' "$ERRFILE" 2>/dev/null | grep -v '^Error($' | head -1 | tr -d '(' || true)
   [[ -n "$r" ]] && { printf '%s' "$r"; return 0; }
+
   r=$(grep -oE 'Error\("[^"]*"\)' "$ERRFILE" 2>/dev/null | head -1 || true)
   [[ -n "$r" ]] && { printf '%s' "$r"; return 0; }
+
+  data=$(grep -oE '0x08c379a0[0-9a-f]+' "$ERRFILE" 2>/dev/null | head -1 || true)
+  if [[ -n "$data" ]]; then
+    r=$(cast abi-decode 'f()(string)' "0x${data:10}" 2>/dev/null | head -1 || true)
+    [[ -n "$r" ]] && { printf 'require(%s)' "$r"; return 0; }
+  fi
+
   r=$(grep -oE 'data: "0x[0-9a-f]{8}' "$ERRFILE" 2>/dev/null | grep -oE '0x[0-9a-f]{8}' | head -1 || true)
   [[ -n "$r" ]] && { printf 'undecoded, selector %s' "$r"; return 0; }
+
   printf 'reverted, with no reason in the output'
 }
 
