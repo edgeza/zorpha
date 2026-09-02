@@ -149,6 +149,27 @@ because the point is to test the whole stack rather than the contracts alone.
 - [ ] `reclaimBond` after the withdrawal timelock.
 - [ ] A second leader launching against the same target does not collide.
 
+**Yield vault (`zqUSD`)** — `./script/testnet-yield-drill.sh <account>`
+
+- [x] Circuit breaker refuses a real deposit, then clears.
+- [x] Deposit, venue accrues, NAV per share rises.
+- [x] `performanceFeeAccrued` is non-zero after a profitable redeem **without**
+      anyone calling `evaluateFees()`. It accrues inside the redeem.
+- [x] The fee matches the contract's formula to the unit:
+      `(nav - highWaterMark) * totalSupply * bps / (shareUnit * 10000)`.
+- [x] Rounding favours the vault, never the depositor. The drill rejects any
+      overpayment outright, and allows an underpayment of at most five base
+      units — one per conversion in a deposit/redeem round trip.
+- [ ] `claimFees()` moves the accrued amount to the treasury and resets the
+      counter. Not yet reached on a completed run.
+
+**Open finding from this drill.** A depositor entering an empty-but-dusty vault
+is charged a performance fee on NAV appreciation from before they arrived —
+measured at 20% over on testnet. The high-water mark is not set for a first
+depositor, because `_evaluateFees()` returns early on `totalSupply() == 0`.
+See [FINDINGS-EQUALISATION.md](FINDINGS-EQUALISATION.md). Decide before mainnet;
+no test in the suite covers it.
+
 **Oracle**
 - [ ] Let a price go stale past `maxOracleStaleness`, attempt a rebalance,
       confirm it **reverts** rather than trading on a stale price.

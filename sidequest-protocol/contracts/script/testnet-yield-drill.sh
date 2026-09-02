@@ -173,6 +173,29 @@ if [[ "$CATCHUP" != "0" ]]; then
   info "adding $CATCHUP to reach it, then $YIELD of real gain on top"
 fi
 
+# The equalisation gap.
+#
+# _evaluateFees() runs BEFORE super.deposit() mints, so on an empty vault it
+# hits `if (totalSupply() == 0) return` and never marks the incoming
+# depositor's entry NAV. If the vault holds any assets while empty -- rounding
+# dust, a donation, yield on a residue -- the ERC-4626 offset puts the entry
+# NAV above the stale mark, and the fee at redemption is charged from the MARK
+# rather than from where the depositor actually bought in.
+#
+# They then pay a performance fee on appreciation that happened before they
+# arrived. This is the depositor-harming half of the classic pooled-fund
+# equalisation problem; the other half (entry below the mark, depositor rides
+# free and the leader underearns) is the better-known one.
+ENTRY_ABOVE_MARK=$(bi "$(bi "$NAV0" sub "$HWM")" max 0)
+if [[ "$ENTRY_ABOVE_MARK" != "0" ]]; then
+  info ""
+  info "!! entry NAV $NAV0 is ABOVE the high-water mark $HWM by $ENTRY_ABOVE_MARK."
+  info "!! The fee will be charged from the mark, not from the entry price, so"
+  info "!! this depositor pays for $ENTRY_ABOVE_MARK of NAV they never earned."
+  info "!! See docs/FINDINGS-EQUALISATION.md"
+  info ""
+fi
+
 bold "3/6  Venue accrues $TOP_UP"
 send "$TARGET" 'accrue(uint256)' "$TOP_UP"
 NAV1=$(call "$VAULT" 'getNavPerShare()(uint256)')
@@ -195,16 +218,33 @@ eq "$(call "$VAULT" 'performanceFeeAccrued()(uint256)')" "$FEE0" \
 
 # --- 4. Redeem -------------------------------------------------------------
 bold "4/6  Redeem everything"
+SUPPLY_AT_REDEEM=$(call "$VAULT" 'totalSupply()(uint256)')
 BEFORE=$(call "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
 send "$VAULT" 'redeem(uint256,address,address)' "$SHARES" "$ACTOR" "$ACTOR"
 AFTER=$(call "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
 RECEIVED=$(bi "$AFTER" sub "$BEFORE")
 PROFIT=$(bi "$(bi "$RECEIVED" sub "$DEPOSIT")" sub "$CATCHUP")
-EXPECTED_FEE=$(bi "$(bi "$GAIN" mul "$FEE_BPS")" div 10000)
+# Two different numbers, and the difference is the finding rather than a bug
+# in the arithmetic here.
+#
+#   EXPECTED_FEE  what the contract charges:  (nav - highWaterMark) * supply
+#   FAIR_FEE      what the depositor earned:  (nav - entryNav)      * supply
+#
+# They are equal on a vault whose mark was set by this depositor's own entry.
+# They diverge exactly when ENTRY_ABOVE_MARK is non-zero.
+FEE_ALPHA=$(bi "$NAV1" sub "$HWM")
+FAIR_ALPHA=$(bi "$NAV1" sub "$NAV0")
+EXPECTED_FEE=$(bi "$(bi "$(bi "$FEE_ALPHA" mul "$SUPPLY_AT_REDEEM")" mul "$FEE_BPS")" div "$(bi "$SHARE_UNIT" mul 10000)")
+FAIR_FEE=$(bi "$(bi "$(bi "$FAIR_ALPHA" mul "$SUPPLY_AT_REDEEM")" mul "$FEE_BPS")" div "$(bi "$SHARE_UNIT" mul 10000)")
 EXPECTED_NET=$(bi "$GAIN" sub "$EXPECTED_FEE")
 
 info "received $RECEIVED for $SHARES shares"
-info "profit   $PROFIT  (gain $GAIN, expected fee $EXPECTED_FEE, expected net $EXPECTED_NET)"
+info "profit   $PROFIT  (gain $GAIN, fee $EXPECTED_FEE, net $EXPECTED_NET)"
+if [[ "$EXPECTED_FEE" != "$FAIR_FEE" ]]; then
+  info "         contract charges on nav-mark   ($FEE_ALPHA) = $EXPECTED_FEE"
+  info "         depositor earned  nav-entry    ($FAIR_ALPHA) = $FAIR_FEE"
+  info "         overcharged by $(bi "$EXPECTED_FEE" sub "$FAIR_FEE")"
+fi
 
 gt "$RECEIVED" "$DEPOSIT" || die "received $RECEIVED, no more than deposited. The gain did not reach the depositor."
 ok "depositor received the principal plus a gain"
@@ -229,11 +269,20 @@ if lt "$SHORTFALL" 0; then
 fi
 ok "rounding favours the vault, not the depositor"
 
-# Three units, and each one is accounted for rather than tuned until green:
-# convertToShares rounds down on deposit, convertToAssets rounds down on
-# redeem, and the fee's own integer division rounds down. Anything beyond that
-# is not rounding.
-ROUNDING_BOUND=3
+# Five units, one per rounding conversion in a deposit/redeem round trip.
+# Counted from the call path, not tuned until the run went green:
+#
+#   1  deposit  vault convertToShares       rounds down
+#   2  deposit  _pushToAdapter -> venue     rounds down
+#   3  redeem   vault convertToAssets       rounds down
+#   4  redeem   _pullFromAdapter <- venue   rounds down
+#   5  fee      integer division            rounds down
+#
+# An earlier revision said three, having counted only the vault's own two
+# conversions and forgotten that the adapter converts again at the venue. A
+# real run then landed on exactly three, at the edge of a bound that was too
+# low for the wrong reason.
+ROUNDING_BOUND=5
 if lt "$ROUNDING_BOUND" "$SHORTFALL"; then
   die "depositor is short by $SHORTFALL, more than the $ROUNDING_BOUND units two ERC-4626
      conversions and one fee division can explain. Expected $EXPECTED_NET, got $PROFIT."
