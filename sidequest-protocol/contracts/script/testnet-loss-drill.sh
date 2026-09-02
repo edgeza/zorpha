@@ -25,14 +25,19 @@
 
 set -euo pipefail
 
-if ! command -v cast >/dev/null; then
-  if [[ -x "$HOME/.foundry/bin/cast" || -x "$HOME/.foundry/bin/cast.exe" ]]; then
+# This drill needs forge as well as cast, and they can be missing separately.
+if ! command -v cast >/dev/null || ! command -v forge >/dev/null; then
+  if [[ -d "$HOME/.foundry/bin" ]]; then
     PATH="$HOME/.foundry/bin:$PATH"; export PATH
-  else
-    echo "ERROR: cast not found, and not at ~/.foundry/bin either." >&2
-    exit 1
   fi
 fi
+for tool in cast forge; do
+  command -v "$tool" >/dev/null || {
+    echo "ERROR: $tool not found, and not at ~/.foundry/bin either." >&2
+    echo "       Install foundry (foundryup), then reopen the shell." >&2
+    exit 1
+  }
+done
 
 ACCOUNT="${1:-}"
 [[ -n "$ACCOUNT" ]] || { echo "usage: $0 <keystore-account-name>" >&2; exit 1; }
@@ -84,9 +89,13 @@ if [[ -f "$CACHE" ]] && [[ -n "$(cat "$CACHE")" ]]; then
   ok "reusing $LOSSY"
 else
   info "deploying LossyYieldTarget..."
+  # --constructor-args LAST, always. It is variadic, so anything after it is
+  # read as another constructor argument -- including flags. With it in the
+  # middle, --rpc-url never registers and forge falls back to localhost:8545
+  # with no warning that it ignored the network you asked for.
   OUT=$(forge create src/testnet/TestnetFixtures.sol:LossyYieldTarget \
-        --constructor-args "$ASSET" \
-        --rpc-url "$RPC" --account "$ACCOUNT" --broadcast --json)
+        --rpc-url "$RPC" --account "$ACCOUNT" --broadcast --json \
+        --constructor-args "$ASSET")
   LOSSY=$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).deployedTo || "")' "$OUT")
   [[ -n "$LOSSY" ]] || die "could not read the deployed address from forge create"
   printf '%s' "$LOSSY" > "$CACHE"
