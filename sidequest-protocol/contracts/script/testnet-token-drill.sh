@@ -38,7 +38,7 @@ ok()   { printf '  \033[32m+\033[0m %s\n' "$1"; }
 info() { printf '    %s\n' "$1"; }
 die()  { printf '\n  \033[31mx %s\033[0m\n\n' "$1" >&2; exit 1; }
 
-bi()  { node -e 'const [a,op,b]=process.argv.slice(1);const A=BigInt(a),B=BigInt(b);
+bi()  { MSYS_NO_PATHCONV=1 node -e 'const [a,op,b]=process.argv.slice(1);const A=BigInt(a),B=BigInt(b);
   const f={add:()=>A+B,sub:()=>A-B,mul:()=>A*B,div:()=>A/B,
            min:()=>A<B?A:B,max:()=>A>B?A:B}[op];
   if(!f) throw new Error("unknown op: "+op);

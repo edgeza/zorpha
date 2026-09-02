@@ -71,12 +71,12 @@ info() { printf '    %s\n' "$1"; }
 die()  { printf '\n  \033[31mx %s\033[0m\n\n' "$1" >&2; exit 1; }
 
 command -v node >/dev/null || die "node is required"
-bi()  { node -e 'const [a,op,b]=process.argv.slice(1);const A=BigInt(a),B=BigInt(b);
+bi()  { MSYS_NO_PATHCONV=1 node -e 'const [a,op,b]=process.argv.slice(1);const A=BigInt(a),B=BigInt(b);
   const f={add:()=>A+B,sub:()=>A-B,mul:()=>A*B,div:()=>A/B,
            min:()=>A<B?A:B,max:()=>A>B?A:B}[op];
   if(!f) throw new Error("unknown op: "+op);
   process.stdout.write(f().toString())' -- "$1" "$2" "$3"; }
-lt()  { node -e 'process.exit(BigInt(process.argv[1]) < BigInt(process.argv[2]) ? 0 : 1)' -- "$1" "$2"; }
+lt()  { MSYS_NO_PATHCONV=1 node -e 'process.exit(BigInt(process.argv[1]) < BigInt(process.argv[2]) ? 0 : 1)' -- "$1" "$2"; }
 eq()  { [[ "$1" == "$2" ]]; }
 
 env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2-; }
