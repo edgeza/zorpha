@@ -204,7 +204,26 @@ submit() {
 
 ERRFILE=$(mktemp)
 trap 'rm -f "$ERRFILE"' EXIT
-reason() { grep -oE '[A-Z][A-Za-z]+\(' "$ERRFILE" | head -1 | tr -d '(' || echo "reverted"; }
+# Naming the revert matters. A step that reports only "reverted" proves the
+# call failed but not that it failed for the reason under test -- step 5 said
+# exactly that, and the assertion was sound while the message was useless.
+#
+# cast renders a custom error as Name(args) and a require string as
+# Error("msg"), and sometimes decodes neither. In that case print the raw
+# selector, which is still identifiable by hand, rather than a shrug.
+#
+# Every capture needs `|| true`: under `set -e` a grep that matches nothing
+# fails, and a failing command substitution in an assignment exits the script.
+reason() {
+  local r
+  r=$(grep -oE '[A-Z][A-Za-z]+\(' "$ERRFILE" 2>/dev/null | grep -v '^Error($' | head -1 | tr -d '(' || true)
+  [[ -n "$r" ]] && { printf '%s' "$r"; return 0; }
+  r=$(grep -oE 'Error\("[^"]*"\)' "$ERRFILE" 2>/dev/null | head -1 || true)
+  [[ -n "$r" ]] && { printf '%s' "$r"; return 0; }
+  r=$(grep -oE 'data: "0x[0-9a-f]{8}' "$ERRFILE" 2>/dev/null | grep -oE '0x[0-9a-f]{8}' | head -1 || true)
+  [[ -n "$r" ]] && { printf 'undecoded, selector %s' "$r"; return 0; }
+  printf 'reverted, with no reason in the output'
+}
 
 NOW=$(cast block latest --field timestamp --rpc-url "$RPC")
 GOOD_EXPIRY=$(bi "$NOW" add 3600)
@@ -269,8 +288,8 @@ ok "wrong signer reverted: $(reason)"
 
 # ─── 6. Impossible weight ───────────────────────────────────────────────────
 bold "6/8  A weight above 100% must revert"
-SIG_BAD=$(sign_for 10001 "$N2" "$GOOD_EXPIRY")
-if submit 10001 "$N2" "$GOOD_EXPIRY" "$SIG_BAD"; then
+SIG_BAD=$(sign_for "$NOOP" 10001 "$N2" "$GOOD_EXPIRY")
+if submit "$NOOP" 10001 "$N2" "$GOOD_EXPIRY" "$SIG_BAD"; then
   die "targetWeightBps of 10001 was accepted."
 fi
 ok "weight bound enforced: $(reason)"
