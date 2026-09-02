@@ -84,8 +84,16 @@ else
   SIGNER_ARGS=(--private-key "$PRIVATE_KEY")
 fi
 
-for v in GOVERNANCE LIQUIDITY_RECIPIENT \
-         AIRDROP_MERKLE_ROOT AIRDROP_CLAIM_DEADLINE RH_TESTNET_RPC_URL; do
+# Split by phase. LIQUIDITY_RECIPIENT, AIRDROP_MERKLE_ROOT and
+# AIRDROP_CLAIM_DEADLINE are read only by DeployZorphaToken, so demanding them
+# under SKIP_TOKEN blocks a vault redeploy on values that will not be used --
+# and pushes whoever is deploying to invent a placeholder for a required-looking
+# variable, which is worse than not asking.
+REQUIRED_ENV=(GOVERNANCE RH_TESTNET_RPC_URL)
+if [[ "${SKIP_TOKEN:-false}" != "true" ]]; then
+  REQUIRED_ENV+=(LIQUIDITY_RECIPIENT AIRDROP_MERKLE_ROOT AIRDROP_CLAIM_DEADLINE)
+fi
+for v in "${REQUIRED_ENV[@]}"; do
   require_env "$v"
 done
 
@@ -103,9 +111,23 @@ export USDC_TOKEN="${USDC_TOKEN:-$USDG_TOKEN}"
 
 DEPLOYER=$(cast wallet address "${SIGNER_ARGS[@]}")
 if [[ "${DEPLOYER,,}" == "${GOVERNANCE,,}" ]]; then
-  echo "ERROR: GOVERNANCE must not be the deployer EOA." >&2
-  echo "  The whole point of the handover assertions is that the deploy key" >&2
-  echo "  ends up with no authority. Point GOVERNANCE at a Safe." >&2
+  echo "ERROR: GOVERNANCE and the deployer are the same address ($DEPLOYER)." >&2
+  echo "" >&2
+  echo "  The whole point of the handover assertions is that the deploy key ends" >&2
+  echo "  up with no authority. If it is also governance, the deployment ends with" >&2
+  echo "  no admin at all, so DeployVaultsV1 refuses it too." >&2
+  echo "" >&2
+  echo "  This is the natural mistake on testnet, because the governance EOA is" >&2
+  echo "  usually the only account with gas, so it is the obvious thing to deploy" >&2
+  echo "  with. Use a separate, disposable deployer instead. To create one" >&2
+  echo "  WITHOUT ever printing a private key -- the path argument is what makes" >&2
+  echo "  it safe, and its absence is how both keys in docs/BURNED-KEYS.md were" >&2
+  echo "  burned:" >&2
+  echo "" >&2
+  echo "    cast wallet new ~/.foundry/keystores zorpha-deployer" >&2
+  echo "" >&2
+  echo "  Fund the address it prints, then re-run with" >&2
+  echo "  DEPLOY_ACCOUNT=zorpha-deployer and leave GOVERNANCE as it is." >&2
   exit 1
 fi
 
