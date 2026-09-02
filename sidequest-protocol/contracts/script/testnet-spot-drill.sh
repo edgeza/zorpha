@@ -77,6 +77,9 @@ VAULTS="broadcast/DeployVaultsV1.s.sol/$CHAIN_ID/run-latest.json"
 
 bold() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 ok()   { printf '  \033[32m+\033[0m %s\n' "$1"; }
+# Amber, not green: a skipped step is neither a pass nor a failure, and a
+# drill that dresses one up as the other is worse than one that stops.
+skip() { printf '  \033[33m~\033[0m %s\n' "$1"; }
 info() { printf '    %s\n' "$1"; }
 die()  { printf '\n  \033[31mx %s\033[0m\n\n' "$1" >&2; exit 1; }
 
@@ -200,6 +203,16 @@ submit() {
   cast send "$EXEC" 'executeRebalance(address,uint16,uint256,uint256,bytes)' \
     "$1" "$2" "$3" "$4" "$5" \
     --rpc-url "$RPC" --account "$KEEPER_ACCT" >/dev/null 2>"$ERRFILE"
+}
+
+# The same call as an eth_call, so a step can find out whether it would
+# work before paying for it. --from matters: executeRebalance is
+# onlyRole(KEEPER_ROLE), so simulating as anyone else fails for the wrong
+# reason and the caller draws the wrong conclusion from it.
+would_succeed() {
+  cast call "$EXEC" 'executeRebalance(address,uint16,uint256,uint256,bytes)' \
+    "$1" "$2" "$3" "$4" "$5" \
+    --from "$KEEPER" --rpc-url "$RPC" >/dev/null 2>"$ERRFILE"
 }
 
 ERRFILE=$(mktemp)
