@@ -69,3 +69,42 @@ contract TestYieldTarget is ERC4626 {
         TestUSDG(asset()).mint(address(this), amount);
     }
 }
+
+/// @notice A curated-vault stand-in that can lose money as well as make it.
+/// @dev    TestYieldTarget above only accrues. That makes the one mechanism
+///         this protocol exists for -- the leader's capital absorbing a loss
+///         before any depositor's -- impossible to demonstrate on a live
+///         chain. There is no drain on an ERC-4626, TestUSDG has no burn, and
+///         assets cannot leave a vault without shares. The fixture is
+///         structurally incapable of going down.
+///
+///         The absorption path is well covered by unit tests, but those mock
+///         the venue. What they cannot exercise is the real integration: the
+///         vault pulls from ERC4626YieldAdapter, which measures what it
+///         recovered by balance delta rather than by trusting the venue's
+///         return value. A venue that gives back less than asked for is
+///         precisely the case that accounting exists to handle, and precisely
+///         the case a mock is least likely to reproduce faithfully.
+///
+///         `lose()` sends underlying to a burn address rather than burning it,
+///         so this needs no change to TestUSDG and no redeploy of the token
+///         every other fixture already points at. The effect on share price is
+///         identical: the same shares, backed by fewer assets.
+contract LossyYieldTarget is ERC4626 {
+    /// @dev Not address(0): ERC-20 transfers to the zero address revert.
+    address public constant SINK = 0x000000000000000000000000000000000000dEaD;
+
+    constructor(IERC20 asset_) ERC4626(asset_) ERC20("Test Lossy USDG", "tlUSDG") {}
+
+    /// @notice Simulate earned yield.
+    function accrue(uint256 amount) external {
+        TestUSDG(asset()).mint(address(this), amount);
+    }
+
+    /// @notice Simulate a loss. Same shares outstanding, fewer assets behind
+    ///         them, so the share price falls exactly as it would if the
+    ///         venue's holdings had fallen in value.
+    function lose(uint256 amount) external {
+        IERC20(asset()).transfer(SINK, amount);
+    }
+}

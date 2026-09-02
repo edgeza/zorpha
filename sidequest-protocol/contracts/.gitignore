@@ -1,3 +1,6 @@
 # Slither run artefacts: regenerated on every deploy, never committed.
 slither-report.json
 slither-run.log
+
+# Cached address of the drill fixture; local to a chain, not shared.
+.lossy-target-*
