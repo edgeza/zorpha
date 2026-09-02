@@ -139,7 +139,13 @@ because the point is to test the whole stack rather than the contracts alone.
 - [ ] **Partial coverage.** A loss LARGER than the escrow, where the depositor
       takes only the uncovered remainder. Covered by
       `testFuzz_DepositorNeverLosesMoreThanTheUncoveredShortfall` but not yet on
-      chain. Drill it with `LOSS_AMOUNT` set above the seed.
+      chain.
+
+      Note the loss drill cannot be pointed at this by raising `LOSS_AMOUNT`
+      alone: it asserts `totalAssets` is UNCHANGED, which holds only while the
+      escrow covers the whole shortfall. Past that the correct behaviour is for
+      `totalAssets` to fall by exactly the uncovered part, so the assertions
+      have to change with it, not just the amount.
 - [ ] `reclaimBond` after the withdrawal timelock.
 - [ ] A second leader launching against the same target does not collide.
 
