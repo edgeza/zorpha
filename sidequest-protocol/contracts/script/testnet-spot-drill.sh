@@ -159,10 +159,12 @@ CALLS0=$(call "$NOOP" 'calls()(uint256)')
 info "noop nonce $NONCE0, calls $CALLS0, max expiry ${MAX_EXPIRY}s"
 
 # ─── Signing ────────────────────────────────────────────────────────────────
-# The domain is NOT the standard EIP712Domain. This executor uses
-#   EIP712Domain(uint256 chainId,address executor)
-# with no name and no version, so the usual typed-data tooling cannot produce
-# this digest and `cast wallet sign --data` is no use. The digest is assembled
+# The domain IS the standard EIP712Domain now:
+#   EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)
+# It used to be a two-field variant with no name and no version, which no wallet
+# could render -- a manager authorising a rebalance saw an opaque hash. Changed
+# before mainnet, because doing it afterwards would strand any signature in
+# flight. The digest is still assembled
 # by hand and the domain separator is read back off the contract and compared,
 # so a mistake in the encoding fails here rather than as an opaque
 # InvalidSignature revert.
@@ -172,8 +174,12 @@ info "noop nonce $NONCE0, calls $CALLS0, max expiry ${MAX_EXPIRY}s"
 # an opaque 32-byte hash, not "rebalance vault X to Y bps". That is blind
 # signing, and it is the failure mode this protocol's whole receipt story is
 # meant to avoid. See docs/FINDINGS-EIP712-DOMAIN.md.
-DOMAIN_TYPEHASH=$(cast keccak "EIP712Domain(uint256 chainId,address executor)")
-DOMAIN=$(cast keccak "$(cast abi-encode 'f(bytes32,uint256,address)' "$DOMAIN_TYPEHASH" "$CHAIN_ID" "$EXEC")")
+DOMAIN_TYPEHASH=$(cast keccak "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
+DOMAIN=$(cast keccak "$(cast abi-encode 'f(bytes32,bytes32,bytes32,uint256,address)' \
+          "$DOMAIN_TYPEHASH" \
+          "$(cast keccak 'Zorpha Strategy Executor')" \
+          "$(cast keccak '1')" \
+          "$CHAIN_ID" "$EXEC")")
 ONCHAIN_DOMAIN=$(call "$EXEC" 'DOMAIN_SEPARATOR()(bytes32)')
 eq "$DOMAIN" "$ONCHAIN_DOMAIN" \
   || die "domain separator mismatch.

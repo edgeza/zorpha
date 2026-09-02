@@ -263,8 +263,11 @@ for pair in "$ASSET:$FUND_ASSET:equity" "$CASH:$FUND_CASH:cash"; do
 done
 
 # ─── Signing helpers ────────────────────────────────────────────────────────
-DOMAIN=$(cast keccak "$(cast abi-encode 'f(bytes32,uint256,address)' \
-          "$(cast keccak 'EIP712Domain(uint256 chainId,address executor)')" "$CHAIN_ID" "$EXEC")")
+DOMAIN=$(cast keccak "$(cast abi-encode 'f(bytes32,bytes32,bytes32,uint256,address)' \
+          "$(cast keccak 'EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)')" \
+          "$(cast keccak 'Zorpha Strategy Executor')" \
+          "$(cast keccak '1')" \
+          "$CHAIN_ID" "$EXEC")")
 eq "$DOMAIN" "$(call "$EXEC" 'DOMAIN_SEPARATOR()(bytes32)')" || die "domain separator mismatch"
 RTH=$(call "$EXEC" 'REBALANCE_TYPEHASH()(bytes32)')
 

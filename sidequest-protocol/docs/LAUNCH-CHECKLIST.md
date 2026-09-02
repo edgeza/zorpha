@@ -52,12 +52,17 @@ here because a decision that lives only in a findings doc does not get made.
       [FINDINGS-EQUALISATION.md](FINDINGS-EQUALISATION.md). Now applied to both
       vaults. It changes fee accounting in both directions and must not ship on
       my say-so.
-- [ ] **EIP-712 blind signing.** The executor's domain is non-standard
-      (`EIP712Domain(uint256 chainId,address executor)`), so wallets cannot
-      render what a manager is signing.
-      [FINDINGS-EIP712-DOMAIN.md](FINDINGS-EIP712-DOMAIN.md). Fixing it
-      invalidates any in-flight signature, so it is cheapest to do before there
-      are any.
+- [x] ~~EIP-712 blind signing.~~ **Fixed.** The executor now inherits
+      OpenZeppelin's `EIP712` with the standard four-field domain, so wallets can
+      render a rebalance, and ERC-5267 `eip712Domain()` lets tooling read the
+      domain instead of copying the type string by hand.
+      [FINDINGS-EIP712-DOMAIN.md](FINDINGS-EIP712-DOMAIN.md).
+      **Two follow-ups this creates:** the testnet executor at
+      `0xFCc4dDa07Bb6BCa833354BbF0c18c7eaa6dFdBfc` still carries the old domain,
+      so the spot, rotation and lifecycle drills will fail their own domain check
+      until it is redeployed (correctly, and loudly). And confirm in a wallet
+      that a rebalance actually renders -- that is the entire point and no
+      Foundry test can assert it.
 - [ ] **Both deployer and manager signer keys are burned.** Recorded in
       [BURNED-KEYS.md](BURNED-KEYS.md), enforced by
       `script/check-burned-keys.sh`. Regenerate before mainnet; the gate will

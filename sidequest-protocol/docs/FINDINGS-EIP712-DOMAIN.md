@@ -1,7 +1,8 @@
 # Finding: the rebalance domain is non-standard, so managers sign blind
 
-**Status:** open. Noticed 2026-09-02 while writing
-`contracts/script/testnet-spot-drill.sh`.
+**Status:** **fixed.** Noticed 2026-09-02 while writing
+`contracts/script/testnet-spot-drill.sh`, fixed the same day by adopting the
+standard domain via OpenZeppelin's `EIP712`. See **Fix** below.
 **Contract:** `src/executor/StrategyExecutor.sol`
 **Severity:** not a vulnerability. The domain is cryptographically sound. It is
 a usability and auditability gap, plus one real forward-compatibility problem,
@@ -109,3 +110,83 @@ standard and deviations are what an auditor most wants to know about.
 `./script/testnet-spot-drill.sh <signer> <keeper>` prints the digest it signs.
 Paste that payload into any wallet's typed-data signing flow and observe that
 nothing renders.
+
+---
+
+## Fix
+
+`StrategyExecutor` now inherits OpenZeppelin's `EIP712`, constructed with
+`("Zorpha Strategy Executor", "1")`. The hand-rolled separator is gone.
+
+Adopting the library rather than just correcting the type string was the point.
+The hand-rolled version was first rewritten to the standard four fields, and then
+checked against `lib/openzeppelin-contracts/.../EIP712.sol` -- which turned out to
+use the identical type string *and* the identical
+`abi.encode(TYPE_HASH, nameHash, versionHash, chainid, address(this))` layout.
+Having proved the two were byte-for-byte equivalent, keeping the local copy meant
+maintaining hand-written cryptography with no remaining advantage over an audited
+implementation. So it went.
+
+What comes free with it:
+
+- **ERC-5267 `eip712Domain()`.** Tooling can now read the domain off the chain
+  instead of reconstructing it from a type string copied out of the source. Four
+  drill scripts were doing exactly that, each one silent typo away from
+  signatures rejected as `InvalidSignature` with no indication why.
+- **Fork handling**, already present locally and now the library's problem.
+
+`DOMAIN_SEPARATOR()` is kept as a public getter: it is the conventional name, and
+the drill scripts read it to cross-check their own encoding.
+
+### The four drills
+
+All four rebuild the domain independently and compare against the chain, which is
+worth keeping -- it catches an encoding mistake as a mismatch rather than an
+opaque signature failure. Updated to the four-field form; `cast abi-encode` goes
+from `f(bytes32,uint256,address)` to `f(bytes32,bytes32,bytes32,uint256,address)`.
+
+Verified word by word rather than by inspection: the encoding is exactly five
+32-byte words, and word 1 is the canonical typehash.
+
+### Timing
+
+Deliberately before mainnet. Changing the domain invalidates every signature
+built against the old one, which costs nothing while the only such signatures
+live in testnet drills, and would strand anything in flight afterwards.
+
+### Five tests, because nothing pinned this
+
+Worth recording why it survived. Every signing test in the suite reads
+`DOMAIN_SEPARATOR()` off the executor and signs against whatever it returns.
+That is right for testing the signature path, and it means **all eighteen passed
+under the non-standard domain and would pass under a malformed one** -- the same
+shape of gap as a fee assertion on a zero-fee vault.
+
+`StrategyExecutorDomainTest` pins the domain itself:
+
+- `test_Domain_TypehashMatchesThePublishedConstant` -- asserts the typehash
+  equals `0x8b73c3c6...400f`, the published EIP-712 constant, which comes from
+  outside this repository. **This is the only one that survives a typo copied
+  into both the contract and the test**, which is the failure the other four
+  cannot see.
+- `test_Domain_IsTheStandardFourFieldDomain` -- rebuilds the separator from the
+  literal type string.
+- `test_Domain_IsNotTheOldNonStandardOne` -- without it, reverting the fix would
+  leave the suite green.
+- `test_Domain_IsDiscoverableViaErc5267` -- and that what 5267 reports actually
+  rebuilds the separator it describes.
+- `test_Domain_RebuildsOnAFork`.
+
+199 tests pass.
+
+## Open
+
+- [x] Adopt the standard domain.
+- [x] Pin it, with at least one assertion anchored outside the repository.
+- [x] Update the drill scripts.
+- [ ] Re-run the spot, rotation and lifecycle drills against a **redeployed**
+      executor. The one on testnet 46630 still carries the old domain, so those
+      scripts will now fail their own domain check -- correctly, and loudly,
+      which is what that check exists for.
+- [ ] Confirm in a wallet that a rebalance now renders as readable fields. The
+      whole point is what a manager sees, and that cannot be asserted in Foundry.

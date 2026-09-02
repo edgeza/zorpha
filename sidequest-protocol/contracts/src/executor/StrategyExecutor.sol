@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
 /// @notice Minimal interface for a single-weight vault's rebalance entrypoint.
 interface ISpotRebalancer {
@@ -26,25 +27,47 @@ interface IBasketRebalancer {
 ///           - no `executeSignal` / `SIGNAL_TYPEHASH` (single rebalance path only)
 ///           - no `MaxPositionSize` / `MaxLeverageBPS` (no leverage / spot-only)
 ///           - one typehash: `REBALANCE_TYPEHASH`
-contract StrategyExecutor is AccessControl {
+contract StrategyExecutor is AccessControl, EIP712 {
     bytes32 public constant KEEPER_ROLE    = keccak256("KEEPER_ROLE");
     bytes32 public constant GUARDIAN_ROLE  = keccak256("GUARDIAN_ROLE");
 
-    /// @notice Cached domain separator — rebuilt on chain fork.
-    bytes32 private immutable _CACHED_DOMAIN_SEPARATOR;
-    uint256 private immutable _CACHED_CHAIN_ID;
+    /// @notice EIP-712 domain name and version, as signed.
+    /// @dev    Passed to OpenZeppelin's `EIP712` constructor. Changing either
+    ///         silently invalidates every outstanding signature, so both are
+    ///         constants: it takes a redeploy, not a transaction.
+    string public constant EIP712_NAME = "Zorpha Strategy Executor";
+    string public constant EIP712_VERSION = "1";
 
+    /// @notice The EIP-712 domain separator, as used in every rebalance digest.
+    ///
+    /// @dev    Delegates to OpenZeppelin's `EIP712`, which caches the separator
+    ///         against the deploying chain id and rebuilds it if `block.chainid`
+    ///         changes -- so a forked chain cannot accept signatures minted for
+    ///         the original.
+    ///
+    ///         This used to be hand-rolled, over a non-standard domain:
+    ///         `EIP712Domain(uint256 chainId,address executor)`. Two fields
+    ///         present, two absent, the address field renamed. That was
+    ///         cryptographically sound -- chainId stops a signature crossing
+    ///         chains and the contract address stops it crossing contracts,
+    ///         which is the entire replay surface -- but no wallet could render
+    ///         it. Wallets match on the standard type string to decide whether a
+    ///         payload is structured data they can display, so a manager
+    ///         authorising a rebalance saw 32 bytes of hex, on the exact
+    ///         mechanism this protocol asks people to trust.
+    ///
+    ///         Kept as a named public getter because four drill scripts read it
+    ///         to cross-check their own encoding, and because `DOMAIN_SEPARATOR`
+    ///         is the conventional name for it. ERC-5267 `eip712Domain()` comes
+    ///         from the library, so tooling can discover the domain rather than
+    ///         copying the type string out of this file by hand.
+    ///
+    ///         Changed before mainnet deliberately: it invalidates any signature
+    ///         built against the old domain, which costs nothing while the only
+    ///         such signatures are in testnet drills. Afterwards it would strand
+    ///         whatever was in flight. See docs/FINDINGS-EIP712-DOMAIN.md.
     function DOMAIN_SEPARATOR() public view returns (bytes32) {
-        if (block.chainid == _CACHED_CHAIN_ID) return _CACHED_DOMAIN_SEPARATOR;
-        return _buildDomainSeparator(block.chainid);
-    }
-
-    function _buildDomainSeparator(uint256 chainId) private view returns (bytes32) {
-        return keccak256(abi.encode(
-            keccak256("EIP712Domain(uint256 chainId,address executor)"),
-            chainId,
-            address(this)
-        ));
+        return _domainSeparatorV4();
     }
 
     /// @notice EIP-712 type hash for a SpotVault target-weight rebalance command.
@@ -107,11 +130,8 @@ contract StrategyExecutor is AccessControl {
         _;
     }
 
-    constructor(address governor_) {
+    constructor(address governor_) EIP712(EIP712_NAME, EIP712_VERSION) {
         require(governor_ != address(0), "StrategyExecutor: zero governor");
-
-        _CACHED_CHAIN_ID = block.chainid;
-        _CACHED_DOMAIN_SEPARATOR = _buildDomainSeparator(block.chainid);
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(DEFAULT_ADMIN_ROLE, governor_);

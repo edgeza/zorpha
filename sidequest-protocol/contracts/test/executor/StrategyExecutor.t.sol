@@ -405,3 +405,122 @@ contract StrategyExecutorTest is Test {
         assertEq(b.callCount(), 0);
     }
 }
+
+/// @notice The EIP-712 domain itself, which nothing pinned.
+///
+///         Every signing test in the suite above reads `DOMAIN_SEPARATOR()` off
+///         the executor and signs against whatever it returns. That is correct
+///         for testing the signature path and it means those tests pass under
+///         ANY domain, including a malformed one -- the same shape of gap as a
+///         fee assertion on a zero-fee vault. Nothing failed when the domain was
+///         non-standard, and nothing would have failed if a field were dropped.
+///
+///         These tests reconstruct the domain independently, so a change to it
+///         has to be deliberate.
+contract StrategyExecutorDomainTest is Test {
+    StrategyExecutor executor;
+    address governor = makeAddr("governor");
+
+    function setUp() public {
+        executor = new StrategyExecutor(governor);
+    }
+
+    /// The domain must be the conventional four-field EIP-712 domain, because
+    /// that is the string wallets match on to decide whether they can render
+    /// structured data at all. Built here from the literal type string rather
+    /// than read from the contract.
+    function test_Domain_IsTheStandardFourFieldDomain() public view {
+        bytes32 expected = keccak256(abi.encode(
+            keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+            ),
+            keccak256(bytes("Zorpha Strategy Executor")),
+            keccak256(bytes("1")),
+            block.chainid,
+            address(executor)
+        ));
+        assertEq(executor.DOMAIN_SEPARATOR(), expected, "domain must be standard and unchanged");
+    }
+
+    /// An external anchor. This is the published EIP-712 domain typehash, the
+    /// same value OpenZeppelin's `EIP712.TYPE_HASH` computes, and it does not
+    /// come from anywhere in this repository. Every other assertion here builds
+    /// the type string from a literal, so a typo copied into both the contract
+    /// and the test would pass all of them. This one would not.
+    function test_Domain_TypehashMatchesThePublishedConstant() public pure {
+        assertEq(
+            keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+            ),
+            0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f,
+            "the domain typehash must match the published EIP-712 constant"
+        );
+    }
+
+    /// The old domain must no longer verify. Without this, reverting the fix
+    /// would leave the suite green.
+    function test_Domain_IsNotTheOldNonStandardOne() public view {
+        bytes32 old = keccak256(abi.encode(
+            keccak256("EIP712Domain(uint256 chainId,address executor)"),
+            block.chainid,
+            address(executor)
+        ));
+        assertTrue(executor.DOMAIN_SEPARATOR() != old, "the non-standard domain is gone");
+    }
+
+    /// ERC-5267, so tooling reads the domain instead of copying the type string
+    /// out of the source by hand -- which four drill scripts were doing, each one
+    /// typo away from signatures that fail with no diagnosis.
+    function test_Domain_IsDiscoverableViaErc5267() public view {
+        (
+            bytes1 fields,
+            string memory name,
+            string memory version,
+            uint256 chainId,
+            address verifyingContract,
+            bytes32 salt,
+            uint256[] memory extensions
+        ) = executor.eip712Domain();
+
+        assertEq(fields, hex"0f", "name|version|chainId|verifyingContract, no salt");
+        assertEq(name, "Zorpha Strategy Executor");
+        assertEq(version, "1");
+        assertEq(chainId, block.chainid);
+        assertEq(verifyingContract, address(executor));
+        assertEq(salt, bytes32(0));
+        assertEq(extensions.length, 0);
+
+        // And what it reports must actually rebuild the separator it describes.
+        bytes32 rebuilt = keccak256(abi.encode(
+            keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+            ),
+            keccak256(bytes(name)),
+            keccak256(bytes(version)),
+            chainId,
+            verifyingContract
+        ));
+        assertEq(rebuilt, executor.DOMAIN_SEPARATOR(), "5267 output must match the real domain");
+    }
+
+    /// The separator is cached against a chain id and rebuilt on a fork. If the
+    /// cache were returned unconditionally, a forked chain would accept
+    /// signatures minted for the original.
+    function test_Domain_RebuildsOnAFork() public {
+        bytes32 before = executor.DOMAIN_SEPARATOR();
+        vm.chainId(block.chainid + 1);
+        bytes32 after_ = executor.DOMAIN_SEPARATOR();
+        assertTrue(before != after_, "a fork must not reuse the original domain");
+
+        bytes32 expected = keccak256(abi.encode(
+            keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+            ),
+            keccak256(bytes("Zorpha Strategy Executor")),
+            keccak256(bytes("1")),
+            block.chainid,
+            address(executor)
+        ));
+        assertEq(after_, expected, "and must rebuild correctly for the new chain");
+    }
+}
