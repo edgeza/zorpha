@@ -151,9 +151,24 @@ info "$ROUND"
 # It swaps 1:1 out of its own balance, so it needs both legs. This is a stub
 # standing in for a router; on mainnet the router holds nothing on our behalf.
 bold "3/5  Fund the stub swap adapter"
-FUND_ASSET="${FUND_ASSET_AMOUNT:-1000000000000000000000}"   # 1,000 units, 18dp equity
-FUND_CASH="${FUND_CASH_AMOUNT:-1000000000}"                 # 1,000 units, 6dp stable
-for pair in "$ASSET:$FUND_ASSET:equity" "$CASH:$FUND_CASH:cash"; do
+# Sized in RAW UNITS off the deposit, not in nominal token amounts.
+#
+# The stub "returns the same amount as the input" -- 1:1 on raw units, with no
+# regard for decimals. The equity is 18dp and the stable is 6dp, so selling
+# 50e18 of equity makes the stub try to pay out 50e18 raw units of a 6dp token:
+# fifty trillion nominal tUSDG. Funding it with a sensible-looking 1,000 tUSDG
+# (1e9 raw) is what made the first drill run revert with
+# ERC20InsufficientBalance(adapter, 1e9, 5e19).
+#
+# So both legs get twice the deposit in raw units, which covers any rebalance
+# of this vault. The nominal figure for the stable leg is absurd; that is the
+# stub being a stub, and it is free to mint on testnet.
+FUND_RAW="${FUND_RAW_AMOUNT:-}"
+DEPOSIT="${SPOT_DEPOSIT_AMOUNT:-100000000000000000000}"      # 100 units, 18dp
+[[ -n "$FUND_RAW" ]] || FUND_RAW=$(bi "$DEPOSIT" mul 2)
+info "funding each leg with $FUND_RAW raw units (2x the deposit)"
+
+for pair in "$ASSET:$FUND_RAW:equity" "$CASH:$FUND_RAW:cash"; do
   TOK="${pair%%:*}"; REST="${pair#*:}"; AMT="${REST%%:*}"; WHAT="${REST##*:}"
   HAVE=$(try "$TOK" 'balanceOf(address)(uint256)' "$SWAP")
   HAVE="${HAVE:-0}"
@@ -167,16 +182,24 @@ done
 
 # ─── 4. Deposit, so there is something to rebalance ────────────────────────
 bold "4/5  Deposit into the vault"
-DEPOSIT="${SPOT_DEPOSIT_AMOUNT:-100000000000000000000}"     # 100 units, 18dp
-HAVE=$(try "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
-HAVE="${HAVE:-0}"
-if lt "$HAVE" "$DEPOSIT"; then
-  send "$ASSET" 'mint(address,uint256)' "$ACTOR" "$DEPOSIT"
-  ok "minted $DEPOSIT of the equity"
+# Skip if the vault is already funded. Re-running setup used to stack another
+# deposit on top every time -- harmless but it grows the vault, spends gas, and
+# makes the figures in the drill's output drift from run to run for no reason.
+TVL_NOW=$(try "$VAULT" 'grossValue()(uint256)')
+TVL_NOW="${TVL_NOW:-0}"
+if lt "$TVL_NOW" "$DEPOSIT"; then
+  HAVE=$(try "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
+  HAVE="${HAVE:-0}"
+  if lt "$HAVE" "$DEPOSIT"; then
+    send "$ASSET" 'mint(address,uint256)' "$ACTOR" "$DEPOSIT"
+    ok "minted $DEPOSIT of the equity"
+  fi
+  send "$ASSET" 'approve(address,uint256)' "$VAULT" "$DEPOSIT"
+  send "$VAULT" 'deposit(uint256,address)' "$DEPOSIT" "$ACTOR"
+  ok "deposited $DEPOSIT"
+else
+  ok "vault already holds $TVL_NOW, no deposit needed"
 fi
-send "$ASSET" 'approve(address,uint256)' "$VAULT" "$DEPOSIT"
-send "$VAULT" 'deposit(uint256,address)' "$DEPOSIT" "$ACTOR"
-ok "deposited $DEPOSIT"
 
 # ─── 5. Confirm it can now rebalance ───────────────────────────────────────
 # grossValue is the figure `rebalanceTo` gates on. If it is still zero, or it

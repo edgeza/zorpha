@@ -271,13 +271,22 @@ ok "weight bound enforced: $(reason)"
 # One rebalance is already spent from step 1, so fill the rest of the window
 # and then try once more.
 bold "7/7  The rolling rate limit must bite"
-# Alternate the target so each submission is a real move past the threshold.
-# Repeating one weight would pass the signature checks and then take the
-# sub-threshold early return -- which still consumes a nonce and a rate-limit
-# slot, so the limit would still be reached, but the drill would be asserting
-# the limit against a sequence of no-ops.
-RL_WEIGHT=$(bi 10000 sub "$WEIGHT")
-info "rate-limit submissions use $RL_WEIGHT bps so each is a genuine move"
+# The same weight, deliberately, so these submissions do NOT trade.
+#
+# The rate limit is enforced by the executor before it calls the vault at all:
+# expiry, nonce, signature and the sliding window are all checked in
+# executeRebalance, and only then does it reach rebalanceTo. So a submission
+# that takes the vault's sub-threshold early return still consumes a nonce and
+# a rate-limit slot, which is exactly what this step is measuring.
+#
+# Not trading is also the safer choice with the stub adapter. It swaps 1:1 on
+# raw units regardless of decimals, so every trade between an 18dp equity and a
+# 6dp stable leaves the vault holding a nonsense cash balance and a distorted
+# grossValue. Four more real trades would compound that and the loop could then
+# fail for accounting reasons that have nothing to do with the rate limit.
+RL_WEIGHT="$WEIGHT"
+info "rate-limit submissions repeat $RL_WEIGHT bps: no trade, but each still"
+info "consumes a nonce and a slot, which is what the limit is enforced on"
 REMAINING=$(bi "$LIMIT" sub 1)
 info "limit $LIMIT, one already used; submitting $REMAINING more, then one too many"
 NEXT="$N1"
