@@ -149,13 +149,32 @@ The receipt's NAV figures after that first trade are meaningless.
       as much as a mainnet one: until it is done, no vault holding two legs can
       be rebalanced twice or emptied once.
 
-**Rotation vault (`zqROT`) — cannot be rebalanced by anyone.** Launch blocker.
-`KEEPER_ROLE` on it is held only by `StrategyExecutor`; the executor calls
-`rebalanceTo(uint16)`; the vault exposes `rebalanceTo(uint16[])`. Different
-selectors, so the call reverts with empty data, and nothing else holds the
-role. The portal advertises it as "rotates between approved real-world assets
-on a signed mandate". It cannot rotate. Needs a second executor entrypoint for
-the array form — a contract change, not a configuration fix.
+**Rotation vault (`zqROT`)** — `./script/testnet-migrate-executor.sh <gov> <signer>`
+once, then `./script/testnet-rotation-drill.sh <signer> <keeper>`. Run
+2026-09-02, all green. First rebalance in the vault's existence.
+
+Found as a launch blocker earlier the same day: `KEEPER_ROLE` on the vault was
+held only by `StrategyExecutor`, the executor called `rebalanceTo(uint16)`, the
+vault exposes `rebalanceTo(uint16[])` — different selectors, so the call
+reverted with empty data and nothing else could reach it. The portal advertised
+it as rotating on a signed mandate while it could not rotate at all. Fixed with
+`executeBasketRebalance`, a distinct EIP-712 type, and the executor redeployed
+on testnet with the old one revoked from all three vaults.
+
+- [x] A signed basket executes, `rebalanceCount` 0 → 1, a receipt is emitted,
+      and the stored weights become **exactly** what was signed, element by
+      element: `[5000, 5000]` → `[7000, 3000]`.
+- [x] Replay: `NonceAlreadyUsed`.
+- [x] A tampered weight: `InvalidSignature`. The array is hashed into the signed
+      struct, so a keeper cannot rewrite the mandate in flight.
+- [x] Reordered weights: `InvalidSignature`. Same elements, same sum, different
+      instruction — a sum-or-length check would have waved it through.
+- [x] A basket summing to 9000: `BadWeights()`, **from the vault**, and the
+      nonce did not advance. The executor deliberately does not duplicate the
+      vault's basket rules, and a vault revert unwinds the whole transaction so
+      a refused basket costs the manager nothing.
+- [x] Wrong length: `"RWRotationVault: length mismatch"`, also from the vault.
+- [x] A spot-form signature cannot be replayed as a basket (unit test).
 
 **Leadership and first loss** — the differentiator, so the one to test hardest
 
