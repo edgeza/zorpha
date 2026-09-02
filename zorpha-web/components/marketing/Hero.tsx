@@ -3,17 +3,21 @@
 import { TOKEN, FLOAT_AT_LAUNCH_PCT } from '@/lib/tokenomics';
 import { formatCompact } from '@/lib/format';
 import { CountUp } from '@/components/motion/CountUp';
+import { PrismHero } from '@/components/ui/prism-hero';
 
 /**
  * Hero.
  *
- * Full-bleed atmospheric background, floating glass chip, serif display
- * headline, glass actions, trust row beneath.
+ * The wordmark sits in front of a faceted crystal that refracts a ghost of it
+ * from behind, so the brand reads as lit rather than printed. See
+ * components/ui/prism-hero.tsx for how the light gets through the letterforms.
  *
- * The background is generated rather than photographic. A stock image would
- * need hosting, an entry in the CSP's img-src, and art direction at every
- * breakpoint; layered gradients plus two drifting blurred blobs give the same
- * depth for a few hundred bytes and scale to any viewport.
+ * Nothing here is fetched. The stone is procedural geometry lit by lightformers,
+ * which matters beyond taste: vercel.json pins `connect-src 'self'`, so an HDRI
+ * or a loaded model would be blocked in production. The old layered-gradient
+ * aurora was chosen for the same reason and is now retired -- the crystal does
+ * that job, and running both put two full-viewport composites on top of each
+ * other for no gain.
  *
  * The row at the bottom lists the chain and standards Zorpha is actually built
  * on. It occupies the slot a partner-logo wall would, deliberately: Zorpha has
@@ -38,43 +42,6 @@ const BUILT_ON = [
 
 export function Hero() {
   return (
-<<<<<<< Updated upstream
-    // -mt-20 cancels the marketing layout's pt-20 so the aurora runs behind
-    // the fixed header; the inner pt-28 then clears it for content.
-    <section className="relative isolate -mt-20 flex min-h-[100svh] flex-col overflow-hidden">
-      {/* ─── Background ───────────────────────────────────────────────────── */}
-      <div className="aurora grain absolute inset-0 -z-20" aria-hidden="true">
-        <span
-          className="aurora-blob animate-drift-a"
-          style={{
-            top: '-18%',
-            left: '-10%',
-            width: '46rem',
-            height: '38rem',
-            background:
-              'radial-gradient(circle, rgba(139,109,255,0.42) 0%, rgba(139,109,255,0) 70%)',
-          }}
-        />
-        <span
-          className="aurora-blob animate-drift-b"
-          style={{
-            bottom: '-24%',
-            right: '-12%',
-            width: '52rem',
-            height: '42rem',
-            background:
-              'radial-gradient(circle, rgba(111,74,232,0.38) 0%, rgba(34,211,238,0.10) 55%, rgba(0,0,0,0) 72%)',
-          }}
-        />
-      </div>
-      <div className="grid-lines absolute inset-0 -z-10" aria-hidden="true" />
-
-      {/* Fades the aurora into the page below so the hero does not end on a
-          hard horizontal seam. */}
-      <div
-        className="absolute inset-x-0 bottom-0 -z-10 h-40 bg-gradient-to-b from-transparent to-void-950"
-        aria-hidden="true"
-=======
     <>
       {/* -mt-20 cancels the marketing layout's pt-20 so the scene runs behind
           the fixed header; topInset then clears it for the copy. */}
@@ -97,50 +64,11 @@ export function Hero() {
         }
         footnote={`Depositing never requires holding ${TOKEN.ticker}.`}
         meta={['Signed rebalances', 'Onchain receipts', '48h timelock']}
->>>>>>> Stashed changes
       />
 
-      {/* ─── Content ──────────────────────────────────────────────────────── */}
-      <div className="shell flex flex-1 flex-col justify-center pb-14 pt-28 sm:pt-32">
-        <div className="mx-auto max-w-3xl text-center">
-          <div className="fade-in-1">
-            <span className="chip-row">
-              <span className="chip-label">Live</span>
-              <span className="pr-1 text-sm font-medium text-white/90">
-                Testnet is up on {TOKEN.chain}
-              </span>
-            </span>
-          </div>
-
-          <h1 className="fade-in-2 mt-7 text-[2.6rem] leading-[1.02] text-white sm:text-6xl lg:text-[4.5rem]">
-            Track records you can
-            <br className="hidden sm:block" /> actually verify
-          </h1>
-
-          <p className="lede fade-in-3 mx-auto mt-6 max-w-2xl text-white/70">
-            Zorpha runs curated vaults on {TOKEN.chain}. Every rebalance is signed by the manager
-            and written onchain as a public receipt, with the price, the size, and the exact
-            moment it happened. No screenshots. No edits. No quietly deleted calls.
-          </p>
-
-          <div className="fade-in-4 mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
-            <Link href="/portal" className="btn-glass w-full sm:w-auto">
-              Open the portal
-              <ArrowRight />
-            </Link>
-            <Link href="/protocol" className="btn-quiet w-full sm:w-auto">
-              How it works
-              <Play />
-            </Link>
-          </div>
-
-          <p className="fade-in-4 mt-5 text-xs text-white/45">
-            Depositing never requires holding {TOKEN.ticker}.
-          </p>
-        </div>
-
-        {/* Token facts, not price. Every number is a contract constant. */}
-        <dl className="fade-in-5 mx-auto mt-16 grid w-full max-w-4xl grid-cols-2 overflow-hidden rounded-[1.25rem] border border-white/10 bg-white/[0.04] backdrop-blur-md sm:grid-cols-4">
+      {/* ─── Token facts, not price. Every number is a contract constant. ─── */}
+      <section className="shell pb-4 pt-16 sm:pt-20">
+        <dl className="mx-auto grid w-full max-w-4xl grid-cols-2 overflow-hidden rounded-[1.25rem] border border-white/10 bg-white/[0.04] backdrop-blur-md sm:grid-cols-4">
           {STATS.map((item, i) => (
             <div
               key={item.label}
@@ -165,8 +93,8 @@ export function Hero() {
           ))}
         </dl>
 
-        {/* ─── Built on ───────────────────────────────────────────────────── */}
-        <div className="fade-in-5 mx-auto mt-14 w-full max-w-5xl">
+        {/* ─── Built on ─────────────────────────────────────────────────── */}
+        <div className="mx-auto mt-14 w-full max-w-5xl">
           <p className="text-center text-sm text-white/45">
             Built on open standards, with nothing proprietary in the trust path
           </p>
@@ -182,7 +110,7 @@ export function Hero() {
             ))}
           </ul>
         </div>
-      </div>
-    </section>
+      </section>
+    </>
   );
 }
