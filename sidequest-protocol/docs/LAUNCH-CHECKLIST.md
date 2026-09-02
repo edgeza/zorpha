@@ -160,8 +160,8 @@ because the point is to test the whole stack rather than the contracts alone.
 - [x] Rounding favours the vault, never the depositor. The drill rejects any
       overpayment outright, and allows an underpayment of at most five base
       units — one per conversion in a deposit/redeem round trip.
-- [ ] `claimFees()` moves the accrued amount to the treasury and resets the
-      counter. Not yet reached on a completed run.
+- [x] `claimFees()` moves the accrued amount to the treasury and resets the
+      counter. Run 2026-09-02: 291,249,949 reached the treasury, counter to 0.
 
 **Open finding from this drill.** A depositor entering an empty-but-dusty vault
 is charged a performance fee on NAV appreciation from before they arrived —
@@ -174,10 +174,20 @@ no test in the suite covers it.
 - [ ] Let a price go stale past `maxOracleStaleness`, attempt a rebalance,
       confirm it **reverts** rather than trading on a stale price.
 
-**Token layer**
-- [ ] Airdrop claim from an eligible address succeeds; a second claim reverts.
-- [ ] An ineligible address cannot claim.
-- [ ] Vesting: nothing claimable before cliff; linear after.
+**Token layer** — `./script/testnet-token-drill.sh <account>`
+
+- [x] Airdrop claim from an eligible address succeeds; a second claim reverts.
+      Run 2026-09-02: exactly 75,000 $ZOR received, `isClaimed` flipped, the
+      distributor fell 80,000,000 -> 79,925,000. The proof came from the file
+      the portal serves, so this also proves the site hands users something the
+      contract accepts.
+- [x] An ineligible address cannot claim, using a valid proof for the wrong
+      account.
+- [ ] Vesting: nothing claimable before cliff; linear after. **Half done.** The
+      drill confirms nothing is claimable with no schedule funded, which is the
+      only half testable today — funding a schedule needs real beneficiary
+      addresses and amounts (DEPLOY-ENV.md 4.2), not invented ones. Fund one,
+      then re-run for the cliff.
 - [ ] Timelock: queue a privileged call, confirm it cannot execute before the
       48h delay, then execute it.
 - [ ] Circuit breaker: set it, confirm deposits are refused, unset it.

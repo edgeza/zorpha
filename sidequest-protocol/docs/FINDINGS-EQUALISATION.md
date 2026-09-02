@@ -24,6 +24,18 @@ The contract behaved exactly as written. `performanceFeeAccrued` moved by
 60,000,000 and the contract's own formula predicts 60,000,000 to the unit. The
 problem is what the formula measures against.
 
+**It reproduces on every cycle.** Two consecutive runs, same vault, both
+overcharged:
+
+| Run | Mark at entry | Entry NAV | Gap | Fee charged | Fair fee | Overcharge |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 4,500,000 | 5,000,000 | 500,000 | 60,000,000 | 50,000,000 | 10,000,000 (20%) |
+| 2 | 7,500,000 | 8,000,000 | 500,000 | 56,250,000 | 50,000,000 | 6,250,000 (12.5%) |
+
+The entry NAV lands at `(dust + 1) x 1e6` through the ERC-4626 offset, and the
+mark is wherever the previous cycle left it, so the gap recurs every time the
+vault is emptied and re-entered. This is deterministic, not a rare interleaving.
+
 ## Why
 
 `_evaluateFees()` runs *before* the shares are minted:
@@ -82,8 +94,12 @@ equalisation credits/debits issued at entry. Zorpha has neither.
 It needs NAV to sit above the mark at the moment someone deposits, which needs
 the vault to hold assets while `totalSupply` is 0. Sources, weakest first:
 
-1. **Rounding dust.** What produced it here, over repeated drills. Grows by a
-   unit or two per full cycle, so the effect is small and slow.
+1. **Rounding dust.** What produced it here, over repeated drills. The dust
+   itself is tiny — nine base units after four cycles — but do not read that as
+   a small effect. The ERC-4626 offset is 1e6, so *each unit of dust moves the
+   entry NAV by a million*, and the mark always lags a cycle behind. That is
+   why a nine-unit residue produced a 12–20% overcharge. The precondition is
+   cheap; the consequence is not proportional to it.
 2. **A donation to the venue.** Anyone can inflate an ERC-4626 venue. Expensive
    for an attacker, because it lifts every depositor in that venue, not just
    this vault.
