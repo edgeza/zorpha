@@ -50,7 +50,7 @@ env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2-; }
 # signature hash and padded addresses as role hashes and reported sixteen
 # phantoms that were all artefacts of the parser. Counting positions in someone
 # else's output format is guessing; asking for structured data is not.
-role_hashes() {
+role_grants() {
   cast logs --rpc-url "$RPC" --address "$1" --from-block 0 \
        'RoleGranted(bytes32,address,address)' --json 2>/dev/null \
   | MSYS_NO_PATHCONV=1 node -e '
@@ -58,7 +58,12 @@ role_hashes() {
       process.stdin.on("data", d => s += d).on("end", () => {
         try {
           const logs = JSON.parse(s || "[]");
-          const seen = new Set(logs.map(l => l.topics[1]));
+          // role AND account. A grant that has since been revoked is
+          // resolved, and telling the two apart needs the account.
+          // topics[2] is the account, left-padded to 32 bytes.
+          const seen = new Set(
+            logs.map(l => l.topics[1] + " 0x" + l.topics[2].slice(26))
+          );
           if (seen.size) console.log([...seen].join("\n"));
         } catch { /* no logs, or not an AccessControl contract */ }
       });
@@ -111,24 +116,40 @@ bold "Phantom role audit against chain $(cast chain-id --rpc-url "$RPC")"
 echo "  ${#KNOWN[@]} declared role hashes, ${#CONTRACTS[@]} contracts"
 
 PHANTOMS=0
+declare -A SEEN_OK
 for c in "${CONTRACTS[@]}"; do
   CNAME="${c%%:*}"; CADDR=$(env_of "${c##*:}")
   [[ -z "$CADDR" || "$CADDR" == "0x0000000000000000000000000000000000000000" ]] && continue
 
-  while read -r r; do
+  while read -r r acct; do
     [[ -z "$r" ]] && continue
+
     if [[ -n "${KNOWN[$r]:-}" ]]; then
-      ok "$CNAME" "${KNOWN[$r]}"
-    else
-      bad "$CNAME" "$r"
-      PHANTOMS=$((PHANTOMS + 1))
+      [[ -z "${SEEN_OK[$CNAME/$r]:-}" ]] && { ok "$CNAME" "${KNOWN[$r]}"; SEEN_OK[$CNAME/$r]=1; }
+      continue
     fi
-  done < <(role_hashes "$CADDR")
+
+    # An unknown hash in the event log is only a live finding if the grant is
+    # still in force. The first version of this check read history alone, so a
+    # phantom that had already been revoked kept being reported -- which is
+    # the "reports a finding that is not one" failure its own comments warn
+    # about, committed in the same file.
+    HELD=$(cast call "$CADDR" 'hasRole(bytes32,address)(bool)' "$r" "$acct"              --rpc-url "$RPC" 2>/dev/null | awk '{print $1}' || echo "")
+    if [[ "$HELD" == "true" ]]; then
+      bad "$CNAME" "$r held by $acct"
+      PHANTOMS=$((PHANTOMS + 1))
+    else
+      printf '  [33m~[0m %-12s %s
+' "$CNAME" "$r (granted once, since revoked)"
+    fi
+  done < <(role_grants "$CADDR")
 done
 
 bold "Result"
 if [[ "$PHANTOMS" == "0" ]]; then
-  echo "  Every role ever granted on this deployment maps to a declared role."
+  echo "  No live phantom grants. Anything marked ~ was granted once and has"
+  echo "  since been revoked, which is resolved -- the history stays visible"
+  echo "  because it should be explainable, not because it is outstanding."
   exit 0
 fi
 echo "  $PHANTOMS phantom grant(s). Each is a hash somebody granted that"
