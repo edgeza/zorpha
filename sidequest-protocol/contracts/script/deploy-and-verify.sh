@@ -81,7 +81,7 @@ fi
 # under SKIP_TOKEN blocks a vault redeploy on values that will not be used --
 # and pushes whoever is deploying to invent a placeholder for a required-looking
 # variable, which is worse than not asking.
-REQUIRED_ENV=(GOVERNANCE RH_TESTNET_RPC_URL)
+REQUIRED_ENV=(GOVERNANCE RH_TESTNET_RPC_URL RH_EXPLORER_URL)
 if [[ "${SKIP_TOKEN:-false}" != "true" ]]; then
   REQUIRED_ENV+=(LIQUIDITY_RECIPIENT AIRDROP_MERKLE_ROOT AIRDROP_CLAIM_DEADLINE)
 fi
@@ -406,6 +406,10 @@ echo "==> [7/7] Phase B — vault layer"
 FACTORY_ADDR=""
 EXECUTOR_ADDR=""
 REPUTATION_ADDR=""
+ORACLE_ADDR=""
+SPOT_VAULT_ADDR=""
+ROTATION_VAULT_ADDR=""
+YIELD_VAULT_ADDR=""
 VAULTS_DEPLOYED=false
 
 if [[ "${DEPLOY_VAULTS:-false}" != "true" ]]; then
@@ -448,6 +452,30 @@ else
   FACTORY_ADDR=$(vault_addr_of VaultFactory)
   EXECUTOR_ADDR=$(vault_addr_of StrategyExecutor)
   REPUTATION_ADDR=$(vault_addr_of ReputationRegistry)
+  ORACLE_ADDR=$(vault_addr_of MedianOracle)
+
+  # The three vaults are CREATE2 children of the factory, so they appear in the
+  # artifact without a contractName and have to come from its events instead.
+  #
+  # None of these four were ever written to .env.local. That is not cosmetic:
+  # script/check-burned-keys.sh derived its contract list from this file, so the
+  # oracle was outside the audit's scope, and a burned key held UPDATER_ROLE on
+  # it -- total control of every price the protocol reads -- without the gate
+  # ever looking. The vaults were invisible to it for the same reason.
+  vault_of_event() {
+    cast logs --rpc-url "$RH_TESTNET_RPC_URL" --address "$FACTORY_ADDR" \
+      --from-block 0 "$1(address,address,bytes32)" --json 2>/dev/null \
+    | MSYS_NO_PATHCONV=1 node -e '
+        let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+          let l=[];try{l=JSON.parse(s||"[]")}catch(e){}
+          if(!l.length) return process.stdout.write("");
+          const t=l[l.length-1].topics;
+          process.stdout.write(t&&t[1]?"0x"+t[1].slice(26):"");
+        })' || true
+  }
+  SPOT_VAULT_ADDR=$(vault_of_event SpotVaultDeployed)
+  ROTATION_VAULT_ADDR=$(vault_of_event RotationVaultDeployed)
+  YIELD_VAULT_ADDR=$(vault_of_event YieldVaultDeployed)
 
   echo "    Factory      $FACTORY_ADDR"
   echo "    Executor     $EXECUTOR_ADDR"
@@ -510,7 +538,11 @@ fi
   echo ""
   echo "NEXT_PUBLIC_CHAIN_ID=$CHAIN_ID"
   echo "NEXT_PUBLIC_RPC_URL=$RH_TESTNET_RPC_URL"
-  echo "NEXT_PUBLIC_EXPLORER_URL=${RH_EXPLORER_URL:-}"
+  # Never write this empty. It is required above, so an empty value here means
+  # the check was bypassed -- and silently blanking a correct value is worse
+  # than failing.
+  [[ -n "${RH_EXPLORER_URL:-}" ]] || { echo "ERROR: RH_EXPLORER_URL empty at env-write time." >&2; exit 1; }
+  echo "NEXT_PUBLIC_EXPLORER_URL=${RH_EXPLORER_URL}"
   echo ""
   echo "NEXT_PUBLIC_ZOR_ADDRESS=$ZOR_ADDR"
   echo "NEXT_PUBLIC_TIMELOCK_ADDRESS=$TIMELOCK_ADDR"
@@ -523,6 +555,11 @@ fi
   echo "NEXT_PUBLIC_VAULT_FACTORY_ADDRESS=$FACTORY_ADDR"
   echo "NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS=$EXECUTOR_ADDR"
   echo "NEXT_PUBLIC_REPUTATION_REGISTRY_ADDRESS=$REPUTATION_ADDR"
+  echo "NEXT_PUBLIC_ORACLE_ADDRESS=$ORACLE_ADDR"
+  echo ""
+  echo "NEXT_PUBLIC_SPOT_VAULT_ADDRESS=$SPOT_VAULT_ADDR"
+  echo "NEXT_PUBLIC_ROTATION_VAULT_ADDRESS=$ROTATION_VAULT_ADDR"
+  echo "NEXT_PUBLIC_YIELD_VAULT_ADDRESS=$YIELD_VAULT_ADDR"
   echo ""
   echo "NEXT_PUBLIC_ENABLE_VAULT_DEPOSITS=$DEPOSITS_ENABLED"
   echo ""
