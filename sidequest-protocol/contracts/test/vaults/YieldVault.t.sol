@@ -194,11 +194,14 @@ contract YieldVaultTest is Test {
     /// the two. The yield vault holds one leg and has no price, so a price move
     /// cannot do it — but a venue *loss* can, and that is not exotic.
     ///
-    /// Answer: it does carry it. A venue loss splits the claim from its backing
+    /// Answer: it did carry it. A venue loss splits the claim from its backing
     /// exactly as a price move does, and a venue taking a haircut is the ordinary
     /// risk case rather than an exotic one. The initial guess in the findings doc
     /// -- that this was probably spot-vault-only -- was wrong, which is why it
     /// was tested instead of assumed.
+    ///
+    /// Now fixed by `_reconcileFeeClaimWhenEmpty`, so this asserts the depositor
+    /// is whole. The 9% it used to cost is recorded in the findings doc.
     function test_UnclaimedFee_AgainstAVenueLoss() public {
         (YieldVault v, StubYieldAdapter a) = _feeVault();
         address bob = makeAddr("bob");
@@ -219,33 +222,37 @@ contract YieldVaultTest is Test {
         usdc.burn(address(a), (backingBeforeLoss * 9) / 10);
         assertLt(a.totalAssets(), claim, "the claim now outgrows its backing");
 
-        uint256 shortfall = claim - a.totalAssets();
+        uint256 backingAfterLoss = a.totalAssets();
 
-        // Bob deposits into that state. He is not whole: the answer is that the
-        // yield vault carries the defect too, reached by a venue loss rather
-        // than a price move.
+        // Bob deposits into that state. `_reconcileFeeClaimWhenEmpty` caps the
+        // claim at its backing first, so his principal is not touched.
         uint256 deposited = 1_000 * 1e6;
         uint256 bobShares = _depositTo(v, bob, deposited);
         uint256 bobValue = v.convertToAssets(bobShares);
 
-        assertLt(bobValue, deposited, "bob is worth less than he paid, on entry");
+        assertEq(bobValue, deposited, "bob holds exactly what he paid");
         assertApproxEqAbs(
-            deposited - bobValue, shortfall, 2,
-            "bob's loss is the uncovered part of a fee struck before he arrived"
+            v.performanceFeeAccrued(), backingAfterLoss, 1,
+            "the claim was capped at what actually backed it, not written to zero"
         );
-        // 90% of the 100 backing 100 was burned, so 90 of bob's 1,000 is gone.
-        assertApproxEqRel(bobValue, 910 * 1e6, 1e12, "a 9% haircut on entry");
 
-        // And it completes. `_pullFromAdapter` takes min(needed, available)
-        // rather than reverting, so once bob's deposit has topped the adapter up,
-        // the full stale claim is payable -- out of his principal.
+        // Claiming now pays only the covered part. It used to pay the full stale
+        // claim -- `_pullFromAdapter` takes min(needed, available) rather than
+        // reverting, so once bob's deposit topped the adapter up the whole 100
+        // was payable out of his money, and the books balanced afterwards.
         uint256 recipientBefore = usdc.balanceOf(address(this));
         v.claimFees();
         uint256 paid = usdc.balanceOf(address(this)) - recipientBefore;
-        assertEq(paid, claim, "the whole stale claim is paid");
-        assertGt(paid, backingBeforeLoss - (backingBeforeLoss * 9) / 10,
-            "more than was ever backed: the excess came from bob");
-        assertEq(v.performanceFeeAccrued(), 0, "and it is settled, not stuck");
+        assertLt(paid, claim, "less than the stale claim");
+        assertApproxEqAbs(paid, backingAfterLoss, 1, "exactly what was backed");
+
+        // Bob is still whole after the fee recipient has been paid.
+        assertEq(
+            v.convertToAssets(bobShares), deposited,
+            "and paying the fee did not come out of bob"
+        );
+        // `backingBeforeLoss` is read to make the 90% burn legible above.
+        assertGt(backingBeforeLoss, backingAfterLoss, "the venue did lose");
     }
 
     function test_FirstDepositorIntoADustyVaultPaysOnlyForTheirOwnGain() public {

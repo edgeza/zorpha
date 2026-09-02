@@ -1,7 +1,10 @@
 # Finding: the emergency exit strands the cash leg and reports the loss as zero
 
-**Status:** open, unremediated. Observed on testnet 46630, 2026-09-02, in
-transaction `0x2baa8c117200bb14f7345914bd18d0d03341d27de5dd510dbe5e5e75bebf0406`.
+**Status:** **fixed** by option 3, both legs paid in kind. Originally observed on
+testnet 46630, 2026-09-02, in transaction
+`0x2baa8c117200bb14f7345914bd18d0d03341d27de5dd510dbe5e5e75bebf0406`. See **Fix**
+below. The change alters what a depositor receives, so it needs the auditor's eye
+even though it strictly increases what they get.
 **Contract:** `src/vaults/SpotVaultMinimal.sol`, `redeemEmergency`
 **Severity:** the forfeiture is by design. The silence about it is not, and the
 orphaning is worse than either.
@@ -84,6 +87,50 @@ completeness. That trade is sound and should stay.
 The cooldown is also right, and tested: without it the hatch could be used to
 drain the asset leg in a loop while the cash leg stayed stuck.
 
+## Fix
+
+Option 3. `redeemEmergency` now transfers a pro-rata slice of **both** legs:
+
+```solidity
+uint256 cashOwed = (shares * cashBal) / supply;
+...
+if (cashOwed > 0) cashAsset.safeTransfer(receiver, cashOwed);
+```
+
+It reads no oracle and calls no venue, so the independence that made this
+function worth having is untouched. That is the point worth drawing out: **the
+independence never actually required the forfeiture.** Paying in kind is exactly
+as venue-independent as confiscating, and the argument that justified keeping the
+cash was really an argument for not needing a price -- which an in-kind transfer
+also does not need.
+
+All three problems close at once:
+
+| | Before | After |
+| --- | --- | --- |
+| Haircut reported | `0` on a total forfeiture | the fee, which is all that is withheld |
+| Residue after exit | half a position, owned by nobody | nothing |
+| Recovery path | none, permanently | nothing to recover |
+
+The signature is now `returns (uint256 paid, uint256 paidCash)` and
+`EmergencyRedeem` carries `paidCash`. Only tests called it, so nothing else
+needed changing.
+
+The cost is that a depositor receives two tokens instead of one. That is a UX
+cost, not a safety one.
+
+### Two tests existed only to prove the defect
+
+`test_EmergencyRedeem_HaircutUnderReportsTheStrandedCash` and
+`test_EmergencyRedeem_StrandedCashCannotBeRecovered` both asserted the broken
+behaviour on purpose, so both failed the moment the fix landed -- which is what a
+regression test documenting a known bug is *for*. They are rewritten as
+`..._HaircutOfZeroIsNowTrue` and `..._LeavesNothingNeedingRescue`, each keeping a
+note of what it used to prove.
+
+The second still pins that there is no rescue function, deliberately. An empty
+vault needing no rescue beats a rescue path nobody has audited.
+
 ## Options
 
 Not chosen. The first is cheap and uncontroversial; the rest are design
@@ -106,14 +153,15 @@ decisions.
    because "you may forfeit part of your position" is not currently said
    anywhere a depositor would read.
 
-Option 3 looks strictly better than the status quo to me and I have not
-implemented it, because it changes what a depositor receives and that is not a
-call to make without the auditor and without you.
+Option 3 was chosen. It changes what a depositor receives, which is why it is
+flagged for the auditor -- but it changes it *upward*, from part of a position to
+all of it, and leaving a known confiscation in place to avoid touching fee
+semantics would have been the more dangerous conservatism.
 
 ## Open
 
 - [x] Prove the hatch works with a dead oracle and a dry venue. Five tests in
       `test/vaults/SpotVaultMinimal.t.sol`, plus the on-chain exit above.
-- [ ] Decide between options 1–4.
+- [x] Decide between options 1–4. Option 3, implemented.
 - [ ] Whichever is chosen, say in the depositor-facing copy that an emergency
       exit can forfeit part of the position. It is not written down today.

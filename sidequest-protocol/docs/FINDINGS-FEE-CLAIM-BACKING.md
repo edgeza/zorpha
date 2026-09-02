@@ -1,6 +1,8 @@
 # Finding: an unclaimed performance fee becomes a debt paid by the next depositor
 
-**Status:** open, unremediated. Reproduced in
+**Status:** **the depositor harm is fixed**; the underlying denomination
+mismatch is not. See **Fix** below for exactly where the line was drawn and why.
+Originally reproduced in
 `test/vaults/SpotVaultMinimal.t.sol::test_UnclaimedFee_DilutesTheNextDepositor`,
 which passes and therefore pins the behaviour as it currently stands.
 **Contracts:** `src/vaults/SpotVaultMinimal.sol` and `src/vaults/YieldVault.sol`.
@@ -188,6 +190,50 @@ mark did its job. This is not an overcharge — the protocol is owed 2. The defe
 is that the debt is carried in units the vault may not hold, with no mechanism to
 reconcile the two and no disclosure that it is outstanding.
 
+## Fix
+
+`_reconcileFeeClaimWhenEmpty()` on both vaults, called at the top of
+`_evaluateFees()` so it runs on every deposit, mint, withdraw, redeem and
+rebalance. While `totalSupply() == 0`, an accrued claim larger than the value
+backing it is written down to that backing, emitting
+`AccruedFeesWrittenDown(amount, remaining)`.
+
+Both reproductions now assert the depositor holds **exactly** what they paid,
+and the fee recipient is paid **only the covered part**.
+
+### Why the empty vault is the whole of it
+
+This looked like a partial fix and it is not. The harm needs the *price paid* to
+decouple from the *encumbrance settled*, and there is exactly one window where
+that happens.
+
+With shareholders present, `totalAssets()` nets the claim, so the NAV an incoming
+depositor buys at already reflects it. They pay a depressed price for a depressed
+share. Nothing is hidden and nothing is transferred.
+
+Once the vault empties, `getNavPerShare()` falls back to a `10 ** decimals()`
+sentinel. That sentinel cannot carry the encumbrance — there are no shares to
+price it into, and `totalAssets()` has floored to zero. **The floor is where the
+information is lost, and the empty vault is the only place the floor is
+reachable with a claim outstanding.** So capping there closes the harm rather
+than reducing it.
+
+### What is deliberately left
+
+The non-empty divergence. Holders bear a loss the fee recipient is insulated
+from: claim 100 against gross that fell from 250 to 150 leaves holders with 50
+and the claim untouched. That is unfair.
+
+It is also a dilution among parties who were **present when the fee was struck**,
+visible in the share price throughout, and correcting it means denominating the
+claim in shares — a change to what the fee recipient owns. Not mine to make.
+`test_UnclaimedFee_CapDoesNotFireWhileHeld` pins that the cap does *not* reach
+this case, so the boundary is asserted rather than assumed.
+
+The distinction that matters: **the fixed case was a silent transfer from someone
+who was not there. The remaining case is an unfair split between people who
+were.** The first is a bug. The second is a fee policy.
+
 ## Options
 
 Not chosen — the first two are cheap, the rest are design decisions.
@@ -227,7 +273,9 @@ forge test --match-test test_UnclaimedFee_DilutesTheNextDepositor -vv
 
 - [x] Reproduce it in a test that pins current behaviour.
 - [x] Option 1: make the write-down observable. Landed, with tests.
-- [ ] Decide between options 2–5. Option 3 is the one that removes the class.
+- [x] Close the depositor harm. `_reconcileFeeClaimWhenEmpty()`, both vaults.
+- [ ] Decide between options 2–5 for the remaining non-empty unfairness. Option 3
+      still removes the class; the cap only removes the harm.
 - [ ] Decide option 1b: whether `YieldVault` gets a write-down lever.
 - [x] Check `YieldVault` for the same defect. **It has it**, via a venue loss
       rather than a price move; 9% of the incoming deposit in the reproduction.

@@ -28,20 +28,26 @@ These are not checklist steps. They are findings that should stop a mainnet
 deploy until somebody has decided what to do about them, and they are recorded
 here because a decision that lives only in a findings doc does not get made.
 
-- [ ] **A depositor can lose 9—10% of their principal on entry, silently.**
-      [FINDINGS-FEE-CLAIM-BACKING.md](FINDINGS-FEE-CLAIM-BACKING.md). Affects
-      **both** `SpotVaultMinimal` and `YieldVault`. An unclaimed performance fee
-      is a claim in asset units backed by a balance that moves independently of
-      it; when the two diverge, `totalAssets()` floors at zero rather than
-      reporting the gap, and the next depositor pays the difference. It is not
-      stuck: the claim is paid in full out of that depositor's principal and the
-      books balance afterwards. `YieldVault` has no write-down, so governance
-      cannot forgive it. Reproduced in two passing tests. **This is the one I
-      would not ship past.**
-- [ ] **The emergency exit strands the cash leg and reports the loss as zero.**
-      [FINDINGS-EMERGENCY-EXIT.md](FINDINGS-EMERGENCY-EXIT.md). Forfeiture is by
-      design; reporting it as `haircut: 0` is not, and nothing can ever recover
-      the orphaned balance. Four options, none chosen.
+- [x] ~~A depositor can lose 9—10% of their principal on entry, silently.~~
+      **Fixed**, both vaults. `_reconcileFeeClaimWhenEmpty()` caps an accrued fee
+      claim at the value backing it while the vault is empty, which is the only
+      window where the price paid can decouple from the encumbrance settled.
+      Both reproductions now assert the depositor holds exactly what they paid.
+      [FINDINGS-FEE-CLAIM-BACKING.md](FINDINGS-FEE-CLAIM-BACKING.md).
+      **Still open underneath it:** the non-empty divergence, where holders bear
+      a loss the fee recipient is insulated from. That is a fee policy, not a
+      bug, and option 3 (denominate the claim in shares) is the answer if you
+      want it gone.
+- [x] ~~The emergency exit strands the cash leg and reports the loss as zero.~~
+      **Fixed.** Option 3: `redeemEmergency` pays a pro-rata slice of both legs
+      in kind, needing no oracle and no venue -- so the independence that
+      justified the forfeiture never actually required it. No residue, nothing to
+      recover, and the haircut field now means what it says.
+      [FINDINGS-EMERGENCY-EXIT.md](FINDINGS-EMERGENCY-EXIT.md).
+- [ ] **Auditor review of both fixes above.** Each changes what somebody
+      receives: the first what the fee recipient can claim, the second what a
+      depositor is paid. Both move value toward the depositor, which is the safe
+      direction, and neither should ship on my say-so.
 - [ ] **Auditor review of the equalisation fix.**
       [FINDINGS-EQUALISATION.md](FINDINGS-EQUALISATION.md). Now applied to both
       vaults. It changes fee accounting in both directions and must not ship on

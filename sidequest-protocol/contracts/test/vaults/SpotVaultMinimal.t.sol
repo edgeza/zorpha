@@ -218,10 +218,18 @@ contract SpotVaultMinimalTest is Test {
     // --- The escape hatch --------------------------------------------------
     //
     // redeemEmergency is the depositor's last resort: it pays a pro-rata share
-    // of the ASSET leg only, touching neither the swap venue nor the oracle,
-    // and charges the cash leg as a haircut. That independence is the whole
-    // point -- a depositor must be able to leave when the market is dry or the
-    // price feed is dead, which are exactly the moments they most want to.
+    // of BOTH legs in kind, touching neither the swap venue nor the oracle.
+    // That independence is the whole point -- a depositor must be able to leave
+    // when the market is dry or the price feed is dead, which are exactly the
+    // moments they most want to.
+    //
+    // It used to pay the asset leg only and forfeit the cash. See
+    // docs/FINDINGS-EMERGENCY-EXIT.md: the forfeited cash was permanently
+    // stranded (no sweep exists on this contract), it went on inflating
+    // totalAssets() and so mispriced the next depositor, and the receipt
+    // reported a haircut of zero on a total forfeiture. Paying in kind needs no
+    // oracle and no venue either, so the independence that justified the
+    // forfeiture never actually required it.
     //
     // It had one line of coverage before this: a test named
     // test_EmergencyRedeem_HaircutOnZeroNAV which asserted no haircut, set an
@@ -249,11 +257,14 @@ contract SpotVaultMinimalTest is Test {
 
         uint256 assetLeg = wbtc.balanceOf(address(vault));
         vm.prank(alice);
-        uint256 paid = vault.redeemEmergency(shares, alice, alice);
+        (uint256 paid, uint256 paidCash) = vault.redeemEmergency(shares, alice, alice);
 
         assertEq(paid, assetLeg, "pays the entire asset leg when sole holder");
+        assertEq(paidCash, cashLeg, "and the entire cash leg, in kind");
         assertEq(vault.totalSupply(), 0, "the position is fully closed");
         assertEq(wbtc.balanceOf(alice), paid, "and the depositor actually has it");
+        assertEq(usdc.balanceOf(alice), paidCash, "both legs really arrived");
+        assertEq(usdc.balanceOf(address(vault)), 0, "nothing is left stranded");
     }
 
     /// A dead price feed. Rebalancing and normal redemption both read it; the
@@ -274,30 +285,68 @@ contract SpotVaultMinimalTest is Test {
         vault.redeem(shares, alice, alice);
 
         uint256 assetLeg = wbtc.balanceOf(address(vault));
+        uint256 cashLeg = usdc.balanceOf(address(vault));
         vm.prank(alice);
-        uint256 paid = vault.redeemEmergency(shares, alice, alice);
+        (uint256 paid, uint256 paidCash) = vault.redeemEmergency(shares, alice, alice);
         assertEq(paid, assetLeg, "the escape hatch does not need a price");
+        assertEq(paidCash, cashLeg, "and pays the cash leg without one either");
         assertGt(paid, 0);
+        assertGt(paidCash, 0);
     }
 
-    /// The haircut is the cash leg, and it is reported rather than hidden.
-    function test_EmergencyRedeem_HaircutIsTheStrandedCashLeg() public {
+    /// Nothing is stranded, and nothing is confiscated. This test asserted the
+    /// opposite until the forfeiture was removed: it required the cash leg to
+    /// stay in the vault and the depositor to receive none of it.
+    function test_EmergencyRedeem_PaysBothLegsAndStrandsNothing() public {
         uint256 shares = _deposit();
         vm.prank(keeper);
         vault.rebalanceTo(5000);
 
         uint256 cashLeg = usdc.balanceOf(address(vault));
         uint256 assetLeg = wbtc.balanceOf(address(vault));
-        assertGt(cashLeg, 0);
+        assertGt(cashLeg, 0, "there must be a cash leg for this to be a test");
 
         vm.prank(alice);
         vault.redeemEmergency(shares, alice, alice);
 
-        // The cash never moves. That is the cost of leaving this way, and it
-        // stays in the vault rather than being burned or swept.
-        assertEq(usdc.balanceOf(address(vault)), cashLeg, "cash leg is stranded, not paid");
-        assertEq(usdc.balanceOf(alice), 0, "the depositor gets none of it");
-        assertEq(wbtc.balanceOf(alice), assetLeg, "only the asset leg is paid");
+        assertEq(usdc.balanceOf(alice), cashLeg, "the depositor receives the cash leg");
+        assertEq(wbtc.balanceOf(alice), assetLeg, "and the asset leg");
+        assertEq(usdc.balanceOf(address(vault)), 0, "the vault keeps no orphaned cash");
+        assertEq(wbtc.balanceOf(address(vault)), 0, "nor any orphaned asset");
+
+        // The residue used to price the next depositor's entry off a balance
+        // nobody owned. There is no residue now.
+        assertEq(vault.grossValue(), 0, "and so cannot misprice whoever comes next");
+    }
+
+    /// The receipt's haircut field read zero on a total forfeiture, which was an
+    /// affirmative claim that nothing had been given up. With both legs paid it
+    /// can only be the fee, so it means what it says.
+    function test_EmergencyRedeem_ReceiptReportsOnlyTheFee() public {
+        uint256 shares = _deposit();
+        vm.prank(keeper);
+        vault.rebalanceTo(5000);
+
+        vm.recordLogs();
+        vm.prank(alice);
+        (uint256 paid, uint256 paidCash) = vault.redeemEmergency(shares, alice, alice);
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bool found;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] != keccak256(
+                "EmergencyRedeem(address,address,address,uint256,uint256,uint256,uint256)"
+            )) continue;
+            (uint256 burned, uint256 ePaid, uint256 ePaidCash, uint256 haircut) =
+                abi.decode(logs[i].data, (uint256, uint256, uint256, uint256));
+            assertEq(burned, shares, "shares burned");
+            assertEq(ePaid, paid, "asset leg matches the return value");
+            assertEq(ePaidCash, paidCash, "cash leg is in the receipt at all");
+            // performanceFee is 0 on this vault, so there is nothing to withhold.
+            assertEq(haircut, 0, "no fee accrued, so nothing withheld -- and nothing hidden");
+            found = true;
+        }
+        assertTrue(found, "the receipt must be emitted");
     }
 
     /// Half out, half in: the remaining holder must not be diluted by the
@@ -310,10 +359,16 @@ contract SpotVaultMinimalTest is Test {
         uint256 assetLegBefore = wbtc.balanceOf(address(vault));
         uint256 half = shares / 2;
 
+        uint256 cashLegBefore = usdc.balanceOf(address(vault));
         vm.prank(alice);
-        uint256 paid = vault.redeemEmergency(half, alice, alice);
+        (uint256 paid, uint256 paidCash) = vault.redeemEmergency(half, alice, alice);
 
         assertApproxEqAbs(paid, assetLegBefore / 2, 1, "pays half the asset leg");
+        assertApproxEqAbs(paidCash, cashLegBefore / 2, 1, "and half the cash leg");
+        assertApproxEqAbs(
+            usdc.balanceOf(address(vault)), cashLegBefore - paidCash, 1,
+            "the remaining holder keeps their share of the cash, undiluted"
+        );
         assertEq(vault.totalSupply(), shares - half, "the rest of the position survives");
         assertApproxEqAbs(
             wbtc.balanceOf(address(vault)), assetLegBefore - paid, 1,
@@ -357,13 +412,17 @@ contract SpotVaultMinimalTest is Test {
     ///
     /// See docs/FINDINGS-EMERGENCY-EXIT.md. When option 1 or 3 there is taken,
     /// this test should fail and be rewritten to assert the correct figure.
-    function test_EmergencyRedeem_HaircutUnderReportsTheStrandedCash() public {
+    /// This test used to assert the defect: a reported haircut of zero while the
+    /// entire cash leg sat forfeited in the vault. Now that both legs are paid,
+    /// a haircut of zero is a true statement, and the assertion is that the cash
+    /// went to the depositor rather than nowhere.
+    function test_EmergencyRedeem_HaircutOfZeroIsNowTrue() public {
         uint256 shares = _deposit();
         vm.prank(keeper);
         vault.rebalanceTo(5000);
 
-        uint256 cashForfeited = usdc.balanceOf(address(vault));
-        assertGt(cashForfeited, 0, "the rebalance must leave a cash leg to forfeit");
+        uint256 cashLeg = usdc.balanceOf(address(vault));
+        assertGt(cashLeg, 0, "the rebalance must leave a cash leg");
         assertEq(vault.performanceFeeAccrued(), 0, "no fee, so any haircut can only be the cash");
 
         vm.recordLogs();
@@ -372,42 +431,51 @@ contract SpotVaultMinimalTest is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         uint256 reportedHaircut = type(uint256).max;
-        bytes32 sig = keccak256("EmergencyRedeem(address,address,address,uint256,uint256,uint256)");
+        uint256 reportedCash;
+        bytes32 sig = keccak256(
+            "EmergencyRedeem(address,address,address,uint256,uint256,uint256,uint256)"
+        );
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics[0] == sig) {
-                (, , reportedHaircut) = abi.decode(logs[i].data, (uint256, uint256, uint256));
+                (, , reportedCash, reportedHaircut) =
+                    abi.decode(logs[i].data, (uint256, uint256, uint256, uint256));
             }
         }
         assertTrue(reportedHaircut != type(uint256).max, "EmergencyRedeem was not emitted");
 
-        assertEq(reportedHaircut, 0, "today it reports zero -- this is the defect");
-        assertEq(
-            usdc.balanceOf(address(vault)), cashForfeited,
-            "while this much cash is stranded in the vault, owned by nobody"
-        );
+        // Zero, and now truthfully so: nothing was withheld because nothing was.
+        assertEq(reportedHaircut, 0, "no fee accrued, so nothing withheld");
+        assertEq(reportedCash, cashLeg, "and the receipt names the cash leg it paid");
+        assertEq(usdc.balanceOf(alice), cashLeg, "which the depositor received");
+        assertEq(usdc.balanceOf(address(vault)), 0, "leaving nothing owned by nobody");
     }
 
-    /// The stranded cash has no way out. Confirms there is no rescue path, so
-    /// the forfeited balance is orphaned rather than merely mis-reported.
-    function test_EmergencyRedeem_StrandedCashCannotBeRecovered() public {
+    /// This test used to prove the forfeited cash was orphaned: no sweep, no
+    /// rescue, and claimFees refusing outright, so the balance was stuck for the
+    /// life of the contract. The absence of a rescue path is still true and still
+    /// worth pinning -- what changed is that there is no longer anything for it
+    /// to rescue.
+    function test_EmergencyRedeem_LeavesNothingNeedingRescue() public {
         uint256 shares = _deposit();
         vm.prank(keeper);
         vault.rebalanceTo(5000);
-        uint256 stranded = usdc.balanceOf(address(vault));
+        uint256 cashLeg = usdc.balanceOf(address(vault));
+        assertGt(cashLeg, 0, "there must be a cash leg for this to mean anything");
 
         vm.prank(alice);
         vault.redeemEmergency(shares, alice, alice);
 
         assertEq(vault.totalSupply(), 0, "no shares remain");
-        assertEq(usdc.balanceOf(address(vault)), stranded, "the cash remains");
+        assertEq(usdc.balanceOf(address(vault)), 0, "and no cash remains either");
+        assertEq(wbtc.balanceOf(address(vault)), 0, "nor any asset");
 
-        // claimFees is the only admin path that moves value out of this vault,
-        // and it refuses outright when nothing has accrued -- so it is not even
-        // a no-op that could be pointed at the cash. There is no path.
+        // There is still no rescue path, deliberately: claimFees is the only
+        // admin route value can leave by and it refuses when nothing accrued. An
+        // empty vault needing no rescue is a better outcome than a rescue
+        // function nobody audited.
         assertEq(vault.performanceFeeAccrued(), 0);
         vm.expectRevert("SpotVaultMinimal: nothing accrued");
         vault.claimFees();
-        assertEq(usdc.balanceOf(address(vault)), stranded, "still stranded, permanently");
     }
 }
 
@@ -516,11 +584,15 @@ contract SpotVaultFeeTest is Test {
         );
     }
 
-    /// A separate defect, surfaced by the test above and NOT fixed by the
-    /// first-entry mark: an unclaimed performance fee is a claim denominated in
-    /// asset units, but it is backed by whichever leg the vault happens to hold.
-    /// Let the price move against that leg and the claim outgrows its backing,
-    /// and the shortfall is charged to whoever deposits next.
+    /// A separate defect from the mark, surfaced by the test above: an unclaimed
+    /// performance fee is a claim denominated in asset units, backed by whichever
+    /// leg the vault happens to hold. Let the price move against that leg and the
+    /// claim outgrows its backing.
+    ///
+    /// It used to cost the next depositor 10% of their deposit, silently.
+    /// `_reconcileFeeClaimWhenEmpty` caps the claim at its backing while the
+    /// vault is empty, which is the only window where the harm is possible --
+    /// with shareholders present the gap is priced into the share they buy.
     function test_UnclaimedFee_DilutesTheNextDepositor() public {
         uint256 aliceShares = _depositFrom(alice);
         _doubleTheNav();                       // fee accrues in BTC terms, at 25k
@@ -537,17 +609,42 @@ contract SpotVaultFeeTest is Test {
         assertLt(backing, claim, "the fee claim now outgrows the value behind it");
         assertEq(vault.totalAssets(), 0, "and totalAssets floors at zero, hiding it");
 
-        // Bob deposits into that. Nothing warns him.
+        // Bob deposits into that. The claim is reconciled first, so he is whole.
         uint256 bobShares = _depositFrom(bob);
         uint256 bobValue = vault.convertToAssets(bobShares);
-        assertLt(bobValue, TEN_BTC, "bob is worth less than he paid the instant he entered");
 
-        // The loss is exactly the uncovered part of somebody else's fee.
-        assertApproxEqAbs(
-            TEN_BTC - bobValue, claim - backing, 2,
-            "bob's loss is the shortfall on alice's unclaimed fee"
+        assertEq(bobValue, TEN_BTC, "bob holds exactly what he paid");
+        assertLe(
+            vault.performanceFeeAccrued(), backing,
+            "the claim was capped at what actually backed it"
         );
-        assertApproxEqRel(bobValue, 9 * 1e8, 1e12, "10 BTC in, 9 BTC held: a 10% haircut on entry");
+
+        // And the write-down is observable rather than silent.
+        assertEq(
+            vault.performanceFeeAccrued(), backing,
+            "capped to the backing exactly, not to zero: the covered part survives"
+        );
+    }
+
+    /// The cap must not fire while shareholders exist. There the divergence is
+    /// already priced into the share, and writing the claim down would hand the
+    /// fee recipient's money to whoever happens to be holding.
+    function test_UnclaimedFee_CapDoesNotFireWhileHeld() public {
+        _depositFrom(alice);
+        _doubleTheNav();
+        uint256 claim = vault.performanceFeeAccrued();
+        assertGt(claim, 0, "a claim exists");
+
+        // Move the price against the leg the fee was struck in, without emptying.
+        oracle.setPrice(PRICE_50K);
+        vm.prank(keeper);
+        vault.evaluateFees();
+
+        assertEq(
+            vault.performanceFeeAccrued(), claim,
+            "claim untouched while alice still holds: the cap is empty-vault only"
+        );
+        assertGt(vault.totalSupply(), 0, "and she does still hold");
     }
 }
 
