@@ -140,8 +140,35 @@ eq "$(call "$VAULT" 'hasRole(bytes32,address)(bool)' "$RISK" "$ACTOR")" true \
   || die "$ACTOR is not RISK_COUNCIL on the vault; setCircuitBreaker would revert"
 ok "actor holds DEFAULT_ADMIN and RISK_COUNCIL"
 
+# A stale position from an earlier run has to be cleared, not just noted.
+#
+# Every figure from step 4 down is measured as `RECEIVED - DEPOSIT`, which is
+# only the depositor's profit if the shares being redeemed correspond to
+# exactly one $DEPOSIT. An aborted earlier run leaves the actor holding shares
+# from a deposit that was never redeemed, and then redeeming everything returns
+# BOTH principals -- so the drill reads the returned principal as profit and
+# reports "received the ENTIRE gain. Fees are broken."
+#
+# That is what happened: 1e9 left over plus 1e9 fresh, 2e9 of principal plus
+# 4.5e8 of net gain = 2449999999 received. The fee was 5e7 on a 5e8 gain, which
+# is exactly the configured 1000 bps. Nothing was broken except the drill's
+# assumption about whose money it was looking at.
+#
+# Clearing it also empties the vault, so the next deposit goes through the
+# first-entry path and the mark is set from the price actually paid -- the
+# equalisation fix, exercised rather than stepped around.
+STALE=$(call "$VAULT" 'balanceOf(address)(uint256)' "$ACTOR")
+if [[ "$STALE" != "0" ]]; then
+  info "clearing a stale position of $STALE shares from an earlier run"
+  send "$VAULT" 'redeem(uint256,address,address)' "$STALE" "$ACTOR" "$ACTOR"
+  eq "$(call "$VAULT" 'balanceOf(address)(uint256)' "$ACTOR")" 0     || die "could not clear the actor's stale position"
+  ok "cleared"
+fi
+
 SUPPLY0=$(call "$VAULT" 'totalSupply()(uint256)')
-eq "$SUPPLY0" 0 || info "note: vault already has $SUPPLY0 shares outstanding; deltas are still measured, not assumed"
+# Shares held by someone other than the actor break the same assumption and
+# cannot be cleared from here, so say so rather than measuring against them.
+eq "$SUPPLY0" 0 || info "note: $SUPPLY0 shares remain, held by someone else; profit below is measured against this actor's deposit only"
 
 HAVE=$(call "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
 if lt "$HAVE" "$DEPOSIT"; then
@@ -167,8 +194,11 @@ ok "breaker off"
 
 # --- 2. Deposit ------------------------------------------------------------
 bold "2/6  Deposit"
+SH_BEFORE=$(call "$VAULT" 'balanceOf(address)(uint256)' "$ACTOR")
 send "$VAULT" 'deposit(uint256,address)' "$DEPOSIT" "$ACTOR"
-SHARES=$(call "$VAULT" 'balanceOf(address)(uint256)' "$ACTOR")
+# The DELTA, not the balance. Redeeming a balance that includes shares this
+# deposit did not mint returns principal the drill then scores as profit.
+SHARES=$(bi "$(call "$VAULT" 'balanceOf(address)(uint256)' "$ACTOR")" sub "$SH_BEFORE")
 NAV0=$(call "$VAULT" 'getNavPerShare()(uint256)')
 RAW0=$(call "$VAULT" 'rawAssets()(uint256)')
 FEE0=$(call "$VAULT" 'performanceFeeAccrued()(uint256)')
