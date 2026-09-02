@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SpotVaultMinimal} from "../../src/vaults/SpotVaultMinimal.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
@@ -341,5 +341,72 @@ contract SpotVaultMinimalTest is Test {
         vm.warp(block.timestamp + cooldown + 1);
         vm.prank(alice);
         vault.redeemEmergency(shares / 4, alice, alice);
+    }
+
+    /// PINS A DEFECT, and will break when it is fixed. That is the intent.
+    ///
+    /// `haircut` in EmergencyRedeem is computed as grossOwed - paid, where
+    /// grossOwed comes from the ASSET balance alone. So it can only ever equal
+    /// the fee share, and the cash leg -- the thing actually forfeited -- never
+    /// enters the arithmetic. A depositor who gives up half their position sees
+    /// haircut = 0, which is not an omission but an affirmative claim that
+    /// nothing was lost.
+    ///
+    /// Observed on testnet 46630 in tx 0x2baa8c11...0406: 50e18 of asset paid,
+    /// 50e18 raw of the cash leg forfeited, haircut emitted as 0.
+    ///
+    /// See docs/FINDINGS-EMERGENCY-EXIT.md. When option 1 or 3 there is taken,
+    /// this test should fail and be rewritten to assert the correct figure.
+    function test_EmergencyRedeem_HaircutUnderReportsTheStrandedCash() public {
+        uint256 shares = _deposit();
+        vm.prank(keeper);
+        vault.rebalanceTo(5000);
+
+        uint256 cashForfeited = usdc.balanceOf(address(vault));
+        assertGt(cashForfeited, 0, "the rebalance must leave a cash leg to forfeit");
+        assertEq(vault.performanceFeeAccrued(), 0, "no fee, so any haircut can only be the cash");
+
+        vm.recordLogs();
+        vm.prank(alice);
+        vault.redeemEmergency(shares, alice, alice);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        uint256 reportedHaircut = type(uint256).max;
+        bytes32 sig = keccak256("EmergencyRedeem(address,address,address,uint256,uint256,uint256)");
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == sig) {
+                (, , reportedHaircut) = abi.decode(logs[i].data, (uint256, uint256, uint256));
+            }
+        }
+        assertTrue(reportedHaircut != type(uint256).max, "EmergencyRedeem was not emitted");
+
+        assertEq(reportedHaircut, 0, "today it reports zero -- this is the defect");
+        assertEq(
+            usdc.balanceOf(address(vault)), cashForfeited,
+            "while this much cash is stranded in the vault, owned by nobody"
+        );
+    }
+
+    /// The stranded cash has no way out. Confirms there is no rescue path, so
+    /// the forfeited balance is orphaned rather than merely mis-reported.
+    function test_EmergencyRedeem_StrandedCashCannotBeRecovered() public {
+        uint256 shares = _deposit();
+        vm.prank(keeper);
+        vault.rebalanceTo(5000);
+        uint256 stranded = usdc.balanceOf(address(vault));
+
+        vm.prank(alice);
+        vault.redeemEmergency(shares, alice, alice);
+
+        assertEq(vault.totalSupply(), 0, "no shares remain");
+        assertEq(usdc.balanceOf(address(vault)), stranded, "the cash remains");
+
+        // claimFees is the only admin path that moves value out of this vault,
+        // and it refuses outright when nothing has accrued -- so it is not even
+        // a no-op that could be pointed at the cash. There is no path.
+        assertEq(vault.performanceFeeAccrued(), 0);
+        vm.expectRevert("SpotVaultMinimal: nothing accrued");
+        vault.claimFees();
+        assertEq(usdc.balanceOf(address(vault)), stranded, "still stranded, permanently");
     }
 }

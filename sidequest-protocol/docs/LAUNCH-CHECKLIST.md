@@ -149,6 +149,23 @@ The receipt's NAV figures after that first trade are meaningless.
       as much as a mainnet one: until it is done, no vault holding two legs can
       be rebalanced twice or emptied once.
 
+**The escape hatch (`redeemEmergency`)** — proven on chain 2026-09-02, tx
+`0x2baa8c11…0406`.
+
+- [x] A depositor can exit a vault whose swap venue cannot service a redemption
+      and whose oracle has gone stale. Normal `redeem` reverted — first on
+      slippage, later on `InsufficientFreshReports` — and the emergency path
+      still paid out the full asset leg. It reads neither the venue nor the
+      price feed, which is the whole design.
+- [x] The cooldown blocks an immediate second exit, so the hatch cannot be used
+      to drain the asset leg in a loop while the cash leg is stuck.
+- [ ] **Open finding.** The exit forfeits the cash leg, reports the loss as
+      `haircut = 0`, and strands the forfeited balance permanently — there is no
+      rescue path on the vault. Observed: 50e18 asset paid, 50e18 raw cash
+      forfeited, haircut emitted as zero. See
+      [FINDINGS-EMERGENCY-EXIT.md](FINDINGS-EMERGENCY-EXIT.md); four options,
+      none chosen.
+
 **Rotation vault (`zqROT`)** — `./script/testnet-migrate-executor.sh <gov> <signer>`
 once, then `./script/testnet-rotation-drill.sh <signer> <keeper>`. Run
 2026-09-02, all green. First rebalance in the vault's existence.
