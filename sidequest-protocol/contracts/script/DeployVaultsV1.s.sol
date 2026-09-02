@@ -240,12 +240,22 @@ contract DeployVaultsV1 is Script {
         vm.stopBroadcast();
 
         // ─── Assertions: no deployer authority may survive this script.
+        //
+        // Checked against every role, not just DEFAULT_ADMIN_ROLE. The earlier
+        // version of this block checked admin alone and therefore passed while
+        // the deploy key kept DEPLOYER_ROLE on the factory -- which is exactly
+        // the authority that matters there, since it is what deployYieldVault
+        // is gated on.
         bytes32 adminRole = 0x00;
         require(IAccessControl(address(r.factory)).hasRole(adminRole, gov), "factory admin not gov");
-        require(!IAccessControl(address(r.factory)).hasRole(adminRole, deployer), "deployer kept factory admin");
-        require(!IAccessControl(address(r.spotVault)).hasRole(adminRole, deployer), "deployer kept vault admin");
-        require(!IAccessControl(address(r.yieldVault)).hasRole(adminRole, deployer), "deployer kept vault admin");
-        require(!IAccessControl(address(r.oracle)).hasRole(adminRole, deployer), "deployer kept oracle admin");
+        _assertStripped(address(r.factory), deployer, "factory");
+        _assertStripped(address(r.spotVault), deployer, "spot vault");
+        _assertStripped(address(r.yieldVault), deployer, "yield vault");
+        _assertStripped(address(r.oracle), deployer, "oracle");
+        _assertStripped(address(r.reputation), deployer, "reputation registry");
+        if (address(r.rotationVault) != address(0)) {
+            _assertStripped(address(r.rotationVault), deployer, "rotation vault");
+        }
         require(r.oracle.minQuorum() <= r.oracle.updaterCount(), "oracle quorum unsatisfiable");
 
         console2.log("=== Zorpha vault layer deployed ===");
@@ -275,15 +285,60 @@ contract DeployVaultsV1 is Script {
         console2.log("single-updater median is a single point of failure.");
     }
 
-    /// @dev Grant DEFAULT_ADMIN_ROLE to `gov` and renounce the deployer's.
+    /// @dev Every role the protocol defines, so a handover can be checked
+    ///      against all of them rather than against the one that was
+    ///      remembered.
+    ///
+    ///      This list existing at all is the fix for a real gap. `_handOver`
+    ///      used to renounce DEFAULT_ADMIN_ROLE and nothing else, and the
+    ///      assertions below only checked DEFAULT_ADMIN_ROLE -- so the deploy
+    ///      key kept DEPLOYER_ROLE on the VaultFactory through a run that
+    ///      asserted "no deployer authority may survive this script" and
+    ///      passed. On testnet 46630 the compromised deploy key could still
+    ///      call deployYieldVault months later. See docs/BURNED-KEYS.md.
+    function _allRoles() internal pure returns (bytes32[7] memory) {
+        return [
+            bytes32(0x00), // DEFAULT_ADMIN_ROLE
+            keccak256("DEPLOYER_ROLE"),
+            keccak256("KEEPER_ROLE"),
+            keccak256("RISK_COUNCIL_ROLE"),
+            keccak256("ADAPTER_SETTER_ROLE"),
+            keccak256("GOVERNANCE_ROLE"),
+            keccak256("ORACLE_UPDATER_ROLE")
+        ];
+    }
+
+    /// @dev Hand `target` to `gov` and strip the deployer of everything.
+    ///
+    ///      Admin first, so governance can always recover, then renounce every
+    ///      role the deployer holds. `renounceRole` on a role the caller does
+    ///      not hold is a no-op in OpenZeppelin's implementation, so the loop
+    ///      is safe against contracts that define only some of these.
     function _handOver(address target, address gov, address deployer) internal {
         bytes32 adminRole = 0x00;
         IAccessControl ac = IAccessControl(target);
         if (!ac.hasRole(adminRole, gov)) {
             ac.grantRole(adminRole, gov);
         }
-        if (ac.hasRole(adminRole, deployer)) {
-            ac.renounceRole(adminRole, deployer);
+        bytes32[7] memory roles = _allRoles();
+        for (uint256 i = 0; i < roles.length; i++) {
+            // Admin last: renouncing it first would forfeit the right to
+            // renounce the others on a contract where admin gates them.
+            uint256 j = roles.length - 1 - i;
+            if (ac.hasRole(roles[j], deployer)) {
+                ac.renounceRole(roles[j], deployer);
+            }
+        }
+    }
+
+    /// @dev Assert the deployer holds no role at all on `target`.
+    function _assertStripped(address target, address deployer, string memory what) internal view {
+        bytes32[7] memory roles = _allRoles();
+        for (uint256 i = 0; i < roles.length; i++) {
+            require(
+                !IAccessControl(target).hasRole(roles[i], deployer),
+                string.concat("deployer kept a role on ", what)
+            );
         }
     }
 }
