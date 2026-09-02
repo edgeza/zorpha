@@ -192,7 +192,7 @@ for entry in "${BURNED[@]}"; do
     for r in "${ROLES[@]}"; do
       RNAME="${r%%:*}"; RHASH="${r##*:}"
       if [[ "$(try "$CADDR" 'hasRole(bytes32,address)(bool)' "$RHASH" "$ADDR")" == "true" ]]; then
-        bad "$CNAME holds $RNAME"
+        bad "$CNAME $CADDR holds $RNAME"
         HITS=$((HITS + 1))
       fi
     done
@@ -201,7 +201,7 @@ for entry in "${BURNED[@]}"; do
     for fn in 'owner()(address)' 'pendingOwner()(address)'; do
       GOT=$(try "$CADDR" "$fn")
       if [[ -n "$GOT" ]] && [[ "${GOT,,}" == "${ADDR,,}" ]]; then
-        bad "$CNAME ${fn%%(*} is this address"
+        bad "$CNAME $CADDR ${fn%%(*} is this address"
         HITS=$((HITS + 1))
       fi
     done
