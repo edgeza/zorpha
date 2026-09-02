@@ -32,8 +32,20 @@
 #   migrate  after the ETA the swap lands and the vault's assets end up in the
 #            venue rather than idle in a stub
 #
-# The first two run immediately. The delay is 48h, so like
-# testnet-timelock-treasury.sh this is idempotent and meant to be run twice.
+# The first two run immediately. The delay is 48h, so this is meant to be run
+# twice -- and the migration adapter and venue are CACHED to make that safe.
+#
+# Without the cache each run deployed a fresh adapter, and since the operation
+# salt derives from the adapter address, each run queued a DIFFERENT
+# setAdapter. Two runs left two pending migrations pointing at two different
+# adapters -- not idempotent in any useful sense: whichever executed second
+# would silently overwrite the first, and the losing adapter and venue were
+# left orphaned with VAULT_ROLE already granted to the vault. The header
+# claimed idempotence before the code delivered it.
+#
+# The throwaway adapter in step 1 is deliberately NOT cached: it is cheap, and
+# redeploying it re-proves the guard against currently compiled bytecode on
+# every run rather than against whatever happened to be deployed once.
 #
 # Usage:
 #   ./script/testnet-adapter-migration.sh zorpha-gov
@@ -96,6 +108,10 @@ INFLATED=$(MSYS_NO_PATHCONV=1 node -e '
 ' "./$FIXTURES")
 
 PROBE="${PROBE_AMOUNT:-1000000000}"   # 1,000 USDG, the figure the loss was measured at
+
+# Keyed on the vault: a redeployed vault must not reuse an adapter that has
+# already granted VAULT_ROLE to the old one.
+CACHE=".yield-adapter-$CHAIN_ID-$(printf '%s' "$VAULT" | tail -c 9)"
 
 bold "Real yield adapter, and the deposit guard under live fire"
 info "vault        $VAULT"
@@ -194,50 +210,78 @@ fi
 
 # ── 3. A sane venue ─────────────────────────────────────────────────────────
 bold "3/7  A fresh, fair venue"
-OUT=$(forge create src/testnet/TestnetFixtures.sol:TestYieldTarget \
-      --rpc-url "$RPC" --account "$GOV_ACCT" --broadcast --json \
-      --constructor-args "$ASSET")
-VENUE=$(created "$OUT")
-[[ -n "$VENUE" ]] || die "could not read the venue address"
-ok "deployed $VENUE"
+REUSED=0
+if [[ -f "$CACHE" ]] && [[ -n "$(cat "$CACHE")" ]]; then
+  read -r NEW_ADAPTER VENUE < "$CACHE"
+  AC=$(cast code "$NEW_ADAPTER" --rpc-url "$RPC" 2>/dev/null || echo 0x)
+  VC=$(cast code "$VENUE" --rpc-url "$RPC" 2>/dev/null || echo 0x)
+  if [[ ${#AC} -gt 2 && ${#VC} -gt 2 ]]; then
+    REUSED=1
+    ok "reusing adapter $NEW_ADAPTER"
+    ok "reusing venue   $VENUE"
+    info "Same addresses mean the same operation salt, so step 5 finds the"
+    info "operation already queued instead of queueing a second one."
+  else
+    warn "cached addresses have no code; deploying fresh"
+  fi
+fi
 
-OUT=$(forge create src/adapters/ERC4626YieldAdapter.sol:ERC4626YieldAdapter \
-      --rpc-url "$RPC" --account "$GOV_ACCT" --broadcast --json \
-      --constructor-args "$ASSET" "$VENUE" "$ACTOR")
-NEW_ADAPTER=$(created "$OUT")
-[[ -n "$NEW_ADAPTER" ]] || die "could not read the adapter address"
-ok "deployed adapter $NEW_ADAPTER over it"
+if [[ "$REUSED" == "0" ]]; then
+  OUT=$(forge create src/testnet/TestnetFixtures.sol:TestYieldTarget \
+        --rpc-url "$RPC" --account "$GOV_ACCT" --broadcast --json \
+        --constructor-args "$ASSET")
+  VENUE=$(created "$OUT")
+  [[ -n "$VENUE" ]] || die "could not read the venue address"
+  ok "deployed $VENUE"
+
+  OUT=$(forge create src/adapters/ERC4626YieldAdapter.sol:ERC4626YieldAdapter \
+        --rpc-url "$RPC" --account "$GOV_ACCT" --broadcast --json \
+        --constructor-args "$ASSET" "$VENUE" "$ACTOR")
+  NEW_ADAPTER=$(created "$OUT")
+  [[ -n "$NEW_ADAPTER" ]] || die "could not read the adapter address"
+  ok "deployed adapter $NEW_ADAPTER over it"
+  printf '%s %s' "$NEW_ADAPTER" "$VENUE" > "$CACHE"
+fi
 same "$(call "$NEW_ADAPTER" 'target()(address)')" "$VENUE" || die "adapter target mismatch"
 same "$(call "$VENUE" 'asset()(address)')" "$ASSET" || die "venue asset mismatch"
 ok "adapter targets the venue, and the venue holds the vault's asset"
 
 # ── 4. A fair deposit must still work ───────────────────────────────────────
 bold "4/7  A fair deposit must still succeed"
-send "$NEW_ADAPTER" 'grantRole(bytes32,address)' "$(call "$NEW_ADAPTER" 'VAULT_ROLE()(bytes32)')" "$ACTOR"
-send "$ASSET" 'approve(address,uint256)' "$NEW_ADAPTER" "$PROBE"
-send "$NEW_ADAPTER" 'deposit(uint256)' "$PROBE"
-TA=$(call "$NEW_ADAPTER" 'totalAssets()(uint256)')
-info "adapter totalAssets $TA for $PROBE deposited"
-lt "$(bi "$PROBE" sub "$TA")" "$(bi "$PROBE" div 1000)" \
-  || die "a fair deposit lost more than 0.1%: $PROBE in, $TA held"
-ok "the deposit landed and kept its value"
-ok "so the guard refuses the lossy venue without blocking the fair one"
+if [[ "$REUSED" == "1" ]]; then
+  # VAULT_ROLE already sits on the vault. Re-granting it to the actor to run
+  # the probe again would hand a second party deposit rights on an adapter the
+  # vault is about to be migrated onto.
+  ok "skipped: this adapter was already probed and handed to the vault"
+  info "The fair-deposit assertion ran on the first run."
+else
+  send "$NEW_ADAPTER" 'grantRole(bytes32,address)' "$(call "$NEW_ADAPTER" 'VAULT_ROLE()(bytes32)')" "$ACTOR"
+  send "$ASSET" 'approve(address,uint256)' "$NEW_ADAPTER" "$PROBE"
+  send "$NEW_ADAPTER" 'deposit(uint256)' "$PROBE"
+  TA=$(call "$NEW_ADAPTER" 'totalAssets()(uint256)')
+  info "adapter totalAssets $TA for $PROBE deposited"
+  lt "$(bi "$PROBE" sub "$TA")" "$(bi "$PROBE" div 1000)" \
+    || die "a fair deposit lost more than 0.1%: $PROBE in, $TA held"
+  ok "the deposit landed and kept its value"
+  ok "so the guard refuses the lossy venue without blocking the fair one"
 
-# Take the probe back out, or the adapter carries assets the vault does not own
-# and the vault's heldAssets() would count them as depositor capital.
-send "$NEW_ADAPTER" 'withdraw(uint256)' "$TA"
-LEFT=$(call "$NEW_ADAPTER" 'totalAssets()(uint256)')
-lt "$LEFT" 1000 || die "could not empty the adapter after the probe: $LEFT left.
-   Migrating the vault onto it would credit depositors with assets that are
-   not theirs. Deploy a clean adapter instead."
-ok "probe withdrawn; adapter holds $LEFT and is clean for the vault"
+  # Take the probe back out, or the adapter carries assets the vault does not own
+  # and the vault's heldAssets() would count them as depositor capital.
+  send "$NEW_ADAPTER" 'withdraw(uint256)' "$TA"
+  LEFT=$(call "$NEW_ADAPTER" 'totalAssets()(uint256)')
+  lt "$LEFT" 1000 || die "could not empty the adapter after the probe: $LEFT left.
+     Migrating the vault onto it would credit depositors with assets that are
+     not theirs. Deploy a clean adapter instead."
+  ok "probe withdrawn; adapter holds $LEFT and is clean for the vault"
 
-# The vault, not the actor, must be the caller from here on.
-send "$NEW_ADAPTER" 'revokeRole(bytes32,address)' "$(call "$NEW_ADAPTER" 'VAULT_ROLE()(bytes32)')" "$ACTOR"
-send "$NEW_ADAPTER" 'grantRole(bytes32,address)' "$(call "$NEW_ADAPTER" 'VAULT_ROLE()(bytes32)')" "$VAULT"
+  # The vault, not the actor, must be the caller from here on.
+  send "$NEW_ADAPTER" 'revokeRole(bytes32,address)' "$(call "$NEW_ADAPTER" 'VAULT_ROLE()(bytes32)')" "$ACTOR"
+  send "$NEW_ADAPTER" 'grantRole(bytes32,address)' "$(call "$NEW_ADAPTER" 'VAULT_ROLE()(bytes32)')" "$VAULT"
+fi
+
 same "$(call "$NEW_ADAPTER" 'hasRole(bytes32,address)(bool)' "$(call "$NEW_ADAPTER" 'VAULT_ROLE()(bytes32)')" "$VAULT")" true \
   || die "the vault does not hold VAULT_ROLE on the new adapter; setAdapter would revert"
-ok "VAULT_ROLE moved from the actor to the vault"
+ok "the vault holds VAULT_ROLE on the adapter, so setAdapter can deposit"
 
 # ── 5. Queue the swap ───────────────────────────────────────────────────────
 bold "5/7  Queue setAdapter through the Timelock"
@@ -295,6 +339,7 @@ if ! same "$(call "$TIMELOCK" 'isOperationReady(bytes32)(bool)' "$OPID")" true; 
   info "integration is still unexercised on chain."
   info ""
   info "Queued adapter: $NEW_ADAPTER   venue: $VENUE"
+  info "Cached in $CACHE, so the next run queues nothing new."
   exit 0
 fi
 
