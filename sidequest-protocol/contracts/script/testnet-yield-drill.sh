@@ -38,7 +38,6 @@ ACCOUNT="${1:-}"
 RPC="${RH_TESTNET_RPC_URL:-https://rpc.testnet.chain.robinhood.com/rpc}"
 CHAIN_ID=46630
 WEB_ENV="../../zorpha-web/.env.local"
-FIXTURES="broadcast/DeployTestnetFixtures.s.sol/$CHAIN_ID/run-latest.json"
 VAULTS="broadcast/DeployVaultsV1.s.sol/$CHAIN_ID/run-latest.json"
 
 bold() { printf '\n\033[1m%s\033[0m\n' "$1"; }
@@ -63,7 +62,6 @@ call()   { cast call "$@" --rpc-url "$RPC" | num; }
 send()   { cast send "$@" --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null; }
 
 [[ -f "$WEB_ENV" ]]  || die "no $WEB_ENV"
-[[ -f "$FIXTURES" ]] || die "no $FIXTURES"
 [[ -f "$VAULTS" ]]   || die "no $VAULTS"
 
 # The yield vault is the CREATE2 child of the deploy whose firstLossEscrow is
@@ -81,14 +79,41 @@ VAULT=$(node -e '
 done)
 [[ -n "$VAULT" ]] || die "could not find the factory yield vault in $VAULTS"
 
-TARGET=$(node -e '
-  const j = require(process.argv[1]);
-  const h = (j.transactions || []).find(t => t.contractName === "TestYieldTarget");
-  process.stdout.write(h ? h.contractAddress : "");
-' "./$FIXTURES")
-[[ -n "$TARGET" ]] || die "could not find TestYieldTarget"
-
 ASSET=$(call "$VAULT" 'asset()(address)')
+
+# Where "yield" has to be injected is decided by the ADAPTER the vault actually
+# has installed, not by which fixture happens to be in the broadcast artifact.
+#
+# This drill used to read TestYieldTarget out of the fixtures file and accrue
+# there unconditionally. The deployed vault is on a StubYieldAdapter, whose
+# totalAssets() is its own token balance and which never touches a venue at
+# all. So the accrual landed somewhere the vault could not see, rawAssets never
+# moved, and the drill died at "NAV did not rise after the venue accrued" --
+# pointing at the venue when the real answer was that nothing connected the two.
+#
+# Installing a real adapter from here is not an option, and correctly so:
+# ADAPTER_SETTER_ROLE is held by the Timelock, not governance, so an adapter
+# swap is a 48h queued action. That belongs in its own drill.
+ADAPTER=$(call "$VAULT" 'adapter()(address)')
+[[ -n "$ADAPTER" && "$ADAPTER" != "0x0000000000000000000000000000000000000000" ]]   || die "the vault has no adapter installed; nothing can hold its assets"
+
+# An ERC4626YieldAdapter exposes `target()`. A stub does not, so a revert here
+# identifies the stub positively rather than by name or address.
+if TARGET=$(cast call "$ADAPTER" 'target()(address)' --rpc-url "$RPC" 2>/dev/null | num)    && [[ -n "$TARGET" && "$TARGET" != "0x0000000000000000000000000000000000000000" ]]; then
+  ACCRUE_TO="$TARGET"
+  ACCRUE_KIND="venue"
+  # The venue must be denominated in the same asset, or the arithmetic below is
+  # comparing two different tokens.
+  VASSET=$(call "$TARGET" 'asset()(address)')
+  [[ "$(printf '%s' "$VASSET" | tr 'A-Z' 'a-z')" == "$(printf '%s' "$ASSET" | tr 'A-Z' 'a-z')" ]]     || die "adapter target holds $VASSET but the vault's asset is $ASSET"
+else
+  # Stub adapter: its totalAssets() is its own balance, so minting underlying
+  # straight to it raises the vault's NAV exactly as venue yield would.
+  TARGET="$ADAPTER"
+  ACCRUE_TO="$ADAPTER"
+  ACCRUE_KIND="stub adapter (no venue integration exercised)"
+fi
+
 TREASURY=$(call "$VAULT" 'feeRecipient()(address)')
 ACTOR=$(cast wallet address --account "$ACCOUNT")
 
@@ -98,7 +123,8 @@ FEE_BPS=$(call "$VAULT" 'performanceFee()(uint256)')
 
 bold "Yield vault drill"
 info "vault     $VAULT"
-info "venue     $TARGET"
+info "adapter   $ADAPTER"
+info "accrue to $ACCRUE_TO  ($ACCRUE_KIND)"
 info "asset     $ASSET"
 info "treasury  $TREASURY"
 info "actor     $ACTOR"
@@ -197,7 +223,14 @@ if [[ "$ENTRY_ABOVE_MARK" != "0" ]]; then
 fi
 
 bold "3/6  Venue accrues $TOP_UP"
-send "$TARGET" 'accrue(uint256)' "$TOP_UP"
+if [[ "$ACCRUE_KIND" == "venue" ]]; then
+  send "$ACCRUE_TO" 'accrue(uint256)' "$TOP_UP"
+else
+  # No venue in the path. Mint underlying to the stub adapter, whose
+  # totalAssets() is its own balance -- the same NAV movement by the only
+  # mechanism this configuration has.
+  send "$ASSET" 'mint(address,uint256)' "$ACCRUE_TO" "$TOP_UP"
+fi
 NAV1=$(call "$VAULT" 'getNavPerShare()(uint256)')
 RAW1=$(call "$VAULT" 'rawAssets()(uint256)')
 # Everything below is measured against the mark, not against the deposit:

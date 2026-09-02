@@ -38,8 +38,22 @@ contract ERC4626YieldAdapter is IYieldAdapter, AccessControl, ReentrancyGuard {
     /// @notice The ERC-4626 vault this adapter deposits into.
     IERC4626 public immutable target;
 
+    /// @notice How far below the deposited amount the received shares may be
+    ///         valued before the deposit is refused. 10 bps.
+    /// @dev    Wide enough for the wei-level rounding any ERC-4626 conversion
+    ///         produces, and for a venue that has genuinely earned yield, which
+    ///         also raises the share price. Tight enough that the 25% loss
+    ///         measured on an inflated venue cannot pass.
+    uint256 internal constant MAX_DEPOSIT_LOSS_BPS = 10;
+
+    /// @notice Absolute floor for the tolerance, in asset units.
+    uint256 internal constant MIN_ABS_TOLERANCE = 2;
+
     error ZeroAddress();
     error AssetMismatch(address expected, address actual);
+
+    /// @notice A deposit bought shares worth materially less than was paid.
+    error DepositValueLost(uint256 paid, uint256 worth);
 
     /// @notice Emitted when a withdrawal could not be fully serviced.
     /// @dev Not an error. See `withdraw` for why this is a shortfall event
@@ -93,6 +107,39 @@ contract ERC4626YieldAdapter is IYieldAdapter, AccessControl, ReentrancyGuard {
         // dust that is never redeposited is yield the depositors do not earn.
         uint256 toDeposit = asset.balanceOf(address(this));
         uint256 shares = target.deposit(toDeposit, address(this));
+
+        // Value the shares straight back and refuse if the deposit bought
+        // materially less than it paid.
+        //
+        // Without this the share count was taken on trust. An ERC-4626 whose
+        // price has been inflated -- donated to while supply was tiny, or just
+        // nearly empty -- mints too few shares, and the shortfall goes to the
+        // venue's existing holders. `totalAssets()` drops the instant the
+        // deposit lands, so every YieldVault depositor eats it at once, and
+        // nothing reverts to say so.
+        //
+        // Found on the testnet fixture, which reached this state through
+        // ordinary drill runs rather than an attack: totalAssets 500000017
+        // against totalSupply 1, where depositing 1e9 bought shares worth
+        // 750000027. A quarter of the deposit, gone silently.
+        //
+        // Governance approving the venue bounds WHO the target is, not what
+        // state it is in: a legitimate venue can be near-empty the day it is
+        // approved, and a third party can inflate it afterwards with a plain
+        // transfer that costs them nothing they do not recover from the next
+        // depositor.
+        //
+        // Reverting is the safe direction. It propagates to YieldVault.deposit
+        // and the would-be depositor keeps their money, rather than buying into
+        // a vault that just lost a slice of their principal. It cannot brick
+        // migration either -- `setAdapter` unwinds through `withdraw`, which
+        // has no such guard by design.
+        uint256 worth = target.convertToAssets(shares);
+        uint256 tolerance = (toDeposit * MAX_DEPOSIT_LOSS_BPS) / 10_000;
+        // A bps tolerance rounds to zero on dust, where one wei of ordinary
+        // rounding would then trip the guard and block the deposit.
+        if (tolerance < MIN_ABS_TOLERANCE) tolerance = MIN_ABS_TOLERANCE;
+        if (worth + tolerance < toDeposit) revert DepositValueLost(toDeposit, worth);
 
         emit Deposited(toDeposit, shares);
     }
