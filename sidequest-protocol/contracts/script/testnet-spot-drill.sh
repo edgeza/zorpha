@@ -117,6 +117,22 @@ LIMIT=$(call "$EXEC" 'dailyLimit(address)(uint256)' "$VAULT")
        cast send $EXEC 'setDailyLimit(address,uint256)' $VAULT 4 --account <gov>"
 ok "rate limit is $LIMIT per rolling 24h"
 
+# A funded vault, and a priced one.
+#
+# rebalanceTo opens with:
+#   if (tvl == 0) { targetWeightBps = targetBps; return; }
+# so on an empty vault every signature below is accepted, nothing trades,
+# rebalanceCount stays put and no receipt is emitted. The drill would report
+# the signature checks as passing while proving nothing about the thing they
+# gate. That is exactly how the first run failed -- "rebalanceCount went
+# 0 -> 0" -- and the drill's assumption was wrong, not the vault.
+TVL=$(cast call "$VAULT" 'grossValue()(uint256)' --rpc-url "$RPC" 2>/dev/null | num || echo "")
+[[ -n "$TVL" && "$TVL" != "0" ]] || die "the vault's grossValue is ${TVL:-reverting}.
+     An empty or unpriced vault takes rebalanceTo's early return, so this drill
+     would pass without trading anything. Run the setup first:
+       ./script/testnet-spot-setup.sh <governance-keystore>"
+ok "vault is funded and priced: grossValue $TVL"
+
 MAX_EXPIRY=$(call "$EXEC" 'MAX_SIGNAL_EXPIRY()(uint256)')
 NONCE0=$(call "$EXEC" 'nonces(address)(uint256)' "$VAULT")
 COUNT0=$(call "$VAULT" 'rebalanceCount()(uint256)')
@@ -178,10 +194,21 @@ GOOD_EXPIRY=$(bi "$NOW" add 3600)
 
 # ─── 1. A correctly signed rebalance ────────────────────────────────────────
 bold "1/7  A correctly signed rebalance executes"
+
+# The target must differ from the current allocation by more than
+# rebalanceThresholdBps of tvl, or rebalanceTo takes its OTHER early return:
+#   if (diff * 10000 < rebalanceThresholdBps * tvl) { targetWeightBps = t; return; }
+# which also trades nothing and emits nothing. A vault holding all of one leg
+# moved to 5000 bps shifts half of tvl, far past a 200 bps threshold.
+CUR_WEIGHT=$(call "$VAULT" 'targetWeightBps()(uint16)')
+WEIGHT="${SPOT_TARGET_BPS:-5000}"
+THRESH=$(call "$VAULT" 'rebalanceThresholdBps()(uint16)')
+info "current target $CUR_WEIGHT bps -> $WEIGHT bps, threshold $THRESH bps of tvl"
+
 N1=$(bi "$NONCE0" add 1)
-SIG=$(sign_for 5000 "$N1" "$GOOD_EXPIRY")
+SIG=$(sign_for "$WEIGHT" "$N1" "$GOOD_EXPIRY")
 info "weight 5000 bps, nonce $N1, expiry $GOOD_EXPIRY"
-submit 5000 "$N1" "$GOOD_EXPIRY" "$SIG" || die "a valid rebalance was REJECTED: $(reason)
+submit "$WEIGHT" "$N1" "$GOOD_EXPIRY" "$SIG" || die "a valid rebalance was REJECTED: $(reason)
      $(tail -2 "$ERRFILE")"
 ok "executed"
 
@@ -195,7 +222,7 @@ ok "vault rebalanceCount $COUNT0 -> $COUNT1"
 # The same bytes again. If this succeeds, any observer can repeat a manager's
 # instruction at a moment of their choosing.
 bold "2/7  The same signature again must revert"
-if submit 5000 "$N1" "$GOOD_EXPIRY" "$SIG"; then
+if submit "$WEIGHT" "$N1" "$GOOD_EXPIRY" "$SIG"; then
   die "REPLAY SUCCEEDED. A captured signature can be re-executed at will."
 fi
 ok "replay reverted: $(reason)"
@@ -204,8 +231,8 @@ ok "replay reverted: $(reason)"
 bold "3/7  An expired signature must revert"
 N2=$(bi "$N1" add 1)
 PAST=$(bi "$NOW" sub 60)
-SIG_OLD=$(sign_for 5000 "$N2" "$PAST")
-if submit 5000 "$N2" "$PAST" "$SIG_OLD"; then
+SIG_OLD=$(sign_for "$WEIGHT" "$N2" "$PAST")
+if submit "$WEIGHT" "$N2" "$PAST" "$SIG_OLD"; then
   die "an EXPIRED signature executed. Deadlines are not enforced."
 fi
 ok "expired reverted: $(reason)"
@@ -214,8 +241,8 @@ ok "expired reverted: $(reason)"
 # A signature good for a year is a standing authority, not an instruction.
 bold "4/7  A deadline beyond the cap must revert"
 TOO_FAR=$(bi "$(bi "$NOW" add "$MAX_EXPIRY")" add 86400)
-SIG_FAR=$(sign_for 5000 "$N2" "$TOO_FAR")
-if submit 5000 "$N2" "$TOO_FAR" "$SIG_FAR"; then
+SIG_FAR=$(sign_for "$WEIGHT" "$N2" "$TOO_FAR")
+if submit "$WEIGHT" "$N2" "$TOO_FAR" "$SIG_FAR"; then
   die "a deadline $((86400 / 3600))h beyond MAX_SIGNAL_EXPIRY was accepted."
 fi
 ok "expiry cap enforced: $(reason)"
@@ -224,9 +251,9 @@ ok "expiry cap enforced: $(reason)"
 # The keeper signs its own instruction. It has KEEPER_ROLE, so it may submit --
 # but it is not the authorized signer, so it may not decide.
 bold "5/7  A signature from the wrong key must revert"
-DIGEST=$(digest_for 5000 "$N2" "$GOOD_EXPIRY")
+DIGEST=$(digest_for "$WEIGHT" "$N2" "$GOOD_EXPIRY")
 SIG_WRONG=$(cast wallet sign --no-hash --account "$KEEPER_ACCT" "$DIGEST")
-if submit 5000 "$N2" "$GOOD_EXPIRY" "$SIG_WRONG"; then
+if submit "$WEIGHT" "$N2" "$GOOD_EXPIRY" "$SIG_WRONG"; then
   die "the KEEPER signed its own rebalance and it EXECUTED. Submission
      authority and signing authority are not separated."
 fi
@@ -244,20 +271,27 @@ ok "weight bound enforced: $(reason)"
 # One rebalance is already spent from step 1, so fill the rest of the window
 # and then try once more.
 bold "7/7  The rolling rate limit must bite"
+# Alternate the target so each submission is a real move past the threshold.
+# Repeating one weight would pass the signature checks and then take the
+# sub-threshold early return -- which still consumes a nonce and a rate-limit
+# slot, so the limit would still be reached, but the drill would be asserting
+# the limit against a sequence of no-ops.
+RL_WEIGHT=$(bi 10000 sub "$WEIGHT")
+info "rate-limit submissions use $RL_WEIGHT bps so each is a genuine move"
 REMAINING=$(bi "$LIMIT" sub 1)
 info "limit $LIMIT, one already used; submitting $REMAINING more, then one too many"
 NEXT="$N1"
 for ((i = 0; i < REMAINING; i++)); do
   NEXT=$(bi "$NEXT" add 1)
-  S=$(sign_for 5000 "$NEXT" "$GOOD_EXPIRY")
-  submit 5000 "$NEXT" "$GOOD_EXPIRY" "$S" \
+  S=$(sign_for "$RL_WEIGHT" "$NEXT" "$GOOD_EXPIRY")
+  submit "$RL_WEIGHT" "$NEXT" "$GOOD_EXPIRY" "$S" \
     || die "rebalance $((i + 2)) of $LIMIT was rejected before the limit: $(reason)"
   info "  $((i + 2))/$LIMIT ok"
 done
 
 NEXT=$(bi "$NEXT" add 1)
-S=$(sign_for 5000 "$NEXT" "$GOOD_EXPIRY")
-if submit 5000 "$NEXT" "$GOOD_EXPIRY" "$S"; then
+S=$(sign_for "$RL_WEIGHT" "$NEXT" "$GOOD_EXPIRY")
+if submit "$RL_WEIGHT" "$NEXT" "$GOOD_EXPIRY" "$S"; then
   die "rebalance $((LIMIT + 1)) succeeded against a limit of $LIMIT.
      The rate limit does not bite, so a compromised signer is unbounded."
 fi
