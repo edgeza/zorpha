@@ -56,7 +56,7 @@ GOV_ACCT="${1:-}"
 RPC="${RH_TESTNET_RPC_URL:-https://rpc.testnet.chain.robinhood.com/rpc}"
 CHAIN_ID=46630
 WEB_ENV="../../zorpha-web/.env.local"
-VAULT_CACHE=".rotation-v2-$CHAIN_ID"
+VAULT_CACHE=""   # keyed on the factory once it is resolved, see below
 
 bold() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 ok()   { printf '  \033[32m+\033[0m %s\n' "$1"; }
@@ -81,6 +81,22 @@ gov()     { cast send "$@" --rpc-url "$RPC" --account "$GOV_ACCT" >/dev/null; }
 
 ACTOR=$(cast wallet address --account "$GOV_ACCT")
 FACTORY=$(env_of NEXT_PUBLIC_VAULT_FACTORY_ADDRESS)
+
+# The cache is keyed on the FACTORY, not just the chain. VaultFactory compiles
+# the vault bytecode into itself, so a vault is only as fixed as the factory
+# that built it -- and a redeploy of the factory makes every previously cached
+# vault stale in a way nothing here could see.
+#
+# This exact trap already fired: the drill reused a vault from the old factory,
+# whose totalAssets() still returned base units, and reported "the mark is
+# 250000000 but the first depositor paid 0". That reads as the equalisation fix
+# failing. It was the units bug, in bytecode predating the fix, being graded as
+# though it were the fix. A confusing failure on old code is worse than no
+# drill, because it sends you to rewrite something that was already correct.
+#
+# Keying the filename on the factory means a factory redeploy orphans the cache
+# and the next run deploys fresh, with no one having to remember.
+VAULT_CACHE=".rotation-v2-$CHAIN_ID-$(printf '%s' "$FACTORY" | tail -c 9)"
 TREASURY=$(env_of NEXT_PUBLIC_TREASURY_ADDRESS)
 
 # The vault being replaced is the authoritative source for the basket, the
@@ -187,6 +203,19 @@ else
   printf '%s' "$VAULT" > "$VAULT_CACHE"
   ok "deployed $VAULT"
 fi
+
+# Assert the bytecode under test is actually the fixed bytecode. `netValueInBase`
+# was added by the units fix and does not exist before it, so a call that reverts
+# is a positive identification of a pre-fix vault -- not a guess from an address
+# or a filename. Cheap, and it makes a stale cache impossible to mistake for a
+# failing fix.
+if ! cast call "$VAULT" 'netValueInBase()(uint256)' --rpc-url "$RPC" >/dev/null 2>&1; then
+  die "vault $VAULT predates the units fix -- netValueInBase() is not in its
+     bytecode, so totalAssets() still returns base units. It was built by an
+     older factory. Delete the cache and re-run to deploy from the current one:
+       rm -f $VAULT_CACHE"
+fi
+ok "vault carries the units fix (netValueInBase is present)"
 
 info "name   $(callstr "$VAULT" 'name()(string)')"
 info "symbol $(callstr "$VAULT" 'symbol()(string)')"

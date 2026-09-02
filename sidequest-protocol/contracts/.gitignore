@@ -11,3 +11,4 @@ seed.sql
 # Addresses of the lifecycle drill fixtures; local to a chain.
 .priced-adapter-*
 .spot-v2-*
+.rotation-v2-*

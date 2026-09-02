@@ -54,8 +54,22 @@ CHAIN_ID=46630
 WEB_ENV="../../zorpha-web/.env.local"
 FIXTURES="broadcast/DeployTestnetFixtures.s.sol/$CHAIN_ID/run-latest.json"
 VAULTS="broadcast/DeployVaultsV1.s.sol/$CHAIN_ID/run-latest.json"
-ADAPTER_CACHE=".priced-adapter-$CHAIN_ID"
-VAULT_CACHE=".spot-v2-$CHAIN_ID"
+# Both caches are keyed below on what they actually depend on, once those are
+# resolved. Keying on the chain alone was wrong:
+#
+#   the vault   is built by VaultFactory, which compiles the vault bytecode into
+#               itself, so a cached vault is only as fixed as the factory that
+#               built it. Redeploy the factory and every cached vault is stale
+#               bytecode that nothing here could detect.
+#   the adapter prices off a specific MedianOracle. Redeploy the oracle and the
+#               cached adapter still points at the old one, which no longer
+#               receives price reports -- so it prices off a dead feed.
+#
+# The rotation drill hit the first case for real: it graded a pre-fix vault and
+# reported a failure that read like the equalisation fix breaking. Deleting the
+# files by hand works right up until someone forgets, and then the drill lies.
+ADAPTER_CACHE=""
+VAULT_CACHE=""
 
 bold() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 ok()   { printf '  \033[32m+\033[0m %s\n' "$1"; }
@@ -100,6 +114,12 @@ ASSET=$(named_of "./$FIXTURES" TestEquity)
 CASH=$(named_of "./$FIXTURES" TestUSDG)
 ORACLE=$(named_of "./$VAULTS" MedianOracle)
 [[ -n "$ASSET" && -n "$CASH" && -n "$ORACLE" ]] || die "could not resolve asset, cash or oracle"
+
+# Finalise the cache keys now that the factory and oracle are known. A redeploy
+# of either orphans the matching cache and the next run rebuilds from current
+# addresses, with nobody having to remember to delete anything.
+VAULT_CACHE=".spot-v2-$CHAIN_ID-$(printf '%s' "$FACTORY" | tail -c 9)"
+ADAPTER_CACHE=".priced-adapter-$CHAIN_ID-$(printf '%s' "$ORACLE" | tail -c 9)"
 
 DEPOSIT="${SPOT_DEPOSIT:-100000000000000000000}"   # 100 equity, 18dp
 PRICE_USD="${SPOT_PRICE_USD:-250}"
