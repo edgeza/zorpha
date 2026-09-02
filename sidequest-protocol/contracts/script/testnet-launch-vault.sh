@@ -7,15 +7,15 @@
 # is permissionless-in-name-only: launchYieldVault has no role check, only the
 # bond and the seed.
 #
-# Everything is read off chain rather than passed in, because the addresses are
-# outputs of four separate deploy scripts and re-typing them is how you end up
-# seeding the wrong vault.
+# Addresses are read off chain rather than passed in, because they are outputs
+# of four separate deploy scripts and re-typing them is how you seed the wrong
+# vault.
 #
 # Usage:
 #   cast wallet import zorpha-gov --interactive     # once, prompts for the key
 #   ./script/testnet-launch-vault.sh zorpha-gov
 #
-# Takes a keystore account name, not a private key. One password prompt per
+# Takes a keystore account name, not a private key: one password prompt per
 # transaction beats retyping a key, and the key never reaches shell history.
 
 set -euo pipefail
@@ -47,21 +47,32 @@ WEB_ENV="../../zorpha-web/.env.local"
 FIXTURES="broadcast/DeployTestnetFixtures.s.sol/$CHAIN_ID/run-latest.json"
 
 bold() { printf '\n\033[1m%s\033[0m\n' "$1"; }
-ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
-die()  { printf '\n  \033[31m✗ %s\033[0m\n\n' "$1" >&2; exit 1; }
+ok()   { printf '  \033[32m+\033[0m %s\n' "$1"; }
+die()  { printf '\n  \033[31mx %s\033[0m\n\n' "$1" >&2; exit 1; }
+
+# Big-integer comparison, and NOT via bc: bc is absent from Git Bash on
+# Windows, where this script actually runs. When it is missing, `echo "a < b" |
+# bc` yields an empty string, `[[ "" == "1" ]]` is false, and the caller
+# silently takes the "no action needed" branch -- which is how an earlier
+# version skipped minting the seed and then reverted on a zero balance. A
+# missing helper must fail loudly, so this uses node, which the deploy scripts
+# already depend on, and errors if node is gone.
+command -v node >/dev/null || die "node is required (the deploy scripts need it too)"
+lt() { node -e 'process.exit(BigInt(process.argv[1]) < BigInt(process.argv[2]) ? 0 : 1)' "$1" "$2"; }
 
 env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2-; }
+num()    { awk '{print $1}'; }
 
-[[ -f "$WEB_ENV" ]]  || die "no $WEB_ENV — run the deploy first"
-[[ -f "$FIXTURES" ]] || die "no $FIXTURES — run the deploy first"
+[[ -f "$WEB_ENV" ]]  || die "no $WEB_ENV -- run the deploy first"
+[[ -f "$FIXTURES" ]] || die "no $FIXTURES -- run the deploy first"
 
 ZOR=$(env_of NEXT_PUBLIC_ZOR_ADDRESS)
 LAUNCHER=$(env_of NEXT_PUBLIC_VAULT_LAUNCHER_ADDRESS)
 TARGET=$(node -e '
-  const j=require("./'"$FIXTURES"'");
-  const h=(j.transactions||[]).find(t=>t.contractName==="TestYieldTarget");
-  process.stdout.write(h?h.contractAddress:"");
-')
+  const j = require(process.argv[1]);
+  const h = (j.transactions || []).find(t => t.contractName === "TestYieldTarget");
+  process.stdout.write(h ? h.contractAddress : "");
+' "./$FIXTURES")
 
 [[ -n "$ZOR" && -n "$LAUNCHER" && -n "$TARGET" ]] || die "could not resolve addresses"
 
@@ -75,11 +86,10 @@ echo "  launcher  $LAUNCHER"
 echo "  target    $TARGET"
 echo "  asset     $ASSET"
 
-# ─── Preflight ──────────────────────────────────────────────────────────────
+# --- Preflight -------------------------------------------------------------
 bold "Preflight"
 
-FACTORY=$(cast call "$LAUNCHER" 'factory()(address)' --rpc-url "$RPC" 2>/dev/null \
-          || env_of NEXT_PUBLIC_VAULT_FACTORY_ADDRESS)
+FACTORY=$(cast call "$LAUNCHER" 'factory()(address)' --rpc-url "$RPC")
 DEPLOYER_ROLE=$(cast keccak "DEPLOYER_ROLE")
 HAS=$(cast call "$FACTORY" 'hasRole(bytes32,address)(bool)' "$DEPLOYER_ROLE" "$LAUNCHER" --rpc-url "$RPC")
 [[ "$HAS" == "true" ]] || die "the launcher does not hold DEPLOYER_ROLE on $FACTORY.
@@ -90,31 +100,38 @@ APPROVED=$(cast call "$LAUNCHER" 'approvedTarget(address)(bool)' "$TARGET" --rpc
 [[ "$APPROVED" == "true" ]] || die "$TARGET is not an approved target"
 ok "target is approved"
 
-BOND=$(cast call "$LAUNCHER" 'bondAmount()(uint256)' --rpc-url "$RPC" | awk '{print $1}')
-SEED=$(cast call "$LAUNCHER" 'minSeedEscrow()(uint256)' --rpc-url "$RPC" | awk '{print $1}')
+BOND=$(cast call "$LAUNCHER" 'bondAmount()(uint256)'    --rpc-url "$RPC" | num)
+SEED=$(cast call "$LAUNCHER" 'minSeedEscrow()(uint256)' --rpc-url "$RPC" | num)
 ok "bond $(cast to-unit "$BOND" ether) ZOR, minimum seed $SEED (asset base units)"
 
-ZOR_BAL=$(cast call "$ZOR" 'balanceOf(address)(uint256)' "$LEADER" --rpc-url "$RPC" | awk '{print $1}')
-if [[ $(echo "$ZOR_BAL < $BOND" | bc) == "1" ]]; then
+ZOR_BAL=$(cast call "$ZOR" 'balanceOf(address)(uint256)' "$LEADER" --rpc-url "$RPC" | num)
+if lt "$ZOR_BAL" "$BOND"; then
   die "leader holds $(cast to-unit "$ZOR_BAL" ether) ZOR, needs $(cast to-unit "$BOND" ether)"
 fi
-ok "leader holds enough ZOR for the bond"
+ok "leader holds $(cast to-unit "$ZOR_BAL" ether) ZOR, enough for the bond"
 
 GAS=$(cast balance "$LEADER" --rpc-url "$RPC")
 [[ "$GAS" != "0" ]] || die "leader has no gas"
 ok "leader gas $(cast to-unit "$GAS" ether) ETH"
 
-# ─── Mint the seed ──────────────────────────────────────────────────────────
+# --- 1. Seed asset ---------------------------------------------------------
 # TestUSDG.mint is deliberately permissionless on testnet. On mainnet the seed
 # is real capital and this step does not exist.
-bold "1/4  Mint $SEED of the seed asset"
-ASSET_BAL=$(cast call "$ASSET" 'balanceOf(address)(uint256)' "$LEADER" --rpc-url "$RPC" | awk '{print $1}')
-if [[ $(echo "$ASSET_BAL < $SEED" | bc) == "1" ]]; then
+bold "1/4  Seed asset"
+ASSET_BAL=$(cast call "$ASSET" 'balanceOf(address)(uint256)' "$LEADER" --rpc-url "$RPC" | num)
+if lt "$ASSET_BAL" "$SEED"; then
+  echo "  holds $ASSET_BAL, needs $SEED -- minting"
   cast send "$ASSET" 'mint(address,uint256)' "$LEADER" "$SEED" \
     --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null
-  ok "minted"
+  # Read it back. A mint that silently did nothing would otherwise surface as
+  # an opaque ERC20InsufficientBalance three transactions later.
+  ASSET_BAL=$(cast call "$ASSET" 'balanceOf(address)(uint256)' "$LEADER" --rpc-url "$RPC" | num)
+  if lt "$ASSET_BAL" "$SEED"; then
+    die "minted, but the balance is still $ASSET_BAL (needs $SEED)"
+  fi
+  ok "minted, balance now $ASSET_BAL"
 else
-  ok "already holds enough ($ASSET_BAL), skipping"
+  ok "already holds $ASSET_BAL, no mint needed"
 fi
 
 bold "2/4  Approve the launcher for the ZOR bond"
@@ -127,7 +144,7 @@ cast send "$ASSET" 'approve(address,uint256)' "$LAUNCHER" "$SEED" \
   --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null
 ok "approved $SEED"
 
-# ─── Launch ─────────────────────────────────────────────────────────────────
+# --- 4. Launch -------------------------------------------------------------
 # A random salt, because CREATE2 reverts on a collision and a fixed one would
 # make this script single-use. A real leader picks a salt deliberately, to
 # pre-compute and publish their vault address before launching.
@@ -145,33 +162,51 @@ cast send "$LAUNCHER" 'launchYieldVault(address,uint256,string,string,bytes32)' 
   --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null
 ok "launched"
 
-# ─── Verify ─────────────────────────────────────────────────────────────────
+# --- Verify ----------------------------------------------------------------
 # Read the result back off chain rather than trusting the receipt. The point of
-# the exercise is that the escrow is funded and subordinated; a transaction
-# that succeeded without funding it would look identical here.
+# the exercise is that the escrow ends up funded and subordinated; a launch
+# that succeeded without funding it would produce an identical receipt.
 bold "Verify"
 
-COUNT=$(cast call "$LAUNCHER" 'launchCount()(uint256)' --rpc-url "$RPC" | awk '{print $1}')
-ID=$((COUNT - 1))
-IDS=$(cast call "$LAUNCHER" 'launchesOfLeader(address)(uint256[])' "$LEADER" --rpc-url "$RPC")
-echo "  launchCount $COUNT, this leader's ids: $IDS"
+COUNT=$(cast call "$LAUNCHER" 'launchCount()(uint256)' --rpc-url "$RPC" | num)
+# Launch ids are 1-indexed (id = launches.length, read after the push), so the
+# public array getter wants one less than the count.
+IDX=$((COUNT - 1))
 
-VAULT=$(cast call "$LAUNCHER" 'launches(uint256)(uint256,address,address,address,address,uint256,uint256,bool)' "$ID" \
-        --rpc-url "$RPC" 2>/dev/null | sed -n '3p' || true)
-if [[ -z "$VAULT" ]]; then
-  echo "  (could not decode the launch record; check the VaultLaunched event)"
-  exit 0
-fi
-ok "vault  $VAULT"
+# struct Launch { address vault; address escrow; address adapter;
+#                 address leader; address asset; uint256 bond;
+#                 uint64 createdAt; bool bondReleased; bool bondSlashed; }
+RECORD=$(cast call "$LAUNCHER" \
+  'launches(uint256)(address,address,address,address,address,uint256,uint64,bool,bool)' \
+  "$IDX" --rpc-url "$RPC")
 
-echo "  name       $(cast call "$VAULT" 'name()(string)' --rpc-url "$RPC")"
-echo "  asset      $(cast call "$VAULT" 'asset()(address)' --rpc-url "$RPC")"
-ESCROW=$(cast call "$VAULT" 'firstLossEscrow()(address)' --rpc-url "$RPC" 2>/dev/null || echo "")
-if [[ -n "$ESCROW" ]]; then
-  ok "escrow $ESCROW"
-  echo "  escrow available     $(cast call "$ESCROW" 'available()(uint256)' --rpc-url "$RPC")"
-  echo "  adequately covered   $(cast call "$ESCROW" 'isAdequatelyCovered()(bool)' --rpc-url "$RPC")"
-fi
+VAULT=$(echo "$RECORD"  | sed -n '1p' | num)
+ESCROW=$(echo "$RECORD" | sed -n '2p' | num)
+ADAPTER=$(echo "$RECORD"| sed -n '3p' | num)
+RLEADER=$(echo "$RECORD"| sed -n '4p' | num)
+RBOND=$(echo "$RECORD"  | sed -n '6p' | num)
+
+ok "vault   $VAULT"
+ok "escrow  $ESCROW"
+ok "adapter $ADAPTER"
+
+[[ "${RLEADER,,}" == "${LEADER,,}" ]] \
+  || die "launch record names $RLEADER as leader, not $LEADER"
+ok "leader recorded correctly"
+
+VAULT_ESCROW=$(cast call "$VAULT" 'firstLossEscrow()(address)' --rpc-url "$RPC")
+[[ "${VAULT_ESCROW,,}" == "${ESCROW,,}" ]] \
+  || die "the vault points at $VAULT_ESCROW, the launch record at $ESCROW"
+ok "the vault points at that escrow"
+
+AVAILABLE=$(cast call "$ESCROW" 'available()(uint256)' --rpc-url "$RPC" | num)
+[[ "$AVAILABLE" != "0" ]] || die "the escrow is EMPTY. Depositors would be unsubordinated."
+ok "escrow holds $AVAILABLE of first-loss capital"
+
+echo "  vault name        $(cast call "$VAULT" 'name()(string)' --rpc-url "$RPC")"
+echo "  vault asset       $(cast call "$VAULT" 'asset()(address)' --rpc-url "$RPC")"
+echo "  adequately covered $(cast call "$ESCROW" 'isAdequatelyCovered()(bool)' --rpc-url "$RPC")"
+echo "  bond held         $(cast to-unit "$RBOND" ether) ZOR"
 
 bold "Done"
 echo "  The escrow holds the leader's first-loss capital. A loss in this vault"
