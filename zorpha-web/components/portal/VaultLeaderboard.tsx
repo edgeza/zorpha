@@ -20,7 +20,33 @@ function usdg(value: bigint): string {
   return (Number(value) / 1e6).toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
+/**
+ * What `coverageRatioBps()` returns for a vault with nothing in it.
+ *
+ * FirstLossEscrow does `if (raw == 0) return type(uint256).max;` — a sentinel
+ * meaning "nothing at risk", not a ratio. Passed through Number() it becomes
+ * 1.15e77 and rendered as a percentage it reads `1.157920892373162e+75%`,
+ * which is what an empty vault showed here before this guard.
+ */
+const NOTHING_AT_RISK = (1n << 256n) - 1n;
+
 function CoverageBar({ bps, min }: { bps: bigint; min: number }) {
+  // An empty vault has no coverage ratio, and saying so beats implying either
+  // infinite safety or none. The leader's capital is still shown in its own
+  // column, so nothing is hidden by this.
+  if (bps === NOTHING_AT_RISK) {
+    return (
+      <div className="flex items-center justify-end">
+        <span
+          className="w-14 text-right font-mono text-xs text-ink-500"
+          title="No deposits yet, so there is nothing for the buffer to cover."
+        >
+          —
+        </span>
+      </div>
+    );
+  }
+
   // The scale tops out at 4x the minimum. A leader at 40% coverage is not
   // four times safer than one at 10% in any way a depositor acts on, and a
   // linear 0-100% scale would render every honest vault as a sliver.
