@@ -76,18 +76,6 @@ if [[ -z "${PRIVATE_KEY:-}" && -z "${DEPLOY_ACCOUNT:-}" ]]; then
   exit 1
 fi
 
-# How every forge/cast call below authenticates. An array so it expands to two
-# words or one, with no quoting games at the call sites.
-if [[ -n "${DEPLOY_ACCOUNT:-}" ]]; then
-  # --sender as well as --account: the deploy scripts read `msg.sender` when
-  # PRIVATE_KEY is absent, and forge resolves msg.sender from --sender. Probed
-  # to confirm it comes back as the keystore address.
-  DEPLOY_ACCOUNT_ADDR=$(cast wallet address --account "$DEPLOY_ACCOUNT")
-  SIGNER_ARGS=(--account "$DEPLOY_ACCOUNT" --sender "$DEPLOY_ACCOUNT_ADDR")
-else
-  SIGNER_ARGS=(--private-key "$PRIVATE_KEY")
-fi
-
 # Split by phase. LIQUIDITY_RECIPIENT, AIRDROP_MERKLE_ROOT and
 # AIRDROP_CLAIM_DEADLINE are read only by DeployZorphaToken, so demanding them
 # under SKIP_TOKEN blocks a vault redeploy on values that will not be used --
@@ -101,6 +89,27 @@ for v in "${REQUIRED_ENV[@]}"; do
   require_env "$v"
 done
 
+# Resolved AFTER the env checks on purpose: `cast wallet address --account`
+# prompts for a keystore password, and being asked for one only to be told a
+# variable is missing wastes the prompt. Cheap ordering, and it happened
+# repeatedly while this mode was being built.
+# How every forge/cast call below authenticates. An array so it expands to two
+# words or one, with no quoting games at the call sites.
+# TWO arrays, because the flags are not interchangeable. `forge script` needs
+# --sender -- the deploy scripts read msg.sender when PRIVATE_KEY is absent, and
+# forge resolves msg.sender from it, verified by probe. `cast wallet address`
+# rejects --sender outright ("unexpected argument"), so it gets its own.
+if [[ -n "${DEPLOY_ACCOUNT:-}" ]]; then
+  WALLET_ARGS=(--account "$DEPLOY_ACCOUNT")
+  DEPLOYER=$(cast wallet address "${WALLET_ARGS[@]}")
+  SIGNER_ARGS=(--account "$DEPLOY_ACCOUNT" --sender "$DEPLOYER")
+else
+  WALLET_ARGS=(--private-key "$PRIVATE_KEY")
+  DEPLOYER=$(cast wallet address "${WALLET_ARGS[@]}")
+  SIGNER_ARGS=(--private-key "$PRIVATE_KEY")
+fi
+[[ -n "$DEPLOYER" ]] || { echo "ERROR: could not resolve the deployer address." >&2; exit 1; }
+
 # The base asset goes by two names. Robinhood Chain's stablecoin is Paxos USDG,
 # not USDC -- the canonical USDC addresses have no code on 4663 -- but the
 # original variable was USDC_TOKEN and an in-flight runbook may still use it.
@@ -113,7 +122,6 @@ fi
 export USDG_TOKEN="${USDG_TOKEN:-$USDC_TOKEN}"
 export USDC_TOKEN="${USDC_TOKEN:-$USDG_TOKEN}"
 
-DEPLOYER=$(cast wallet address "${SIGNER_ARGS[@]}")
 if [[ "${DEPLOYER,,}" == "${GOVERNANCE,,}" ]]; then
   echo "ERROR: GOVERNANCE and the deployer are the same address ($DEPLOYER)." >&2
   echo "" >&2
