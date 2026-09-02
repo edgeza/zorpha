@@ -39,7 +39,9 @@ info() { printf '    %s\n' "$1"; }
 die()  { printf '\n  \033[31mx %s\033[0m\n\n' "$1" >&2; exit 1; }
 
 bi()  { node -e 'const [a,op,b]=process.argv.slice(1);const A=BigInt(a),B=BigInt(b);
-  const f={"+":()=>A+B,"-":()=>A-B,"*":()=>A*B,"/":()=>A/B,"min":()=>A<B?A:B,"max":()=>A>B?A:B}[op];
+  const f={add:()=>A+B,sub:()=>A-B,mul:()=>A*B,div:()=>A/B,
+           min:()=>A<B?A:B,max:()=>A>B?A:B}[op];
+  if(!f) throw new Error("unknown op: "+op);
   process.stdout.write(f().toString())' -- "$1" "$2" "$3"; }
 eq()  { [[ "$1" == "$2" ]]; }
 
@@ -87,7 +89,7 @@ else
   cast send "$DIST" 'claim(uint256,address,uint256,bytes32[])' "$INDEX" "$ACTOR" "$AMOUNT" "$PROOF" \
     --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null
   B1=$(call "$ZOR" 'balanceOf(address)(uint256)' "$ACTOR")
-  GOT=$(bi "$B1" - "$B0")
+  GOT=$(bi "$B1" sub "$B0")
   eq "$GOT" "$AMOUNT" || die "received $GOT ZOR, allocation was $AMOUNT"
   ok "received exactly $(cast to-unit "$GOT" ether) ZOR"
   eq "$(call "$DIST" 'isClaimed(uint256)(bool)' "$INDEX")" true || die "isClaimed still false after a successful claim"

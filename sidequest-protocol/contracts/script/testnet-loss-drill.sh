@@ -72,7 +72,9 @@ die()  { printf '\n  \033[31mx %s\033[0m\n\n' "$1" >&2; exit 1; }
 
 command -v node >/dev/null || die "node is required"
 bi()  { node -e 'const [a,op,b]=process.argv.slice(1);const A=BigInt(a),B=BigInt(b);
-  const f={"+":()=>A+B,"-":()=>A-B,"*":()=>A*B,"/":()=>A/B,"min":()=>A<B?A:B,"max":()=>A>B?A:B}[op];
+  const f={add:()=>A+B,sub:()=>A-B,mul:()=>A*B,div:()=>A/B,
+           min:()=>A<B?A:B,max:()=>A>B?A:B}[op];
+  if(!f) throw new Error("unknown op: "+op);
   process.stdout.write(f().toString())' -- "$1" "$2" "$3"; }
 lt()  { node -e 'process.exit(BigInt(process.argv[1]) < BigInt(process.argv[2]) ? 0 : 1)' -- "$1" "$2"; }
 eq()  { [[ "$1" == "$2" ]]; }
@@ -133,13 +135,13 @@ fi
 BOND=$(call "$LAUNCHER" 'bondAmount()(uint256)')
 SEED=$(call "$LAUNCHER" 'minSeedEscrow()(uint256)')
 DEPOSIT="${DEPOSIT_AMOUNT:-$SEED}"
-LOSS="${LOSS_AMOUNT:-$(bi "$DEPOSIT" / 5)}"
+LOSS="${LOSS_AMOUNT:-$(bi "$DEPOSIT" div 5)}"
 
 # The venue holds only the deposit (the seed sits in the escrow, not the
 # venue), so it cannot lose more than that.
 lt "$DEPOSIT" "$LOSS" && die "LOSS_AMOUNT ($LOSS) exceeds DEPOSIT_AMOUNT ($DEPOSIT); the venue cannot lose what it does not hold"
 
-UNCOVERED=$(bi "$(bi "$LOSS" - "$SEED")" max 0)
+UNCOVERED=$(bi "$(bi "$LOSS" sub "$SEED")" max 0)
 if eq "$UNCOVERED" 0; then MODE="full coverage"; else MODE="PARTIAL coverage, $UNCOVERED uncovered"; fi
 
 info "bond $(cast to-unit "$BOND" ether) ZOR, seed $SEED, deposit $DEPOSIT, loss $LOSS"
@@ -148,7 +150,7 @@ info "regime: $MODE"
 # --- 2. Launch -------------------------------------------------------------
 bold "2/6  Launch a vault against it"
 
-NEED=$(bi "$SEED" + "$DEPOSIT")
+NEED=$(bi "$SEED" add "$DEPOSIT")
 HAVE=$(call "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
 if lt "$HAVE" "$NEED"; then
   send "$ASSET" 'mint(address,uint256)' "$ACTOR" "$NEED"
@@ -208,7 +210,7 @@ info "totalAssets   $TOT0 -> $TOT1"
 info "nav/share     $NAV0 -> $NAV1"
 
 lt "$RAW1" "$RAW0" || die "rawAssets did not fall; the venue did not actually lose anything"
-ok "the venue lost value: rawAssets fell by $(bi "$RAW0" - "$RAW1")"
+ok "the venue lost value: rawAssets fell by $(bi "$RAW0" sub "$RAW1")"
 
 EXPECTED_SUPPORT=$(bi "$LOSS" min "$ESCROW_START")
 eq "$SUP1" "$EXPECTED_SUPPORT" \
@@ -219,9 +221,9 @@ ok "the leader's capital stepped in: escrowSupport is $SUP1"
 # and not one unit more. If it fell further, the depositor absorbed a loss the
 # leader's capital should have taken. If it fell less, the vault is reporting
 # assets it does not have.
-EXPECTED_TOT=$(bi "$TOT0" - "$UNCOVERED")
+EXPECTED_TOT=$(bi "$TOT0" sub "$UNCOVERED")
 eq "$TOT1" "$EXPECTED_TOT" \
-  || die "totalAssets $TOT0 -> $TOT1, expected $EXPECTED_TOT. The depositor bore $(bi "$TOT0" - "$TOT1") of a $LOSS loss with $ESCROW_START of escrow."
+  || die "totalAssets $TOT0 -> $TOT1, expected $EXPECTED_TOT. The depositor bore $(bi "$TOT0" sub "$TOT1") of a $LOSS loss with $ESCROW_START of escrow."
 if eq "$UNCOVERED" 0; then
   ok "totalAssets UNCHANGED at $TOT1 -- the depositor has not lost anything"
   eq "$NAV1" "$NAV0" || die "nav/share moved $NAV0 -> $NAV1 under full coverage"
@@ -237,8 +239,8 @@ bold "5/6  Redeem everything"
 BEFORE=$(call "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
 send "$VAULT" 'redeem(uint256,address,address)' "$SHARES" "$ACTOR" "$ACTOR"
 AFTER=$(call "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
-RECEIVED=$(bi "$AFTER" - "$BEFORE")
-DEPOSITOR_LOSS=$(bi "$DEPOSIT" - "$RECEIVED")
+RECEIVED=$(bi "$AFTER" sub "$BEFORE")
+DEPOSITOR_LOSS=$(bi "$DEPOSIT" sub "$RECEIVED")
 
 ok "received $RECEIVED for $SHARES shares"
 info "depositor's loss $DEPOSITOR_LOSS  (uncovered part of the venue's loss: $UNCOVERED)"
@@ -246,14 +248,14 @@ lt "$RECEIVED" "$RAW1" && die "received $RECEIVED, less than the vault's own $RA
 ok "received more than the vault held on its own ($RAW1)"
 
 # One unit of rounding either way on a redeem is ERC-4626; more is a bug.
-DIFF=$(bi "$DEPOSITOR_LOSS" - "$UNCOVERED")
+DIFF=$(bi "$DEPOSITOR_LOSS" sub "$UNCOVERED")
 case "$DIFF" in -1|0|1) ok "depositor lost exactly the uncovered part ($DIFF rounding)";;
   *) die "depositor lost $DEPOSITOR_LOSS but only $UNCOVERED was uncovered";; esac
 
 # --- 6. The escrow paid ----------------------------------------------------
 bold "6/6  Who paid"
 ESCROW_END=$(call "$ESCROW" 'available()(uint256)')
-PAID=$(bi "$ESCROW_START" - "$ESCROW_END")
+PAID=$(bi "$ESCROW_START" sub "$ESCROW_END")
 
 info "escrow  $ESCROW_START -> $ESCROW_END"
 info "paid    $PAID  (expected $EXPECTED_SUPPORT)"

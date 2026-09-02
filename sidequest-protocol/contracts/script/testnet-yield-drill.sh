@@ -49,7 +49,9 @@ die()  { printf '\n  \033[31mx %s\033[0m\n\n' "$1" >&2; exit 1; }
 # All arithmetic through node BigInt. bc is absent from Git Bash and these
 # values overflow shell integers.
 bi()  { node -e 'const [a,op,b]=process.argv.slice(1);const A=BigInt(a),B=BigInt(b);
-  const f={"+":()=>A+B,"-":()=>A-B,"*":()=>A*B,"/":()=>A/B,"min":()=>A<B?A:B,"max":()=>A>B?A:B}[op];
+  const f={add:()=>A+B,sub:()=>A-B,mul:()=>A*B,div:()=>A/B,
+           min:()=>A<B?A:B,max:()=>A>B?A:B}[op];
+  if(!f) throw new Error("unknown op: "+op);
   process.stdout.write(f().toString())' -- "$1" "$2" "$3"; }
 lt()  { node -e 'process.exit(BigInt(process.argv[1]) <  BigInt(process.argv[2]) ? 0 : 1)' -- "$1" "$2"; }
 gt()  { node -e 'process.exit(BigInt(process.argv[1]) >  BigInt(process.argv[2]) ? 0 : 1)' -- "$1" "$2"; }
@@ -149,13 +151,39 @@ ok "shares $SHARES"
 info "nav/share $NAV0, rawAssets $RAW0, feeAccrued $FEE0"
 
 # --- 3. The venue earns ----------------------------------------------------
-bold "3/6  Venue accrues $YIELD"
-send "$TARGET" 'accrue(uint256)' "$YIELD"
+# The high-water mark survives a full redemption. A vault that has already
+# earned once keeps its mark at the old NAV, so the same fixed yield that
+# worked on a fresh vault clears nothing on the second run: _evaluateFees sees
+# nav <= highWaterMark and returns before charging anything. The drill would
+# then fail on "performanceFeeAccrued is ZERO" and look like a protocol bug.
+#
+# Top the yield up by whatever it takes to get back to the existing mark, so
+# the requested YIELD is gain *above* the mark either way.
+HWM=$(call "$VAULT" 'highWaterMark()(uint256)')
+VDEC=$(call "$VAULT" 'decimals()(uint8)')
+SUPPLY=$(call "$VAULT" 'totalSupply()(uint256)')
+SHARE_UNIT=$(node -e 'process.stdout.write((10n ** BigInt(process.argv[1])).toString())' -- "$VDEC")
+# rawAssets the mark implies at the current supply.
+MARK_ASSETS=$(bi "$(bi "$HWM" mul "$SUPPLY")" div "$SHARE_UNIT")
+CATCHUP=$(bi "$(bi "$MARK_ASSETS" sub "$RAW0")" max 0)
+TOP_UP=$(bi "$CATCHUP" add "$YIELD")
+
+if [[ "$CATCHUP" != "0" ]]; then
+  info "existing high-water mark $HWM implies $MARK_ASSETS of assets;"
+  info "adding $CATCHUP to reach it, then $YIELD of real gain on top"
+fi
+
+bold "3/6  Venue accrues $TOP_UP"
+send "$TARGET" 'accrue(uint256)' "$TOP_UP"
 NAV1=$(call "$VAULT" 'getNavPerShare()(uint256)')
 RAW1=$(call "$VAULT" 'rawAssets()(uint256)')
-GAIN=$(bi "$RAW1" - "$RAW0")
+# Everything below is measured against the mark, not against the deposit:
+# the fee is charged on NAV above the high-water mark, so that is the only
+# figure the arithmetic can use.
+MOVED_TOTAL=$(bi "$RAW1" sub "$RAW0")
+GAIN=$(bi "$MOVED_TOTAL" sub "$CATCHUP")
 info "nav/share $NAV0 -> $NAV1"
-info "rawAssets $RAW0 -> $RAW1  (gain seen by this vault: $GAIN)"
+info "rawAssets $RAW0 -> $RAW1  (+$MOVED_TOTAL, of which $GAIN is above the mark)"
 gt "$NAV1" "$NAV0" || die "NAV did not rise after the venue accrued"
 gt "$GAIN" 0       || die "this vault saw none of the gain"
 ok "NAV per share rose"
@@ -170,10 +198,10 @@ bold "4/6  Redeem everything"
 BEFORE=$(call "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
 send "$VAULT" 'redeem(uint256,address,address)' "$SHARES" "$ACTOR" "$ACTOR"
 AFTER=$(call "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
-RECEIVED=$(bi "$AFTER" - "$BEFORE")
-PROFIT=$(bi "$RECEIVED" - "$DEPOSIT")
-EXPECTED_FEE=$(bi "$(bi "$GAIN" '*' "$FEE_BPS")" / 10000)
-EXPECTED_NET=$(bi "$GAIN" - "$EXPECTED_FEE")
+RECEIVED=$(bi "$AFTER" sub "$BEFORE")
+PROFIT=$(bi "$(bi "$RECEIVED" sub "$DEPOSIT")" sub "$CATCHUP")
+EXPECTED_FEE=$(bi "$(bi "$GAIN" mul "$FEE_BPS")" / 10000)
+EXPECTED_NET=$(bi "$GAIN" sub "$EXPECTED_FEE")
 
 info "received $RECEIVED for $SHARES shares"
 info "profit   $PROFIT  (gain $GAIN, expected fee $EXPECTED_FEE, expected net $EXPECTED_NET)"
@@ -182,22 +210,24 @@ gt "$RECEIVED" "$DEPOSIT" || die "received $RECEIVED, no more than deposited. Th
 ok "depositor received the principal plus a gain"
 
 # THE assertion. If the depositor got the whole gain, no fee was charged.
-lt "$RECEIVED" "$(bi "$DEPOSIT" + "$GAIN")" \
+lt "$RECEIVED" "$(bi "$(bi "$DEPOSIT" add "$CATCHUP")" add "$GAIN")" \
   || die "received the ENTIRE gain ($RECEIVED). Fees are broken. See ERC4626YieldAdapter.t.sol."
 ok "depositor received LESS than the full gain: a fee was taken"
 
 # Allow one base unit of rounding either way on the net figure.
-DIFF=$(bi "$PROFIT" - "$EXPECTED_NET")
+DIFF=$(bi "$PROFIT" sub "$EXPECTED_NET")
 case "$DIFF" in -1|0|1) ok "net gain matches $FEE_BPS bps fee to within rounding ($DIFF)";;
   *) die "net gain $PROFIT differs from expected $EXPECTED_NET by $DIFF";; esac
 
 # --- 5. Fee accrued without a keeper ----------------------------------------
 bold "5/6  Fee accrual"
 ACCRUED=$(call "$VAULT" 'performanceFeeAccrued()(uint256)')
-info "performanceFeeAccrued $ACCRUED  (expected ~$EXPECTED_FEE)"
-gt "$ACCRUED" 0 || die "performanceFeeAccrued is ZERO after a profitable redeem. Nothing accrued."
+ACCRUED_DELTA=$(bi "$ACCRUED" sub "$FEE0")
+[[ "$FEE0" == "0" ]] || info "note: $FEE0 was already accrued and unclaimed before this run"
+info "performanceFeeAccrued $FEE0 -> $ACCRUED  (+$ACCRUED_DELTA, expected ~$EXPECTED_FEE)"
+gt "$ACCRUED_DELTA" 0 || die "nothing accrued during this run. A profitable redeem charged no fee."
 ok "fee accrued inside redeem, no evaluateFees() call anywhere"
-DIFF=$(bi "$ACCRUED" - "$EXPECTED_FEE")
+DIFF=$(bi "$ACCRUED_DELTA" sub "$EXPECTED_FEE")
 case "$DIFF" in -1|0|1) ok "accrued amount is $FEE_BPS bps of the gain";;
   *) die "accrued $ACCRUED vs expected $EXPECTED_FEE (diff $DIFF)";; esac
 
@@ -206,7 +236,7 @@ bold "6/6  claimFees"
 T0=$(call "$ASSET" 'balanceOf(address)(uint256)' "$TREASURY")
 send "$VAULT" 'claimFees()'
 T1=$(call "$ASSET" 'balanceOf(address)(uint256)' "$TREASURY")
-MOVED=$(bi "$T1" - "$T0")
+MOVED=$(bi "$T1" sub "$T0")
 info "treasury $T0 -> $T1  (+$MOVED)"
 eq "$MOVED" "$ACCRUED" || die "treasury received $MOVED but $ACCRUED was accrued"
 ok "the full accrued fee reached the treasury"
