@@ -166,16 +166,26 @@ else
   gov "$FACTORY" \
     'deploySpotVault((address,address,address,uint256,string,string,uint16,uint16,uint256,address,address,uint256),bytes32)' \
     "$PARAMS" "$SALT"
-  # The factory emits SpotVaultDeployed(vault, deployer, salt); read the address
-  # from the event rather than recomputing the CREATE2 address by hand.
-  VAULT=$(cast logs --rpc-url "$RPC" --address "$FACTORY" --from-block -200 \
-            'SpotVaultDeployed(address,address,bytes32)' --json 2>/dev/null \
-          | MSYS_NO_PATHCONV=1 node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-              const l=JSON.parse(s||"[]");
-              if(!l.length) process.exit(3);
-              process.stdout.write("0x"+l[l.length-1].topics[1].slice(26));
-            })')
-  [[ -n "$VAULT" ]] || die "deployed, but could not read the address from SpotVaultDeployed"
+    # Read the address out of SpotVaultDeployed rather than recomputing the
+    # CREATE2 address by hand.
+    #
+    # Two things went wrong here on the first run, and both are worth naming.
+    # `--from-block -200` is not valid -- cast rejects it as "unexpected
+    # argument". So the log read failed and node got empty input.
+    #
+    # And the failure was SILENT. VAR=$(pipeline) under `set -e` exits the
+    # script with no message when the pipeline fails, so the run stopped dead
+    # right after the deploy transaction with nothing printed at all: the
+    # vault existed on chain while the script looked like it had crashed. It
+    # deployed two orphan vaults before that was understood. Hence the
+    # explicit capture and a check that can actually speak.
+    BLK=$(cast block-number --rpc-url "$RPC")
+    FROM=$(bi "$(bi "$BLK" sub 5000)" max 0)
+    LOGS=$(cast logs --rpc-url "$RPC" --address "$FACTORY" --from-block "$FROM" 'SpotVaultDeployed(address,address,bytes32)' --json 2>/dev/null || true)
+    VAULT=$(printf '%s' "$LOGS" | MSYS_NO_PATHCONV=1 node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const l=JSON.parse(s||"[]");if(l.length)process.stdout.write("0x"+l[l.length-1].topics[1].slice(26));}catch{}})' || true)
+    [[ -n "$VAULT" ]] || die "the vault deployed, but its address could not be read.
+     It exists. Find it and write the newest into $VAULT_CACHE, then re-run:
+       cast logs --rpc-url \$RPC --address $FACTORY --from-block $FROM 'SpotVaultDeployed(address,address,bytes32)'"
   printf '%s' "$VAULT" > "$VAULT_CACHE"
   ok "deployed $VAULT"
 fi
