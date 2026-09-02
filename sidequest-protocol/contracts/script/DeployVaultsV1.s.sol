@@ -301,6 +301,28 @@ contract DeployVaultsV1 is Script {
         }
         require(r.oracle.minQuorum() <= r.oracle.updaterCount(), "oracle quorum unsatisfiable");
 
+        // `updaterCount()` is `updaters.length`, which is NOT the number of
+        // addresses holding UPDATER_ROLE -- the two can diverge, and did on
+        // testnet the moment someone retired an updater with `revokeRole`
+        // instead of `removeUpdater`. `latestRoundData` iterates the array and
+        // never checks the role, so an array slot without the role still
+        // contributes a stale price, and a slot with neither is a phantom that
+        // inflates the count a launch gate reads.
+        //
+        // Deploy time is the one moment both facts are known, so assert they
+        // agree here: every seated updater holds the role, and there are no
+        // extra slots. See docs/FINDINGS-ORACLE-REVOCATION.md.
+        require(
+            r.oracle.updaterCount() == oracleUpdaters.length,
+            "oracle updater array does not match the seated list"
+        );
+        for (uint256 i = 0; i < oracleUpdaters.length; i++) {
+            require(
+                r.oracle.hasRole(r.oracle.UPDATER_ROLE(), oracleUpdaters[i]),
+                "a seated oracle updater does not hold UPDATER_ROLE"
+            );
+        }
+
         // Testnet scaffolding must not reach mainnet. The three conditions and
         // the reasoning live in `MainnetSafety`, as a library so a test can
         // exercise the real check rather than a copy of it -- see
