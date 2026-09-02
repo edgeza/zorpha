@@ -115,7 +115,11 @@ function StructuredData() {
         '@id': `${siteUrl}/#organization`,
         name: 'Zorpha',
         url: siteUrl,
-        logo: `${siteUrl}/icon.svg`,
+        // Follows the favicon. This is the URL search engines and social
+        // platforms fetch for the brand logo, so a stale path here 404s
+        // silently -- nothing on the site links to it, so nothing would break
+        // visibly. 150x150 clears Google's 112px minimum for an org logo.
+        logo: `${siteUrl}/icon.png`,
         description:
           'Zorpha runs curated ERC-4626 vaults on Robinhood Chain where every rebalance is signed onchain and published as a publicly verifiable receipt.',
       },

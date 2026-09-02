@@ -28,9 +28,26 @@ const path = require('path');
 const zlib = require('zlib');
 
 const ROOT = path.resolve(__dirname, '..');
-const args = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const flags = argv.filter((a) => a.startsWith('--'));
+const args = argv.filter((a) => !a.startsWith('--'));
 const inPath = path.resolve(ROOT, args[0] || 'public/logo_trans.png');
 const outPath = path.resolve(ROOT, args[1] || 'public/zorpha-mark.png');
+
+// --square centres the cropped artwork on a transparent square canvas. A
+// favicon is drawn at 16px, so artwork that is off-centre inside its own file
+// -- as the source 180x180 is, 36px of padding on the left against 23 on the
+// right -- lands visibly off-axis and smaller than the space allows.
+const square = flags.includes('--square');
+const fillPct = (() => {
+  const f = flags.find((a) => a.startsWith('--fill='));
+  const n = f ? Number(f.split('=')[1]) : 92;
+  if (!Number.isFinite(n) || n <= 0 || n > 100) {
+    console.error('--fill must be a percentage in (0, 100]');
+    process.exit(1);
+  }
+  return n;
+})();
 
 if (!fs.existsSync(inPath)) {
   console.error('no such source image: ' + inPath);
@@ -126,20 +143,39 @@ if (x1 < 0) {
 const cw = x1 - x0 + 1;
 const ch = y1 - y0 + 1;
 
+/* ---------- compose ---------- */
+
+// Tight crop by default; a centred square when asked for. Composing into an
+// explicit buffer first keeps the encoder below indifferent to which it was.
+let ow = cw;
+let oh = ch;
+let dx = 0;
+let dy = 0;
+if (square) {
+  ow = oh = Math.ceil(Math.max(cw, ch) / (fillPct / 100));
+  dx = Math.round((ow - cw) / 2);
+  dy = Math.round((oh - ch) / 2);
+}
+
+const outStride = ow * bpp;
+const out = Buffer.alloc(oh * outStride); // zero-filled: transparent
+for (let y = 0; y < ch; y++) {
+  px.copy(
+    out,
+    (dy + y) * outStride + dx * bpp,
+    (y0 + y) * stride + x0 * bpp,
+    (y0 + y) * stride + x0 * bpp + cw * bpp,
+  );
+}
+
 /* ---------- encode ---------- */
 
-// Filter 0 (None) on every scanline. The image is tiny and this keeps the
+// Filter 0 (None) on every scanline. These images are tiny and this keeps the
 // encoder honest -- a wrong predictor would corrupt the output silently.
-const outStride = cw * bpp;
-const body = Buffer.alloc(ch * (outStride + 1));
-for (let y = 0; y < ch; y++) {
+const body = Buffer.alloc(oh * (outStride + 1));
+for (let y = 0; y < oh; y++) {
   body[y * (outStride + 1)] = 0;
-  px.copy(
-    body,
-    y * (outStride + 1) + 1,
-    (y0 + y) * stride + x0 * bpp,
-    (y0 + y) * stride + x0 * bpp + outStride,
-  );
+  out.copy(body, y * (outStride + 1) + 1, y * outStride, (y + 1) * outStride);
 }
 
 const CRC = (() => {
@@ -166,8 +202,8 @@ function chunk(type, data) {
 }
 
 const ihdrOut = Buffer.alloc(13);
-ihdrOut.writeUInt32BE(cw, 0);
-ihdrOut.writeUInt32BE(ch, 4);
+ihdrOut.writeUInt32BE(ow, 0);
+ihdrOut.writeUInt32BE(oh, 4);
 ihdrOut[8] = 8; // bit depth
 ihdrOut[9] = 6; // colour type: RGBA
 ihdrOut[10] = 0; // deflate
@@ -185,7 +221,8 @@ fs.writeFileSync(
 );
 
 console.log(
-  '  ' + w + 'x' + h + ' -> ' + cw + 'x' + ch +
-  '  (cropped x ' + x0 + '..' + x1 + ', y ' + y0 + '..' + y1 + ')',
+  '  ' + w + 'x' + h + ' -> ' + ow + 'x' + oh +
+  '  (content ' + cw + 'x' + ch + ' from x ' + x0 + '..' + x1 + ', y ' + y0 + '..' + y1 +
+  (square ? '; centred at ' + fillPct + '% fill' : '') + ')',
 );
 console.log('  wrote ' + outPath + '  ' + fs.statSync(outPath).size + ' bytes');
