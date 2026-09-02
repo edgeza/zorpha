@@ -129,6 +129,48 @@ contract ERC4626YieldAdapterTest is Test {
         );
     }
 
+    /// The worst case, and the one the invariant campaign kept walking into: a
+    /// venue donated to while it has NO shares outstanding at all.
+    ///
+    /// OZ's ERC4626 sizes the first deposit as
+    /// `assets * (supply + virtualShares) / (totalAssets + 1)`. With supply 0
+    /// and totalAssets already large, that rounds to ZERO shares -- so the
+    /// depositor pays in full and receives nothing. Not a 25% haircut: a total
+    /// loss, and the assets become the property of whoever mints next.
+    ///
+    /// Measured here: 1e9 paid, shares worth 0 back, `DepositValueLost(1e9, 0)`.
+    ///
+    /// This is the classic ERC-4626 first-depositor inflation attack seen from
+    /// the depositing side, and it costs an attacker only the donation, which
+    /// they recover from the next deposit. The guard turns a silent total loss
+    /// into a revert.
+    function test_Deposit_IntoVenueDonatedToWithZeroShares_RefusesTotalLoss() public {
+        venue.accrue(5_000_000_000);  // donate with no shares outstanding
+        assertEq(venue.totalSupply(), 0, "setup: the venue must have no shares");
+        assertGt(venue.totalAssets(), 0, "setup: but it must hold assets");
+
+        uint256 amount = 1_000_000_000;
+        assertEq(venue.previewDeposit(amount), 0, "setup: this must mint zero shares to be the case under test");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC4626YieldAdapter.DepositValueLost.selector, amount, 0)
+        );
+        adapter.deposit(amount);
+
+        assertEq(asset.balanceOf(address(adapter)), 0, "the refusal must not strand assets");
+    }
+
+    /// And the same venue works normally once it has real shares outstanding,
+    /// which is what genuine yield looks like.
+    function test_Deposit_ThenYield_IsNotConfusedForInflation() public {
+        adapter.deposit(1_000_000_000);           // real shares now exist
+        venue.accrue(5_000_000_000);              // then it earns
+
+        uint256 before = adapter.totalAssets();
+        adapter.deposit(1_000_000_000);
+        assertGt(adapter.totalAssets(), before, "a deposit after real yield must still land");
+    }
+
     /// Dust deposits must not trip a basis-point tolerance that rounds to zero.
     function test_Deposit_TinyAmount_NotBlockedByRounding() public {
         adapter.deposit(1_000_000_000);
