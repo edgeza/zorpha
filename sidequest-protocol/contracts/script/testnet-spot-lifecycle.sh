@@ -166,7 +166,13 @@ if [[ -f "$VAULT_CACHE" ]] && [[ -n "$(cat "$VAULT_CACHE")" ]]; then
   ok "reusing $VAULT"
 else
   SALT=0x$(openssl rand -hex 32)
-  PARAMS="($ASSET,$CASH,$ORACLE,3600,\"Zorpha HOOD Long/Flat V2\",\"zqHOOD2\",200,100,2000,$TREASURY,$ACTOR,3600)"
+  # Derived from the asset, matching DeployVaultsV1. This was hardcoded to
+  # "Zorpha HOOD Long/Flat V2" / "zqHOOD2", so every run of this drill minted
+  # another vault named after a company it does not hold -- the exact defect
+  # fixed in the deploy script and left standing here. Fixing one call site and
+  # not the other is how the name drifted in the first place.
+  ASYM=$(callstr "$ASSET" 'symbol()(string)' | tr -d '"')
+  PARAMS="($ASSET,$CASH,$ORACLE,3600,\"Zorpha $ASYM Long/Flat (drill)\",\"zq${ASYM}D\",200,100,2000,$TREASURY,$ACTOR,3600)"
   gov "$FACTORY" \
     'deploySpotVault((address,address,address,uint256,string,string,uint16,uint16,uint256,address,address,uint256),bytes32)' \
     "$PARAMS" "$SALT"
