@@ -214,4 +214,132 @@ contract SpotVaultMinimalTest is Test {
         vm.prank(keeper);
         vault.rebalanceTo(0);
     }
+
+    // --- The escape hatch --------------------------------------------------
+    //
+    // redeemEmergency is the depositor's last resort: it pays a pro-rata share
+    // of the ASSET leg only, touching neither the swap venue nor the oracle,
+    // and charges the cash leg as a haircut. That independence is the whole
+    // point -- a depositor must be able to leave when the market is dry or the
+    // price feed is dead, which are exactly the moments they most want to.
+    //
+    // It had one line of coverage before this: a test named
+    // test_EmergencyRedeem_HaircutOnZeroNAV which asserted no haircut, set an
+    // oracle price the function never reads, and expected an unspecified
+    // revert. Its own comment called it a smoke test. So the last-resort exit
+    // for depositor funds was, in practice, untested.
+
+    /// A venue with no depth. Normal redemption has to buy the asset leg back
+    /// through it and cannot; the emergency path never asks.
+    function test_EmergencyRedeem_WorksWhenTheVenueIsDry() public {
+        uint256 shares = _deposit();
+        vm.prank(keeper);
+        vault.rebalanceTo(5000); // half the book into cash
+
+        uint256 cashLeg = usdc.balanceOf(address(vault));
+        assertGt(cashLeg, 0, "the rebalance must have left a cash leg to strand");
+
+        // Repoint at an unfunded venue: a real market that has gone illiquid.
+        MockSpotAdapter dry = new MockSpotAdapter(address(wbtc), address(usdc), address(oracle));
+        vault.setSwapAdapter(address(dry));
+
+        vm.prank(alice);
+        vm.expectRevert();
+        vault.redeem(shares, alice, alice);
+
+        uint256 assetLeg = wbtc.balanceOf(address(vault));
+        vm.prank(alice);
+        uint256 paid = vault.redeemEmergency(shares, alice, alice);
+
+        assertEq(paid, assetLeg, "pays the entire asset leg when sole holder");
+        assertEq(vault.totalSupply(), 0, "the position is fully closed");
+        assertEq(wbtc.balanceOf(alice), paid, "and the depositor actually has it");
+    }
+
+    /// A dead price feed. Rebalancing and normal redemption both read it; the
+    /// emergency path does not, and must still pay.
+    function test_EmergencyRedeem_WorksWhenTheOracleIsDead() public {
+        uint256 shares = _deposit();
+        vm.prank(keeper);
+        vault.rebalanceTo(5000);
+
+        oracle.setAnswer(0); // InvalidOraclePrice for anything that reads it
+
+        vm.prank(keeper);
+        vm.expectRevert();
+        vault.rebalanceTo(7000);
+
+        vm.prank(alice);
+        vm.expectRevert();
+        vault.redeem(shares, alice, alice);
+
+        uint256 assetLeg = wbtc.balanceOf(address(vault));
+        vm.prank(alice);
+        uint256 paid = vault.redeemEmergency(shares, alice, alice);
+        assertEq(paid, assetLeg, "the escape hatch does not need a price");
+        assertGt(paid, 0);
+    }
+
+    /// The haircut is the cash leg, and it is reported rather than hidden.
+    function test_EmergencyRedeem_HaircutIsTheStrandedCashLeg() public {
+        uint256 shares = _deposit();
+        vm.prank(keeper);
+        vault.rebalanceTo(5000);
+
+        uint256 cashLeg = usdc.balanceOf(address(vault));
+        uint256 assetLeg = wbtc.balanceOf(address(vault));
+        assertGt(cashLeg, 0);
+
+        vm.prank(alice);
+        vault.redeemEmergency(shares, alice, alice);
+
+        // The cash never moves. That is the cost of leaving this way, and it
+        // stays in the vault rather than being burned or swept.
+        assertEq(usdc.balanceOf(address(vault)), cashLeg, "cash leg is stranded, not paid");
+        assertEq(usdc.balanceOf(alice), 0, "the depositor gets none of it");
+        assertEq(wbtc.balanceOf(alice), assetLeg, "only the asset leg is paid");
+    }
+
+    /// Half out, half in: the remaining holder must not be diluted by the
+    /// first one's haircut, and must still own their share of what is left.
+    function test_EmergencyRedeem_PartialLeavesTheRestIntact() public {
+        uint256 shares = _deposit();
+        vm.prank(keeper);
+        vault.rebalanceTo(5000);
+
+        uint256 assetLegBefore = wbtc.balanceOf(address(vault));
+        uint256 half = shares / 2;
+
+        vm.prank(alice);
+        uint256 paid = vault.redeemEmergency(half, alice, alice);
+
+        assertApproxEqAbs(paid, assetLegBefore / 2, 1, "pays half the asset leg");
+        assertEq(vault.totalSupply(), shares - half, "the rest of the position survives");
+        assertApproxEqAbs(
+            wbtc.balanceOf(address(vault)), assetLegBefore - paid, 1,
+            "the vault keeps exactly what was not paid out"
+        );
+    }
+
+    /// The cooldown exists so the hatch cannot be used to drain the asset leg
+    /// in a loop while the cash leg is stuck.
+    function test_EmergencyRedeem_CooldownBlocksAnImmediateSecondExit() public {
+        uint256 shares = _deposit();
+        vm.prank(keeper);
+        vault.rebalanceTo(5000);
+
+        uint256 cooldown = vault.emergencyRedeemCooldown();
+        vm.assume(cooldown > 0);
+
+        vm.prank(alice);
+        vault.redeemEmergency(shares / 4, alice, alice);
+
+        vm.prank(alice);
+        vm.expectRevert();
+        vault.redeemEmergency(shares / 4, alice, alice);
+
+        vm.warp(block.timestamp + cooldown + 1);
+        vm.prank(alice);
+        vault.redeemEmergency(shares / 4, alice, alice);
+    }
 }
