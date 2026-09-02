@@ -305,15 +305,18 @@ contract DeployVaultsV1 is Script {
         if (r.yieldIsReal) _handOver(r.yieldAdapter, gov, deployer);
 
         r.spotVault.grantRole(r.spotVault.RISK_COUNCIL_ROLE(), gov);
-        _handOver(address(r.spotVault), gov, deployer);
+        r.spotVault.grantRole(r.spotVault.KEEPER_ROLE(), gov);
+        _handOverVault(address(r.spotVault), timelock, gov, deployer);
 
         r.yieldVault.grantRole(r.yieldVault.ADAPTER_SETTER_ROLE(), timelock);
         r.yieldVault.grantRole(r.yieldVault.RISK_COUNCIL_ROLE(), gov);
-        _handOver(address(r.yieldVault), gov, deployer);
+        r.yieldVault.grantRole(r.yieldVault.KEEPER_ROLE(), gov);
+        _handOverVault(address(r.yieldVault), timelock, gov, deployer);
 
         if (address(r.rotationVault) != address(0)) {
             r.rotationVault.grantRole(r.rotationVault.RISK_COUNCIL_ROLE(), gov);
-            _handOver(address(r.rotationVault), gov, deployer);
+            r.rotationVault.grantRole(r.rotationVault.KEEPER_ROLE(), gov);
+            _handOverVault(address(r.rotationVault), timelock, gov, deployer);
         }
 
         vm.stopBroadcast();
@@ -470,6 +473,60 @@ contract DeployVaultsV1 is Script {
     ///      role the deployer holds. `renounceRole` on a role the caller does
     ///      not hold is a no-op in OpenZeppelin's implementation, so the loop
     ///      is safe against contracts that define only some of these.
+    /// @dev Hand a VAULT to the timelock as admin, leaving `gov` only the roles
+    ///      that must act without delay, and strip the deployer.
+    ///
+    ///      Why this exists, and why it is not `_handOver`:
+    ///
+    ///      OpenZeppelin's AccessControl makes DEFAULT_ADMIN_ROLE the admin of
+    ///      every role unless told otherwise. So a `gov` holding
+    ///      DEFAULT_ADMIN_ROLE can grant itself ANY role on the contract --
+    ///      including `ADAPTER_SETTER_ROLE`, which the deploy hands to the
+    ///      timelock specifically so that repointing where depositor funds are
+    ///      held takes 48 hours.
+    ///
+    ///      Verified against the live testnet deployment by simulation:
+    ///      `grantRole(ADAPTER_SETTER_ROLE, gov)` from gov SUCCEEDS. Two
+    ///      transactions and the delay is gone. So the delay was advisory --
+    ///      it documented an intent the roles did not enforce, which is worse
+    ///      than no delay at all, because the code read as though depositors
+    ///      had a 48h window to exit ahead of a venue change and they did not.
+    ///
+    ///      The leadership layer already had this right: VaultLauncher gives
+    ///      launched vaults DEFAULT_ADMIN to the timelock and keeps only
+    ///      ADAPTER_SETTER_ROLE for itself, so gov holds nothing it could
+    ///      escalate from. This brings the factory vaults to the same standard.
+    ///
+    ///      `gov` keeps RISK_COUNCIL_ROLE and KEEPER_ROLE, which is deliberate:
+    ///      the circuit breaker has to be pullable in one block. What gov loses
+    ///      is the DEFAULT_ADMIN set -- claimFees, setFeeRecipient,
+    ///      setSwapAdapter, setFirstLossEscrow, writeDownAccruedFees. None of
+    ///      those is an emergency, and every one of them either moves money or
+    ///      moves the pointer to where money lives.
+    function _handOverVault(address target, address timelock, address gov, address deployer)
+        internal
+    {
+        bytes32 adminRole = 0x00;
+        IAccessControl ac = IAccessControl(target);
+
+        if (!ac.hasRole(adminRole, timelock)) ac.grantRole(adminRole, timelock);
+
+        // Strip gov of admin if an earlier step or an earlier deploy gave it.
+        if (ac.hasRole(adminRole, gov)) ac.revokeRole(adminRole, gov);
+
+        bytes32[10] memory roles = _allRoles();
+        for (uint256 i = 0; i < roles.length; i++) {
+            uint256 j = roles.length - 1 - i;
+            if (ac.hasRole(roles[j], deployer)) ac.renounceRole(roles[j], deployer);
+        }
+
+        // The assertions are the point. A handover that silently half-applied
+        // would leave exactly the state this function exists to prevent.
+        require(ac.hasRole(adminRole, timelock), "handover: timelock is not admin");
+        require(!ac.hasRole(adminRole, gov), "handover: gov still admin, can self-grant");
+        require(!ac.hasRole(adminRole, deployer), "handover: deployer still admin");
+    }
+
     function _handOver(address target, address gov, address deployer) internal {
         bytes32 adminRole = 0x00;
         IAccessControl ac = IAccessControl(target);
