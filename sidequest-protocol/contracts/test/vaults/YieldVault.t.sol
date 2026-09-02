@@ -188,6 +188,66 @@ contract YieldVaultTest is Test {
     ///
     /// Nothing in this suite covered it, which is why twenty tests, six
     /// invariants and a fuzz test were green while it was live.
+    /// Does the yield vault carry the fee-claim-backing defect found in the spot
+    /// vault? See docs/FINDINGS-FEE-CLAIM-BACKING.md. There the fee claim is
+    /// asset-denominated while the backing sits in cash, so a price move splits
+    /// the two. The yield vault holds one leg and has no price, so a price move
+    /// cannot do it — but a venue *loss* can, and that is not exotic.
+    ///
+    /// Answer: it does carry it. A venue loss splits the claim from its backing
+    /// exactly as a price move does, and a venue taking a haircut is the ordinary
+    /// risk case rather than an exotic one. The initial guess in the findings doc
+    /// -- that this was probably spot-vault-only -- was wrong, which is why it
+    /// was tested instead of assumed.
+    function test_UnclaimedFee_AgainstAVenueLoss() public {
+        (YieldVault v, StubYieldAdapter a) = _feeVault();
+        address bob = makeAddr("bob");
+        usdc.mint(bob, 1_000_000 * 1e6);
+
+        // Alice earns, a fee is struck, and she leaves.
+        uint256 sh = _depositTo(v, alice, 1_000 * 1e6);
+        usdc.mint(address(a), 1_000 * 1e6);
+        vm.prank(alice);
+        v.redeem(sh, alice, alice);
+        assertEq(v.totalSupply(), 0, "empty");
+
+        uint256 claim = v.performanceFeeAccrued();
+        assertGt(claim, 0, "a fee is outstanding and unclaimed");
+
+        // The venue now loses most of what backs that claim.
+        uint256 backingBeforeLoss = a.totalAssets();
+        usdc.burn(address(a), (backingBeforeLoss * 9) / 10);
+        assertLt(a.totalAssets(), claim, "the claim now outgrows its backing");
+
+        uint256 shortfall = claim - a.totalAssets();
+
+        // Bob deposits into that state. He is not whole: the answer is that the
+        // yield vault carries the defect too, reached by a venue loss rather
+        // than a price move.
+        uint256 deposited = 1_000 * 1e6;
+        uint256 bobShares = _depositTo(v, bob, deposited);
+        uint256 bobValue = v.convertToAssets(bobShares);
+
+        assertLt(bobValue, deposited, "bob is worth less than he paid, on entry");
+        assertApproxEqAbs(
+            deposited - bobValue, shortfall, 2,
+            "bob's loss is the uncovered part of a fee struck before he arrived"
+        );
+        // 90% of the 100 backing 100 was burned, so 90 of bob's 1,000 is gone.
+        assertApproxEqRel(bobValue, 910 * 1e6, 1e12, "a 9% haircut on entry");
+
+        // And it completes. `_pullFromAdapter` takes min(needed, available)
+        // rather than reverting, so once bob's deposit has topped the adapter up,
+        // the full stale claim is payable -- out of his principal.
+        uint256 recipientBefore = usdc.balanceOf(address(this));
+        v.claimFees();
+        uint256 paid = usdc.balanceOf(address(this)) - recipientBefore;
+        assertEq(paid, claim, "the whole stale claim is paid");
+        assertGt(paid, backingBeforeLoss - (backingBeforeLoss * 9) / 10,
+            "more than was ever backed: the excess came from bob");
+        assertEq(v.performanceFeeAccrued(), 0, "and it is settled, not stuck");
+    }
+
     function test_FirstDepositorIntoADustyVaultPaysOnlyForTheirOwnGain() public {
         (YieldVault v, StubYieldAdapter a) = _feeVault();
         address bob = makeAddr("bob");

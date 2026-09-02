@@ -4,7 +4,9 @@
 by `contracts/script/testnet-yield-drill.sh`. Remediated the same day — see
 **Fix** below. The fix changes fee behaviour, so it must not reach mainnet
 without the external auditor having looked at it.
-**Contract:** `src/vaults/YieldVault.sol`
+**Contracts:** `src/vaults/YieldVault.sol` (found here), and
+`src/vaults/SpotVaultMinimal.sol` (the same defect, found later by inspection —
+see **The spot vault had it too** below).
 **Severity:** low in isolation, and it should be on the external audit's list
 regardless — it is a fee-accounting design gap, not a coding error, and those
 are the ones an author reviewing their own work is least likely to see.
@@ -180,6 +182,43 @@ Three regression tests in `test/vaults/YieldVault.t.sol`:
 Full suite green: 152 tests, up from 149, zero failures, both invariant suites
 included.
 
+## The spot vault had it too
+
+Found afterwards, by reading `SpotVaultMinimal._evaluateFees` with this finding
+already in hand. Same two preconditions, so the same conclusion had to follow:
+
+- `highWaterMark` only ratchets up — line 327's `if (nav <= highWaterMark) return`
+  means the assignment below it is unreachable on a fall.
+- `getNavPerShare()` returns the `10 ** _assetDec` sentinel once supply is zero.
+
+**It reaches only the free-ride direction, not the overcharge.** The spot vault
+seeds `highWaterMark = 10 ** _assetDec` in its constructor, the same value the
+sentinel returns, so a genuinely first depositor is marked correctly. The gap
+opens only after a profitable depositor leaves: the mark stays at their high
+point, and the next depositor pays nothing until they have re-earned somebody
+else's gain. Lost revenue rather than an overcharge — which is why no drill
+caught it. Nothing reverts and nobody complains.
+
+Measured in `test_FeeAccrual_AfterEmptying_ChargesTheNextDepositor`: the mark
+stood at **2.0** while the incoming depositor had bought in at **0.9**. A 122%
+gain, entirely free.
+
+Fixed identically — `_markFirstEntry()` on `deposit` and `mint`, plus a
+`HighWaterMarkReset` event the spot vault did not have.
+
+### The fee had no real coverage at all
+
+Worth recording separately, because it is why this survived. The spot suite's
+`test_FeeAccrual_BelowHWM_NoAccrual` asserts `performanceFeeAccrued() == 0` — on
+a vault built with `performanceFeeBps = 0`. It cannot fail. **No test anywhere
+proved the spot vault ever charges a performance fee**, so the whole mechanism
+was unverified while reading as covered. The new `SpotVaultFeeTest` contract adds
+the missing baseline (`test_FeeAccrual_AboveHWM_Charges`) before testing anything
+subtler.
+
+A green assertion on a disabled feature is worse than a missing one: it occupies
+the space where the real test would go.
+
 ## Options considered
 
 1. **Mark the entry NAV for a first depositor.** ← **chosen.** Smallest change
@@ -213,6 +252,12 @@ gap loudly whenever entry NAV is above the mark:
       suite exercised it before, which is why 20 tests, six invariants and a
       fuzz test were green while this was live.
 - [x] Fix the cause. `_markFirstEntry()`, option 1.
+- [x] Check `SpotVaultMinimal` for the same defect. It had it, free-ride
+      direction only; fixed the same way. Two tests added, plus the baseline the
+      suite never had.
+- [ ] Audit the remaining fee-bearing contracts for the same two preconditions
+      (a mark that only ratchets up, and an empty-vault NAV sentinel). Two of
+      two checked so far both had it, so the base rate is not reassuring.
 - [ ] **Auditor review of the fix.** It changes fee accounting. Do not ship to
       mainnet on my say-so.
 - [ ] **Decide the below-mark behaviour deliberately.** The fix stops the free

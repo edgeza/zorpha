@@ -72,6 +72,10 @@ eq()  { [[ "$1" == "$2" ]]; }
 env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2-; }
 num()    { awk '{print $1}'; }
 call()   { cast call "$@" --rpc-url "$RPC" | num; }
+# `call` pipes through `num`, which takes the first whitespace-delimited field.
+# That is right for numbers and addresses and silently truncates strings: it
+# rendered "Zorpha HOOD Long/Flat V2" as `"Zorpha`. Strings get their own reader.
+callstr() { cast call "$@" --rpc-url "$RPC" | head -1; }
 try()    { cast call "$@" --rpc-url "$RPC" 2>/dev/null | num || true; }
 gov()    { cast send "$@" --rpc-url "$RPC" --account "$GOV_ACCT" >/dev/null; }
 
@@ -189,7 +193,7 @@ else
   printf '%s' "$VAULT" > "$VAULT_CACHE"
   ok "deployed $VAULT"
 fi
-info "name   $(call "$VAULT" 'name()(string)')"
+info "name   $(callstr "$VAULT" 'name()(string)')"
 eq "$(call "$VAULT" 'totalSupply()(uint256)')" 0 || info "note: this vault already has shares outstanding"
 
 # ─── 3. Wire it ─────────────────────────────────────────────────────────────

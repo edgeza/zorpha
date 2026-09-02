@@ -410,3 +410,217 @@ contract SpotVaultMinimalTest is Test {
         assertEq(usdc.balanceOf(address(vault)), stranded, "still stranded, permanently");
     }
 }
+
+/// @notice The performance fee, which had no real coverage.
+///
+///         The suite's main vault is built with `performanceFeeBps = 0`, so
+///         every existing fee assertion is vacuous: `test_FeeAccrual_BelowHWM_NoAccrual`
+///         asserts zero accrual on a vault that cannot accrue. Nothing proved the
+///         fee is ever charged, and nothing proved what happens to the mark when
+///         the vault empties.
+contract SpotVaultFeeTest is Test {
+    MockERC20 wbtc;
+    MockERC20 usdc;
+    MockOracle oracle;
+    MockSpotAdapter adapter;
+    SpotVaultMinimal vault;
+
+    address alice = makeAddr("alice");
+    address bob = makeAddr("bob");
+    address keeper = makeAddr("keeper");
+
+    int256 constant PRICE_50K = 50_000 * 1e8;
+    int256 constant PRICE_25K = 25_000 * 1e8;
+    uint256 constant TEN_BTC = 10 * 1e8;
+
+    function setUp() public {
+        vm.warp(1_700_000_000);
+        wbtc = new MockERC20("Wrapped BTC", "WBTC", 8);
+        usdc = new MockERC20("USD Coin", "USDC", 6);
+        oracle = new MockOracle(PRICE_50K, 8);
+        adapter = new MockSpotAdapter(address(wbtc), address(usdc), address(oracle));
+
+        vault = new SpotVaultMinimal(
+            address(wbtc), address(usdc), address(oracle), 1 hours,
+            "Zorpha BTC Vault", "sqBTC",
+            0, 100, 2000,                       // 20% performance fee, unlike the main suite
+            address(this), address(this),
+            1 hours
+        );
+        vault.setSwapAdapter(address(adapter));
+        vault.grantRole(vault.KEEPER_ROLE(), keeper);
+
+        wbtc.mint(address(adapter), 1_000 * 1e8);
+        usdc.mint(address(adapter), 100_000_000 * 1e6);
+        wbtc.mint(alice, TEN_BTC);
+        wbtc.mint(bob, TEN_BTC);
+    }
+
+    function _depositFrom(address who) internal returns (uint256 shares) {
+        vm.startPrank(who);
+        wbtc.approve(address(vault), TEN_BTC);
+        shares = vault.deposit(TEN_BTC, who);
+        vm.stopPrank();
+    }
+
+    /// @dev Sitting in cash through a 50% price fall doubles the BTC-denominated
+    ///      NAV, which is the only way to manufacture a gain here without
+    ///      touching the vault's own accounting.
+    function _doubleTheNav() internal {
+        vm.prank(keeper);
+        vault.rebalanceTo(0);
+        oracle.setPrice(PRICE_25K);
+        vm.prank(keeper);
+        vault.evaluateFees();
+    }
+
+    /// The baseline the suite never had: a gain is actually charged for.
+    function test_FeeAccrual_AboveHWM_Charges() public {
+        _depositFrom(alice);
+        assertEq(vault.performanceFeeAccrued(), 0, "nothing owed before the gain");
+
+        _doubleTheNav();
+
+        // 100% gain on 10 BTC, 20% of it = 2 BTC.
+        assertApproxEqRel(vault.performanceFeeAccrued(), 2 * 1e8, 1e12, "20% of a 10 BTC gain");
+        assertApproxEqRel(vault.highWaterMark(), 2 * 1e8, 1e12, "mark ratcheted to the new NAV");
+    }
+
+    /// The bug. Once the vault empties, the mark is left at the departed
+    /// depositor's high point, and the next depositor rides free all the way
+    /// back up to it.
+    function test_FeeAccrual_AfterEmptying_ChargesTheNextDepositor() public {
+        uint256 aliceShares = _depositFrom(alice);
+        _doubleTheNav();
+        uint256 chargedToAlice = vault.performanceFeeAccrued();
+        assertGt(chargedToAlice, 0, "alice was charged for her gain");
+
+        vm.prank(alice);
+        vault.redeem(aliceShares, alice, alice);
+        assertEq(vault.totalSupply(), 0, "vault is empty");
+
+        // Bob enters the empty vault. Whatever the mark says, he is buying in at
+        // the sentinel price, so his first basis point of gain is his own.
+        oracle.setPrice(PRICE_50K);
+        _depositFrom(bob);
+        assertApproxEqRel(
+            vault.highWaterMark(), vault.getNavPerShare(), 1e12,
+            "the mark must follow the price bob actually paid, not alice's high point"
+        );
+
+        uint256 before = vault.performanceFeeAccrued();
+        _doubleTheNav();
+        assertGt(
+            vault.performanceFeeAccrued(), before,
+            "bob doubled his money; the vault must charge him for it"
+        );
+    }
+
+    /// A separate defect, surfaced by the test above and NOT fixed by the
+    /// first-entry mark: an unclaimed performance fee is a claim denominated in
+    /// asset units, but it is backed by whichever leg the vault happens to hold.
+    /// Let the price move against that leg and the claim outgrows its backing,
+    /// and the shortfall is charged to whoever deposits next.
+    function test_UnclaimedFee_DilutesTheNextDepositor() public {
+        uint256 aliceShares = _depositFrom(alice);
+        _doubleTheNav();                       // fee accrues in BTC terms, at 25k
+        uint256 claim = vault.performanceFeeAccrued();
+
+        vm.prank(alice);
+        vault.redeem(aliceShares, alice, alice);
+        assertEq(vault.totalSupply(), 0, "empty, but still carrying the fee claim");
+
+        // The claim was struck at 25k and is held as cash. Back at 50k that cash
+        // buys half as much of the asset, so the claim now exceeds what backs it.
+        oracle.setPrice(PRICE_50K);
+        uint256 backing = vault.grossValue();
+        assertLt(backing, claim, "the fee claim now outgrows the value behind it");
+        assertEq(vault.totalAssets(), 0, "and totalAssets floors at zero, hiding it");
+
+        // Bob deposits into that. Nothing warns him.
+        uint256 bobShares = _depositFrom(bob);
+        uint256 bobValue = vault.convertToAssets(bobShares);
+        assertLt(bobValue, TEN_BTC, "bob is worth less than he paid the instant he entered");
+
+        // The loss is exactly the uncovered part of somebody else's fee.
+        assertApproxEqAbs(
+            TEN_BTC - bobValue, claim - backing, 2,
+            "bob's loss is the shortfall on alice's unclaimed fee"
+        );
+        assertApproxEqRel(bobValue, 9 * 1e8, 1e12, "10 BTC in, 9 BTC held: a 10% haircut on entry");
+    }
+}
+
+/// The fee write-down is the only lever that can reconcile a claim which has
+/// outgrown its backing (docs/FINDINGS-FEE-CLAIM-BACKING.md), and it used to
+/// emit nothing at all.
+contract SpotVaultWriteDownTest is Test {
+    MockERC20 wbtc;
+    MockERC20 usdc;
+    MockOracle oracle;
+    MockSpotAdapter adapter;
+    SpotVaultMinimal vault;
+
+    address alice = makeAddr("alice");
+    address keeper = makeAddr("keeper");
+
+    event AccruedFeesWrittenDown(uint256 amount, uint256 remaining);
+
+    function setUp() public {
+        vm.warp(1_700_000_000);
+        wbtc = new MockERC20("Wrapped BTC", "WBTC", 8);
+        usdc = new MockERC20("USD Coin", "USDC", 6);
+        oracle = new MockOracle(50_000 * 1e8, 8);
+        adapter = new MockSpotAdapter(address(wbtc), address(usdc), address(oracle));
+        vault = new SpotVaultMinimal(
+            address(wbtc), address(usdc), address(oracle), 1 hours,
+            "Zorpha BTC Vault", "sqBTC", 0, 100, 2000,
+            address(this), address(this), 1 hours
+        );
+        vault.setSwapAdapter(address(adapter));
+        vault.grantRole(vault.KEEPER_ROLE(), keeper);
+        wbtc.mint(address(adapter), 1_000 * 1e8);
+        usdc.mint(address(adapter), 100_000_000 * 1e6);
+        wbtc.mint(alice, 10 * 1e8);
+    }
+
+    function _accrueAFee() internal returns (uint256) {
+        vm.startPrank(alice);
+        wbtc.approve(address(vault), 10 * 1e8);
+        vault.deposit(10 * 1e8, alice);
+        vm.stopPrank();
+        vm.prank(keeper);
+        vault.rebalanceTo(0);
+        oracle.setPrice(25_000 * 1e8);
+        vm.prank(keeper);
+        vault.evaluateFees();
+        return vault.performanceFeeAccrued();
+    }
+
+    function test_WriteDown_IsObservable() public {
+        uint256 accrued = _accrueAFee();
+        assertGt(accrued, 0, "a fee to write down");
+
+        uint256 amount = accrued / 4;
+        vm.expectEmit(true, true, true, true);
+        emit AccruedFeesWrittenDown(amount, accrued - amount);
+        vault.writeDownAccruedFees(amount);
+
+        assertEq(vault.performanceFeeAccrued(), accrued - amount, "claim reduced");
+    }
+
+    function test_WriteDown_RejectsZeroAndOvershoot() public {
+        uint256 accrued = _accrueAFee();
+        vm.expectRevert("SpotVaultMinimal: bad write-down");
+        vault.writeDownAccruedFees(0);
+        vm.expectRevert("SpotVaultMinimal: bad write-down");
+        vault.writeDownAccruedFees(accrued + 1);
+    }
+
+    function test_WriteDown_AdminOnly() public {
+        _accrueAFee();
+        vm.prank(alice);
+        vm.expectRevert();
+        vault.writeDownAccruedFees(1);
+    }
+}

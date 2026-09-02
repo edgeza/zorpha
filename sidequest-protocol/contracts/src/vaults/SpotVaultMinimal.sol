@@ -66,6 +66,7 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         bytes32 commitment
     );
     event PerformanceFeeAccrued(uint256 fee, uint256 navBefore, uint256 navAfter);
+    event HighWaterMarkReset(uint256 nav);
     event PerformanceFeeClaimed(address indexed recipient, uint256 paid, uint256 stillAccrued);
     event CircuitBreakerSet(bool active);
     event EmergencyRedeem(
@@ -140,7 +141,10 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         returns (uint256)
     {
         _evaluateFees();
-        return super.deposit(assets, receiver);
+        bool wasEmpty = totalSupply() == 0;
+        uint256 shares = super.deposit(assets, receiver);
+        if (wasEmpty) _markFirstEntry();
+        return shares;
     }
 
     function mint(uint256 shares, address receiver)
@@ -150,7 +154,10 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         returns (uint256)
     {
         _evaluateFees();
-        return super.mint(shares, receiver);
+        bool wasEmpty = totalSupply() == 0;
+        uint256 assets = super.mint(shares, receiver);
+        if (wasEmpty) _markFirstEntry();
+        return assets;
     }
 
     function withdraw(uint256 assets, address receiver, address owner)
@@ -322,6 +329,28 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
     ///      `_deposit`/`_withdraw` hooks: ERC-4626 fixes the asset amount via
     ///      `previewRedeem` before those hooks run, so accruing inside them
     ///      lands after the number it is meant to affect has been computed.
+    /// @dev Re-mark the high-water mark to the price the first depositor into an
+    ///      empty vault actually paid.
+    ///
+    ///      The mark only ever ratchets upward, and `_evaluateFees` returns early
+    ///      while supply is zero because the empty-vault NAV is a `10 ** _assetDec`
+    ///      sentinel rather than a real price. Together those leave the mark
+    ///      wherever the last depositor's high point was, so the next depositor
+    ///      into an emptied vault pays no performance fee until they have climbed
+    ///      back to a gain that was somebody else's. Proven in
+    ///      `test_FeeAccrual_AfterEmptying_ChargesTheNextDepositor`, where the
+    ///      mark stood at 2.0 while the incoming depositor had bought in at 0.9.
+    ///
+    ///      Reading `getNavPerShare()` is safe here and not in `_evaluateFees`:
+    ///      supply is non-zero by the time this runs, so it returns a real price.
+    function _markFirstEntry() internal {
+        uint256 nav = getNavPerShare();
+        if (nav != highWaterMark) {
+            highWaterMark = nav;
+            emit HighWaterMarkReset(nav);
+        }
+    }
+
     function _evaluateFees() internal {
         uint256 nav = getNavPerShare();
         if (nav <= highWaterMark) return;
@@ -353,10 +382,20 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         emit PerformanceFeeClaimed(feeRecipient, paid, performanceFeeAccrued);
     }
 
+    event AccruedFeesWrittenDown(uint256 amount, uint256 remaining);
+
+    /// @notice Forgive part of the outstanding performance-fee claim.
+    /// @dev This is the only lever that can reconcile a claim which has outgrown
+    ///      the value backing it -- see docs/FINDINGS-FEE-CLAIM-BACKING.md. It
+    ///      previously emitted nothing, so an admin could reduce the protocol's
+    ///      claim to zero leaving no trace an indexer or a depositor could
+    ///      follow. The write-down is legitimate; its invisibility was not.
     function writeDownAccruedFees(uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
         uint256 accrued = performanceFeeAccrued;
         require(amount > 0 && amount <= accrued, "SpotVaultMinimal: bad write-down");
-        performanceFeeAccrued = accrued - amount;
+        uint256 remaining = accrued - amount;
+        performanceFeeAccrued = remaining;
+        emit AccruedFeesWrittenDown(amount, remaining);
     }
 
     function setSwapAdapter(address adapter_) external onlyRole(DEFAULT_ADMIN_ROLE) {
