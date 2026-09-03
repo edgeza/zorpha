@@ -70,6 +70,33 @@ KEEPER_ACCT="${2:-}"
   exit 1
 }
 
+# Optional non-interactive signing.
+#
+# This drill unlocks a keystore once per governance send, plus an address
+# lookup and a signature per instruction, and every one of them prompts. A
+# single mistyped password aborts the run partway through -- after it may
+# already have spent gas, which is how testnet-spot-lifecycle.sh lost a run
+# with two contracts already deployed.
+#
+# ETH_PASSWORD is NOT the fix, despite being cast's own env var for this. Set
+# it and clap marks --password-file as supplied for EVERY subcommand, so plain
+# reads start failing:
+#
+#     cast call ... -> error: the following required arguments were not
+#                      provided: --keystore <PATH>
+#
+# because --password-file "is used with --keystore" and cast call has neither.
+# Passing the flag explicitly, only where a keystore is actually opened, has no
+# such effect. --account and --password-file are a legal pair.
+#
+# Opt-in and empty by default, so nothing changes unless it is set:
+#     ZORPHA_PASSWORD_FILE=/path/to/pw ./script/...
+PW=()
+[[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
+  [[ -r "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: cannot read $ZORPHA_PASSWORD_FILE" >&2; exit 1; }
+  PW=(--password-file "$ZORPHA_PASSWORD_FILE")
+}
+
 RPC="${RH_TESTNET_RPC_URL:-https://rpc.testnet.chain.robinhood.com/rpc}"
 CHAIN_ID=46630
 WEB_ENV="../../zorpha-web/.env.local"
@@ -102,8 +129,8 @@ call()   { cast call "$@" --rpc-url "$RPC" | num; }
 [[ -f "$VAULTS" ]]  || die "no $VAULTS"
 
 EXEC=$(env_of NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS)
-SIGNER=$(cast wallet address --account "$SIGNER_ACCT")
-KEEPER=$(cast wallet address --account "$KEEPER_ACCT")
+SIGNER=$(cast wallet address --account "$SIGNER_ACCT" "${PW[@]}")
+KEEPER=$(cast wallet address --account "$KEEPER_ACCT" "${PW[@]}")
 
 # The spot vault is the CREATE2 child with a cashAsset, identified by behaviour
 # rather than a hardcoded address that goes stale on the next deploy.
@@ -207,13 +234,13 @@ digest_for() {
 # --no-hash: the digest is already the 32 bytes to sign. Without it cast would
 # apply the personal_sign prefix and produce a signature the contract rejects.
 sign_for() {
-  cast wallet sign --no-hash --account "$SIGNER_ACCT" "$(digest_for "$1" "$2" "$3" "$4")"
+  cast wallet sign --no-hash --account "$SIGNER_ACCT" "${PW[@]}" "$(digest_for "$1" "$2" "$3" "$4")"
 }
 
 submit() {
   cast send "$EXEC" 'executeRebalance(address,uint16,uint256,uint256,bytes)' \
     "$1" "$2" "$3" "$4" "$5" \
-    --rpc-url "$RPC" --account "$KEEPER_ACCT" >/dev/null 2>"$ERRFILE"
+    --rpc-url "$RPC" --account "$KEEPER_ACCT" "${PW[@]}" >/dev/null 2>"$ERRFILE"
 }
 
 # The same call as an eth_call, so a step can find out whether it would
@@ -347,7 +374,7 @@ ok "expiry cap enforced: $(reason)"
 # but it is not the authorized signer, so it may not decide.
 bold "5/8  A signature from the wrong key must revert"
 DIGEST=$(digest_for "$NOOP" "$WEIGHT" "$N2" "$GOOD_EXPIRY")
-SIG_WRONG=$(cast wallet sign --no-hash --account "$KEEPER_ACCT" "$DIGEST")
+SIG_WRONG=$(cast wallet sign --no-hash --account "$KEEPER_ACCT" "${PW[@]}" "$DIGEST")
 if submit "$NOOP" "$WEIGHT" "$N2" "$GOOD_EXPIRY" "$SIG_WRONG"; then
   die "the KEEPER signed its own rebalance and it EXECUTED. Submission
      authority and signing authority are not separated."

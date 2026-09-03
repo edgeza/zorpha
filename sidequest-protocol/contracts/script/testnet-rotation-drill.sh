@@ -47,6 +47,33 @@ KEEPER_ACCT="${2:-}"
   exit 1
 }
 
+# Optional non-interactive signing.
+#
+# This drill unlocks a keystore once per governance send, plus an address
+# lookup and a signature per instruction, and every one of them prompts. A
+# single mistyped password aborts the run partway through -- after it may
+# already have spent gas, which is how testnet-spot-lifecycle.sh lost a run
+# with two contracts already deployed.
+#
+# ETH_PASSWORD is NOT the fix, despite being cast's own env var for this. Set
+# it and clap marks --password-file as supplied for EVERY subcommand, so plain
+# reads start failing:
+#
+#     cast call ... -> error: the following required arguments were not
+#                      provided: --keystore <PATH>
+#
+# because --password-file "is used with --keystore" and cast call has neither.
+# Passing the flag explicitly, only where a keystore is actually opened, has no
+# such effect. --account and --password-file are a legal pair.
+#
+# Opt-in and empty by default, so nothing changes unless it is set:
+#     ZORPHA_PASSWORD_FILE=/path/to/pw ./script/...
+PW=()
+[[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
+  [[ -r "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: cannot read $ZORPHA_PASSWORD_FILE" >&2; exit 1; }
+  PW=(--password-file "$ZORPHA_PASSWORD_FILE")
+}
+
 RPC="${RH_TESTNET_RPC_URL:-https://rpc.testnet.chain.robinhood.com/rpc}"
 CHAIN_ID=46630
 WEB_ENV="../../zorpha-web/.env.local"
@@ -77,8 +104,8 @@ try()    { cast call "$@" --rpc-url "$RPC" 2>/dev/null | num || true; }
 [[ -f "$VAULTS" ]]  || die "no $VAULTS"
 
 EXEC=$(env_of NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS)
-SIGNER=$(cast wallet address --account "$SIGNER_ACCT")
-KEEPER=$(cast wallet address --account "$KEEPER_ACCT")
+SIGNER=$(cast wallet address --account "$SIGNER_ACCT" "${PW[@]}")
+KEEPER=$(cast wallet address --account "$KEEPER_ACCT" "${PW[@]}")
 
 # The rotation vault is the CREATE2 child with a baseAsset.
 VAULT=$(MSYS_NO_PATHCONV=1 node -e '
@@ -189,7 +216,7 @@ digest_for() {
 }
 
 sign_for() {
-  cast wallet sign --no-hash --account "$SIGNER_ACCT" "$(digest_for "$@")"
+  cast wallet sign --no-hash --account "$SIGNER_ACCT" "${PW[@]}" "$(digest_for "$@")"
 }
 
 # cast takes a uint16[] as [a,b,c].
@@ -218,7 +245,7 @@ submit() {
   local nonce=$1 expiry=$2 sig=$3; shift 3
   cast send "$EXEC" 'executeBasketRebalance(address,uint16[],uint256,uint256,bytes)' \
     "$VAULT" "$(arr "$@")" "$nonce" "$expiry" "$sig" \
-    --rpc-url "$RPC" --account "$KEEPER_ACCT" >/dev/null 2>"$ERRFILE"
+    --rpc-url "$RPC" --account "$KEEPER_ACCT" "${PW[@]}" >/dev/null 2>"$ERRFILE"
 }
 
 NOW=$(cast block latest --field timestamp --rpc-url "$RPC")
