@@ -89,6 +89,27 @@ contract CashDenominatedBasketTest is Test {
         assertEq(vault.tokenToBase(1, 1e18), 250 * 1e6);
     }
 
+    /// The cash sleeve must be counted ONCE.
+    ///
+    /// grossValue sums baseAsset.balanceOf(this) and then converts every basket
+    /// member. A member that IS the base asset is therefore counted twice
+    /// unless it is skipped, and the vault reports roughly double its real
+    /// value -- deposits mint too few shares, redemptions demand more than the
+    /// vault holds, and nothing reverts until it is asked for money it never
+    /// had.
+    function test_TheCashSleeveIsNotCountedTwice() public {
+        cash.mint(address(vault), 1_000_000); // 1 USDG, and nothing else
+        assertEq(vault.grossValue(), 1_000_000, "cash counted more than once");
+    }
+
+    /// With both sleeves funded the total is the plain sum, so the skip has not
+    /// simply dropped the cash leg instead of de-duplicating it.
+    function test_BothSleevesAreCountedOnceEach() public {
+        cash.mint(address(vault), 1_000_000);   // 1 USDG
+        equity.mint(address(vault), 1e18);      // 1 AAPL @ $250 -> 250 USDG
+        assertEq(vault.grossValue(), 1_000_000 + 250 * 1e6);
+    }
+
     function test_AStaleCashFeedDoesNotHaltTheCashLeg() public {
         // Cash needs no price, so its feed ageing out must not matter.
         cashFeed.setUpdatedAt(1);

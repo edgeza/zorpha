@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {OracleWindow} from "../oracle/OracleWindow.sol";
+import {FirstLossEscrow} from "../leadership/FirstLossEscrow.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -47,11 +48,32 @@ contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
     uint16[] public targetWeightsBps;
     uint256 public rebalanceCount;
     uint256 public performanceFee;
+    /// @notice The leader's subordinated capital, or zero.
+    ///
+    /// @dev Only settable on a CASH-DENOMINATED basket -- tokens[0] ==
+    ///      baseAsset. That restriction is load-bearing, not tidiness.
+    ///
+    ///      This vault mixes two units. totalAssets() is in asset() units,
+    ///      which is tokens[0]; highWaterMark and performanceFeeAccrued are in
+    ///      BASE units. They coincide only when tokens[0] IS the base asset.
+    ///      Comparing a shortfall measured against the mark to a balance
+    ///      measured in asset units across that gap is the same class of
+    ///      mistake that once paid a depositor 2 HOOD on 10 HOOD in -- see the
+    ///      note on totalAssets below.
+    ///
+    ///      It is also the only shape where the escrow holds the token the
+    ///      depositor is actually paid in, so absorb() is a transfer rather
+    ///      than a trade. A basket denominated in an equity would need its
+    ///      buffer sold through a venue mid-redemption, with slippage, inside
+    ///      the one path that must not fail.
+    address public firstLossEscrow;
+
     uint256 public highWaterMark;
     uint256 public performanceFeeAccrued;
     address public feeRecipient;
     bool    public isCircuitBreakerActive;
 
+    event FirstLossEscrowSet(address indexed escrow);
     event HighWaterMarkReset(uint256 nav);
     event AccruedFeesWrittenDown(uint256 amount, uint256 remaining);
 
@@ -232,9 +254,29 @@ contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
     }
 
     /// @notice Total vault value in baseAsset units (sum of all token legs + base leg).
+    ///
+    /// @dev The base balance is counted ONCE, and a basket member that is the
+    ///      base asset is skipped in the loop.
+    ///
+    ///      Without the skip, a basket holding its own base asset counts that
+    ///      sleeve twice -- once as `baseAsset.balanceOf`, once as the loop's
+    ///      conversion of tokens[i] -- and reports roughly double its real
+    ///      value. Every share is then priced against a NAV that does not
+    ///      exist: deposits mint too few shares, redemptions demand more than
+    ///      the vault holds, and nothing reverts until the vault is asked for
+    ///      money it never had.
+    ///
+    ///      The double count predates the identity conversion above -- before
+    ///      it, the second helping was marked through the base asset's USD feed
+    ///      rather than one-for-one, which made it wrong by a slightly
+    ///      different amount rather than right. It was unreachable only because
+    ///      no basket had been deployed holding its own base. A cash
+    ///      denominated basket is exactly that basket, and is the shape a
+    ///      multi-asset fund wants.
     function grossValue() public view returns (uint256) {
         uint256 v = baseAsset.balanceOf(address(this));
         for (uint256 i = 0; i < tokens.length; i++) {
+            if (address(tokens[i]) == address(baseAsset)) continue;
             v += tokenToBase(i, tokens[i].balanceOf(address(this)));
         }
         return v;
