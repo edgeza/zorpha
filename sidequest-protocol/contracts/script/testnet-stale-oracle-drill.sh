@@ -68,6 +68,15 @@ info() { printf '    %s\n' "$1"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$1"; }
 die()  { printf '\n  \033[31mx %s\033[0m\n\n' "$1" >&2; exit 1; }
 
+# Bash arithmetic is 64-BIT SIGNED, and every token amount here is 18-decimal.
+# `$(( DEPOSIT * 2 ))` on 1e19 does not error -- it wraps to
+# 1553255926290448384, which is 2e19 - 2**64. That became the approval, and
+# the deposit then failed with ERC20InsufficientAllowance reporting exactly
+# that number. Silent, and it looked like an approval bug rather than an
+# overflow. Node BigInt for anything that can exceed 9.2e18.
+bi()      { MSYS_NO_PATHCONV=1 node -e 'const [a,op,b]=process.argv.slice(1);const A=BigInt(a),B=BigInt(b);
+  const f={add:()=>A+B,sub:()=>A-B,mul:()=>A*B,div:()=>A/B}[op];
+  process.stdout.write(f().toString())' -- "$1" "$2" "$3"; }
 num()     { awk '{print $1}'; }
 env_of()  { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2-; }
 call()    { cast call "$@" --rpc-url "$RPC" | num; }
@@ -217,10 +226,17 @@ bold "3/7  Fresh price, then take both legs"
 send "$ORACLE" 'report(int256)' "$(( PRICE_USD * 100000000 ))"
 ok "reported \$$PRICE_USD"
 
+# Mint for BOTH deposits. Step 6 probes a stale deposit, and if the actor has
+# no asset left that probe reverts on balance instead of on staleness -- which
+# the refusal helper correctly rejects as the wrong reason, failing the drill
+# for something unrelated to what it tests.
+NEED=$(bi "$DEPOSIT" mul 2)
 HAVE=$(call "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
-MSYS_NO_PATHCONV=1 node -e 'process.exit(BigInt(process.argv[1])<BigInt(process.argv[2])?0:1)' -- "$HAVE" "$DEPOSIT" \
-  && { send "$ASSET" 'mint(address,uint256)' "$ACTOR" "$DEPOSIT"; ok "minted $DEPOSIT"; } || true
-send "$ASSET" 'approve(address,uint256)' "$VAULT" "$(( DEPOSIT * 2 ))"
+if MSYS_NO_PATHCONV=1 node -e 'process.exit(BigInt(process.argv[1])<BigInt(process.argv[2])?0:1)' -- "$HAVE" "$NEED"; then
+  send "$ASSET" 'mint(address,uint256)' "$ACTOR" "$NEED"
+  ok "minted $NEED"
+fi
+send "$ASSET" 'approve(address,uint256)' "$VAULT" "$(bi "$DEPOSIT" mul 2)"
 # Twice the deposit, so the stale probe in step 6 still has allowance.
 send "$VAULT" 'deposit(uint256,address)' "$DEPOSIT" "$ACTOR"
 SHARES=$(call "$VAULT" 'balanceOf(address)(uint256)' "$ACTOR")
