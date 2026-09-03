@@ -50,6 +50,33 @@ done
 GOV_ACCT="${1:-}"
 [[ -n "$GOV_ACCT" ]] || { echo "usage: $0 <governance-keystore>" >&2; exit 1; }
 
+# Optional non-interactive signing.
+#
+# This drill unlocks a keystore once per governance send, plus an address
+# lookup and a signature per instruction, and every one of them prompts. A
+# single mistyped password aborts the run partway through -- after it may
+# already have spent gas, which is how testnet-spot-lifecycle.sh lost a run
+# with two contracts already deployed.
+#
+# ETH_PASSWORD is NOT the fix, despite being cast's own env var for this. Set
+# it and clap marks --password-file as supplied for EVERY subcommand, so plain
+# reads start failing:
+#
+#     cast call ... -> error: the following required arguments were not
+#                      provided: --keystore <PATH>
+#
+# because --password-file "is used with --keystore" and cast call has neither.
+# Passing the flag explicitly, only where a keystore is actually opened, has no
+# such effect. --account and --password-file are a legal pair.
+#
+# Opt-in and empty by default, so nothing changes unless it is set:
+#     ZORPHA_PASSWORD_FILE=/path/to/pw ./script/...
+PW=()
+[[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
+  [[ -r "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: cannot read $ZORPHA_PASSWORD_FILE" >&2; exit 1; }
+  PW=(--password-file "$ZORPHA_PASSWORD_FILE")
+}
+
 RPC="${RH_TESTNET_RPC_URL:-https://rpc.testnet.chain.robinhood.com/rpc}"
 CHAIN_ID=46630
 WEB_ENV="../../zorpha-web/.env.local"
@@ -85,7 +112,7 @@ num()     { awk '{print $1}'; }
 # diagnostic sitting unreachable two lines below.
 env_of()  { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2- || true; }
 call()    { cast call "$@" --rpc-url "$RPC" | num; }
-send()    { cast send "$@" --rpc-url "$RPC" --account "$GOV_ACCT" >/dev/null; }
+send()    { cast send "$@" --rpc-url "$RPC" --account "$GOV_ACCT" "${PW[@]}" >/dev/null; }
 created() { MSYS_NO_PATHCONV=1 node -e 'process.stdout.write(JSON.parse(process.argv[1]).deployedTo || "")' -- "$1"; }
 named_of(){ MSYS_NO_PATHCONV=1 node -e '
   const j = require(process.argv[1]);
@@ -142,7 +169,7 @@ refuses_as_stale() {
 [[ -f "$FIXTURES" ]] || die "no $FIXTURES"
 [[ -f "$VAULTS" ]]   || die "no $VAULTS"
 
-ACTOR=$(cast wallet address --account "$GOV_ACCT")
+ACTOR=$(cast wallet address --account "$GOV_ACCT" "${PW[@]}")
 FACTORY=$(env_of NEXT_PUBLIC_VAULT_FACTORY_ADDRESS)
 TREASURY=$(env_of NEXT_PUBLIC_TREASURY_ADDRESS)
 ASSET=$(named_of "./$FIXTURES" TestEquity)
@@ -169,11 +196,57 @@ else
   ok "holds DEPLOYER_ROLE on the factory"
 fi
 
+# A DEDICATED oracle, because a shared one cannot be held fresh.
+#
+# This drill has to control exactly when the price ages out. On the production
+# oracle it no longer can, because more than one updater now reports to it.
+#
+# MedianOracle.latestRoundData returns the OLDEST contributing timestamp -- by
+# design, so an answer is never presented as fresher than its stalest input.
+# The consequence is that updatedAt is pinned by whichever updater lags,
+# however recently THIS actor reported. Measured mid-run, moments after
+# fresh_price() had posted:
+#
+#     gov    age 157s      <- just posted, by this drill
+#     keeper age 541s      <- the hosted keeper, on its own 900s schedule
+#     latestRoundData -> age 541s, against a 90s vault window
+#
+# so the vault was already stale in step 3, where the drill is still trying to
+# establish that it is FRESH, and the run died on its own setup. Nothing was
+# wrong with the vault, the oracle or the keeper -- the fixture was shared.
+#
+# A single-updater oracle owned by this drill restores determinism, and is the
+# more honest fixture anyway: the subject under test is the vault refusal, and
+# borrowing the production updater set only imports their schedules.
+PROD_ORACLE="$ORACLE"
+ORACLE_CACHE=".stale-oracle-$CHAIN_ID"
+if [[ -f "$ORACLE_CACHE" && -n "$(cat "$ORACLE_CACHE")" ]]; then
+  ORACLE=$(cat "$ORACLE_CACHE")
+  ok "reusing the oracle this drill deployed $ORACLE"
+else
+  # Bounds and window copied from production so the drill vault behaves the
+  # same in every respect except who may report to it.
+  OW=$(call "$PROD_ORACLE" 'maxStaleness()(uint256)')
+  MINA=$(call "$PROD_ORACLE" 'minAnswer()(int256)')
+  MAXA=$(call "$PROD_ORACLE" 'maxAnswer()(int256)')
+  OUT=$(forge create src/oracle/MedianOracle.sol:MedianOracle \
+        --rpc-url "$RPC" --account "$GOV_ACCT" "${PW[@]}" --broadcast --json \
+        --constructor-args 8 "$OW" "$MINA" "$MAXA" 1 "$ACTOR")
+  ORACLE=$(created "$OUT")
+  [[ -n "$ORACLE" ]] || die "could not deploy the drill oracle"
+  printf '%s' "$ORACLE" > "$ORACLE_CACHE"
+  ok "deployed $ORACLE, window ${OW}s, quorum 1"
+fi
+
 UR=$(call "$ORACLE" 'UPDATER_ROLE()(bytes32)')
-[[ "$(call "$ORACLE" 'hasRole(bytes32,address)(bool)' "$UR" "$ACTOR")" == "true" ]] \
-  || die "$ACTOR lacks UPDATER_ROLE on the oracle; it cannot post a price and
-     this drill cannot control freshness"
-ok "can post prices to the oracle"
+if [[ "$(call "$ORACLE" 'hasRole(bytes32,address)(bool)' "$UR" "$ACTOR")" != "true" ]]; then
+  send "$ORACLE" 'addUpdater(address)' "$ACTOR"
+  ok "actor seated as the sole updater"
+fi
+[[ "$(call "$ORACLE" 'updaterCount()(uint256)')" == "1" ]] \
+  || die "the drill oracle has more than one updater, so updatedAt is again
+     pinned by another reporter schedule. Delete $ORACLE_CACHE and re-run."
+ok "can post prices, and is the only address that can"
 
 # ── 1. A vault with a short staleness window ────────────────────────────────
 bold "1/7  Deploy a vault with a $STALENESS second window"
@@ -231,7 +304,7 @@ ok "performance fee is 0, so nothing below is confounded by fee accrual"
 # ── 2. A priced adapter, so a rebalance can actually trade ──────────────────
 bold "2/7  Priced swap adapter"
 OUT=$(forge create src/adapters/RobinhoodChainRouterAdapter.sol:StubSwapAdapter \
-      --rpc-url "$RPC" --account "$GOV_ACCT" --broadcast --json \
+      --rpc-url "$RPC" --account "$GOV_ACCT" "${PW[@]}" --broadcast --json \
       --constructor-args "$ASSET" "$CASH" "$ORACLE" "$ACTOR")
 ADAPTER=$(created "$OUT")
 [[ -n "$ADAPTER" ]] || die "could not read the adapter address"

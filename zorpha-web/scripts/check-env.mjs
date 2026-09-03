@@ -91,13 +91,48 @@ loadEnvFiles();
 
 const isProd =
   process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+
+// A Vercel PREVIEW is a production Next.js build -- NODE_ENV is 'production'
+// there -- so isProd above is true for it, and this script demanded a
+// NEXT_PUBLIC_SITE_URL that only the production environment has. Every preview
+// deployment failed on it:
+//
+//     Environment check failed (1):
+//       - NEXT_PUBLIC_SITE_URL is not set.
+//     Refusing to build.
+//
+// while the same commit built fine in GitHub Actions, which sets one. The
+// check was right that a build must know its own origin and wrong that only a
+// human can supply it: Vercel already publishes the origin this deployment
+// will be served from, as VERCEL_URL. lib/site-url.ts consumes the public
+// twin of it, so a preview now labels itself correctly instead of claiming to
+// be zorpha.xyz.
+const isPreview = process.env.VERCEL_ENV === 'preview';
 const problems = [];
 const notes = [];
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
 if (!siteUrl) {
-  if (isProd) {
+  if (isPreview && process.env.VERCEL_URL) {
+    // Report what the APP will use, not what this script can see. The two are
+    // different variables: VERCEL_URL is always present in the build
+    // environment, while lib/site-url.ts can only read NEXT_PUBLIC_VERCEL_URL,
+    // which Vercel exposes only while "Automatically expose System Environment
+    // Variables" is on. Noting the first while the app falls back to the second
+    // would print a reassuring origin that nothing actually serves.
+    const publicUrl = process.env.NEXT_PUBLIC_VERCEL_URL;
+    notes.push(
+      publicUrl
+        ? `NEXT_PUBLIC_SITE_URL unset — preview build, using https://${publicUrl}`
+        : [
+            `NEXT_PUBLIC_SITE_URL unset, and NEXT_PUBLIC_VERCEL_URL is not exposed.`,
+            `  This preview will label itself https://zorpha.xyz, not ${process.env.VERCEL_URL}.`,
+            `  Turn on "Automatically expose System Environment Variables" in the`,
+            `  Vercel project, or set NEXT_PUBLIC_SITE_URL for the Preview scope.`,
+          ].join(LF + '        '),
+    );
+  } else if (isProd) {
     problems.push(
       [
         'NEXT_PUBLIC_SITE_URL is not set.',

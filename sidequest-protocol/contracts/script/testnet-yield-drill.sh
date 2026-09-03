@@ -35,6 +35,33 @@ command -v node >/dev/null || { echo "ERROR: node not found" >&2; exit 1; }
 ACCOUNT="${1:-}"
 [[ -n "$ACCOUNT" ]] || { echo "usage: $0 <keystore-account-name>" >&2; exit 1; }
 
+# Optional non-interactive signing.
+#
+# This drill unlocks a keystore once per governance send, plus an address
+# lookup and a signature per instruction, and every one of them prompts. A
+# single mistyped password aborts the run partway through -- after it may
+# already have spent gas, which is how testnet-spot-lifecycle.sh lost a run
+# with two contracts already deployed.
+#
+# ETH_PASSWORD is NOT the fix, despite being cast's own env var for this. Set
+# it and clap marks --password-file as supplied for EVERY subcommand, so plain
+# reads start failing:
+#
+#     cast call ... -> error: the following required arguments were not
+#                      provided: --keystore <PATH>
+#
+# because --password-file "is used with --keystore" and cast call has neither.
+# Passing the flag explicitly, only where a keystore is actually opened, has no
+# such effect. --account and --password-file are a legal pair.
+#
+# Opt-in and empty by default, so nothing changes unless it is set:
+#     ZORPHA_PASSWORD_FILE=/path/to/pw ./script/...
+PW=()
+[[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
+  [[ -r "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: cannot read $ZORPHA_PASSWORD_FILE" >&2; exit 1; }
+  PW=(--password-file "$ZORPHA_PASSWORD_FILE")
+}
+
 RPC="${RH_TESTNET_RPC_URL:-https://rpc.testnet.chain.robinhood.com/rpc}"
 CHAIN_ID=46630
 WEB_ENV="../../zorpha-web/.env.local"
@@ -64,7 +91,7 @@ eq()  { [[ "$1" == "$2" ]]; }
 env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2- || true; }
 num()    { awk '{print $1}'; }
 call()   { cast call "$@" --rpc-url "$RPC" | num; }
-send()   { cast send "$@" --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null; }
+send()   { cast send "$@" --rpc-url "$RPC" --account "$ACCOUNT" "${PW[@]}" >/dev/null; }
 
 [[ -f "$WEB_ENV" ]]  || die "no $WEB_ENV"
 [[ -f "$VAULTS" ]]   || die "no $VAULTS"
@@ -120,7 +147,7 @@ else
 fi
 
 TREASURY=$(call "$VAULT" 'feeRecipient()(address)')
-ACTOR=$(cast wallet address --account "$ACCOUNT")
+ACTOR=$(cast wallet address --account "$ACCOUNT" "${PW[@]}")
 
 DEPOSIT="${DEPOSIT_AMOUNT:-1000000000}"   # 1,000 USDG
 YIELD="${YIELD_AMOUNT:-500000000}"        #   500 USDG, the checklist's figure
@@ -139,11 +166,30 @@ info "deposit $DEPOSIT, yield $YIELD, fee $FEE_BPS bps"
 bold "Preflight"
 Z0=0x0000000000000000000000000000000000000000000000000000000000000000
 RISK=$(cast keccak "RISK_COUNCIL_ROLE")
-eq "$(call "$VAULT" 'hasRole(bytes32,address)(bool)' "$Z0" "$ACTOR")" true \
-  || die "$ACTOR is not DEFAULT_ADMIN on the vault; claimFees would revert"
+# DEFAULT_ADMIN is NOT expected to be the actor any more.
+#
+# The role-escalation relock moved it to the Timelock on every factory vault,
+# and step 6 was written for exactly that: it queues the claim instead of
+# sending it. This preflight was never updated with it, so it killed the run
+# before the code that handles the case could execute -- the drill refused to
+# start because of the very configuration it had been taught to cope with.
+#
+# What the drill needs is that SOMEBODY can claim. Step 6 picks the path; this
+# only rules out a vault with no admin at all.
+ADMIN_IS_ACTOR=$(call "$VAULT" 'hasRole(bytes32,address)(bool)' "$Z0" "$ACTOR")
+if [[ "$ADMIN_IS_ACTOR" != "true" ]]; then
+  TL_PRE=$(env_of NEXT_PUBLIC_TIMELOCK_ADDRESS)
+  [[ -n "$TL_PRE" ]] || die "the actor is not DEFAULT_ADMIN and no
+     NEXT_PUBLIC_TIMELOCK_ADDRESS is set, so claimFees is callable by nobody"
+  eq "$(call "$VAULT" 'hasRole(bytes32,address)(bool)' "$Z0" "$TL_PRE")" true \
+    || die "neither $ACTOR nor the Timelock $TL_PRE holds DEFAULT_ADMIN on this
+     vault, so claimFees is callable by nobody. That is not the relock working --
+     that is a vault with no admin at all."
+  info "DEFAULT_ADMIN is the Timelock; step 6 will queue the claim, not send it"
+fi
 eq "$(call "$VAULT" 'hasRole(bytes32,address)(bool)' "$RISK" "$ACTOR")" true \
   || die "$ACTOR is not RISK_COUNCIL on the vault; setCircuitBreaker would revert"
-ok "actor holds DEFAULT_ADMIN and RISK_COUNCIL"
+ok "actor holds RISK_COUNCIL, and the claim path is resolvable"
 
 # A stale position from an earlier run has to be cleared, not just noted.
 #
@@ -189,7 +235,7 @@ bold "1/6  Circuit breaker"
 send "$VAULT" 'setCircuitBreaker(bool)' true
 eq "$(call "$VAULT" 'maxDeposit(address)(uint256)' "$ACTOR")" 0 || die "breaker set but maxDeposit is not 0"
 if cast send "$VAULT" 'deposit(uint256,address)' "$DEPOSIT" "$ACTOR" \
-     --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null 2>&1; then
+     --rpc-url "$RPC" --account "$ACCOUNT" "${PW[@]}" >/dev/null 2>&1; then
   die "a deposit SUCCEEDED with the circuit breaker active"
 fi
 ok "breaker on: deposit refused"
@@ -291,7 +337,20 @@ BEFORE=$(call "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
 send "$VAULT" 'redeem(uint256,address,address)' "$SHARES" "$ACTOR" "$ACTOR"
 AFTER=$(call "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
 RECEIVED=$(bi "$AFTER" sub "$BEFORE")
-PROFIT=$(bi "$(bi "$RECEIVED" sub "$DEPOSIT")" sub "$CATCHUP")
+# The catch-up tops the WHOLE vault back up to its high-water mark, so this
+# actor only enjoys their share of it -- yet the full amount was being charged
+# against one holder's profit. On a vault where the actor held 30.3% of supply
+# that billed them for 33,333,331 units of value that went to the other
+# holders, and it was the entire residual left after the pro-rata fix above:
+#
+#     expected (pro rata)      136363644
+#     profit, catchup charged   103030313   short by 33333331
+#     profit, catchup shared    136363644   short by 0
+CATCHUP_MINE="$CATCHUP"
+if [[ "$SHARES" != "$SUPPLY_AT_REDEEM" ]]; then
+  CATCHUP_MINE=$(bi "$(bi "$CATCHUP" mul "$SHARES")" div "$SUPPLY_AT_REDEEM")
+fi
+PROFIT=$(bi "$(bi "$RECEIVED" sub "$DEPOSIT")" sub "$CATCHUP_MINE")
 # Two different numbers, and the difference is the finding rather than a bug
 # in the arithmetic here.
 #
@@ -305,6 +364,36 @@ FAIR_ALPHA=$(bi "$NAV1" sub "$NAV0")
 EXPECTED_FEE=$(bi "$(bi "$(bi "$FEE_ALPHA" mul "$SUPPLY_AT_REDEEM")" mul "$FEE_BPS")" div "$(bi "$SHARE_UNIT" mul 10000)")
 FAIR_FEE=$(bi "$(bi "$(bi "$FAIR_ALPHA" mul "$SUPPLY_AT_REDEEM")" mul "$FEE_BPS")" div "$(bi "$SHARE_UNIT" mul 10000)")
 EXPECTED_NET=$(bi "$GAIN" sub "$EXPECTED_FEE")
+
+# GAIN and EXPECTED_NET above are WHOLE-VAULT figures. PROFIT is what this one
+# actor realised. They are the same number only when the actor owns the whole
+# vault, and this drill assumed that without ever saying so.
+#
+# Measured on testnet 46630, against a vault that already had a depositor:
+#
+#     actor shares      333333333333333   (1/3 of supply)
+#     other shares      666666666666666
+#     net gain to vault 450000001
+#     actor received    150000000         = 450000001 * 1/3, EXACTLY
+#
+# and the drill failed itself, reporting the depositor "short by 300000001"
+# on a vault that had paid out precisely what an ERC-4626 must: yield accrues
+# to the vault and is shared pro rata by shares held. The protocol was right
+# and the assertion was wrong -- the more dangerous way round, because it
+# reads as a solvency bug in a product whose entire claim is that depositors
+# are paid what they are owed.
+ACTOR_SHARE_NUM="$SHARES"
+OTHER_SHARES=$(bi "$SUPPLY_AT_REDEEM" sub "$SHARES")
+ROUNDING_EXTRA=0
+if [[ "$OTHER_SHARES" != "0" ]]; then
+  WHOLE_NET="$EXPECTED_NET"
+  EXPECTED_NET=$(bi "$(bi "$EXPECTED_NET" mul "$ACTOR_SHARE_NUM")" div "$SUPPLY_AT_REDEEM")
+  # Two more rounding-downs than the round trip alone: the pro-rata
+  # divisions applied to the net and to the catch-up.
+  ROUNDING_EXTRA=2
+  info "vault is shared: $SHARES of $SUPPLY_AT_REDEEM shares are this actor"
+  info "whole-vault net $WHOLE_NET, this actor is owed $EXPECTED_NET"
+fi
 
 info "received $RECEIVED for $SHARES shares"
 info "profit   $PROFIT  (gain $GAIN, fee $EXPECTED_FEE, net $EXPECTED_NET)"
@@ -350,7 +439,7 @@ ok "rounding favours the vault, not the depositor"
 # conversions and forgotten that the adapter converts again at the venue. A
 # real run then landed on exactly three, at the edge of a bound that was too
 # low for the wrong reason.
-ROUNDING_BOUND=5
+ROUNDING_BOUND=$(( 5 + ${ROUNDING_EXTRA:-0} ))
 if lt "$ROUNDING_BOUND" "$SHORTFALL"; then
   die "depositor is short by $SHORTFALL, more than the $ROUNDING_BOUND units two ERC-4626
      conversions and one fee division can explain. Expected $EXPECTED_NET, got $PROFIT."

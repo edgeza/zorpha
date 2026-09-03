@@ -19,6 +19,7 @@ import { coinbaseWallet } from '@wagmi/connectors/coinbaseWallet';
 import { safe } from '@wagmi/connectors/safe';
 import { walletConnect } from '@wagmi/connectors/walletConnect';
 import { robinhoodTestnet, robinhoodMainnet } from './chains';
+import { SITE_URL } from './site-url';
 
 /**
  * WalletConnect project id, from https://dashboard.reown.com.
@@ -33,7 +34,7 @@ const wcProjectId = process.env.NEXT_PUBLIC_WC_PROJECT_ID;
 export const walletConnectAvailable = Boolean(wcProjectId);
 
 const appName = 'Zorpha';
-const appUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://zorpha.xyz';
+const appUrl = SITE_URL;
 
 function buildConnectors(): CreateConnectorFn[] {
   const connectors: CreateConnectorFn[] = [

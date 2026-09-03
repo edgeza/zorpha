@@ -58,6 +58,33 @@ done
 ACCOUNT="${1:-}"
 [[ -n "$ACCOUNT" ]] || { echo "usage: $0 <keystore-account-name>" >&2; exit 1; }
 
+# Optional non-interactive signing.
+#
+# This drill unlocks a keystore once per governance send, plus an address
+# lookup and a signature per instruction, and every one of them prompts. A
+# single mistyped password aborts the run partway through -- after it may
+# already have spent gas, which is how testnet-spot-lifecycle.sh lost a run
+# with two contracts already deployed.
+#
+# ETH_PASSWORD is NOT the fix, despite being cast's own env var for this. Set
+# it and clap marks --password-file as supplied for EVERY subcommand, so plain
+# reads start failing:
+#
+#     cast call ... -> error: the following required arguments were not
+#                      provided: --keystore <PATH>
+#
+# because --password-file "is used with --keystore" and cast call has neither.
+# Passing the flag explicitly, only where a keystore is actually opened, has no
+# such effect. --account and --password-file are a legal pair.
+#
+# Opt-in and empty by default, so nothing changes unless it is set:
+#     ZORPHA_PASSWORD_FILE=/path/to/pw ./script/...
+PW=()
+[[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
+  [[ -r "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: cannot read $ZORPHA_PASSWORD_FILE" >&2; exit 1; }
+  PW=(--password-file "$ZORPHA_PASSWORD_FILE")
+}
+
 RPC="${RH_TESTNET_RPC_URL:-https://rpc.testnet.chain.robinhood.com/rpc}"
 CHAIN_ID=46630
 WEB_ENV="../../zorpha-web/.env.local"
@@ -87,13 +114,13 @@ eq()  { [[ "$1" == "$2" ]]; }
 env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2- || true; }
 num()    { awk '{print $1}'; }
 call()   { cast call "$@" --rpc-url "$RPC" | num; }
-send()   { cast send "$@" --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null; }
+send()   { cast send "$@" --rpc-url "$RPC" --account "$ACCOUNT" "${PW[@]}" >/dev/null; }
 
 [[ -f "$WEB_ENV" ]] || die "no $WEB_ENV -- run the deploy first"
 
 ZOR=$(env_of NEXT_PUBLIC_ZOR_ADDRESS)
 LAUNCHER=$(env_of NEXT_PUBLIC_VAULT_LAUNCHER_ADDRESS)
-ACTOR=$(cast wallet address --account "$ACCOUNT")
+ACTOR=$(cast wallet address --account "$ACCOUNT" "${PW[@]}")
 
 # --- 0. The lossy venue ----------------------------------------------------
 bold "0/6  A venue that can lose money"
@@ -120,7 +147,7 @@ else
   # middle, --rpc-url never registers and forge falls back to localhost:8545
   # with no warning that it ignored the network you asked for.
   OUT=$(forge create src/testnet/TestnetFixtures.sol:LossyYieldTarget \
-        --rpc-url "$RPC" --account "$ACCOUNT" --broadcast --json \
+        --rpc-url "$RPC" --account "$ACCOUNT" "${PW[@]}" --broadcast --json \
         --constructor-args "$ASSET")
   LOSSY=$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).deployedTo || "")' "$OUT")
   [[ -n "$LOSSY" ]] || die "could not read the deployed address from forge create"

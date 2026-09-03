@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next';
+import { SITE_URL } from '@/lib/site-url';
 
-const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://zorpha.xyz';
+const BASE = SITE_URL;
 
 /**
  * Marketing routes only. The portal is `noindex`, being a wallet-gated

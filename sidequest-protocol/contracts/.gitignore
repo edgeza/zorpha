@@ -13,3 +13,5 @@ seed.sql
 .spot-v2-*
 .rotation-v2-*
 .yield-adapter-*
+.stale-oracle-*
+.noop-rebalancer-*

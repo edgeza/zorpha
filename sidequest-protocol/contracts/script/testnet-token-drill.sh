@@ -29,6 +29,33 @@ command -v node >/dev/null || { echo "ERROR: node not found" >&2; exit 1; }
 ACCOUNT="${1:-}"
 [[ -n "$ACCOUNT" ]] || { echo "usage: $0 <keystore-account-name>" >&2; exit 1; }
 
+# Optional non-interactive signing.
+#
+# This drill unlocks a keystore once per governance send, plus an address
+# lookup and a signature per instruction, and every one of them prompts. A
+# single mistyped password aborts the run partway through -- after it may
+# already have spent gas, which is how testnet-spot-lifecycle.sh lost a run
+# with two contracts already deployed.
+#
+# ETH_PASSWORD is NOT the fix, despite being cast's own env var for this. Set
+# it and clap marks --password-file as supplied for EVERY subcommand, so plain
+# reads start failing:
+#
+#     cast call ... -> error: the following required arguments were not
+#                      provided: --keystore <PATH>
+#
+# because --password-file "is used with --keystore" and cast call has neither.
+# Passing the flag explicitly, only where a keystore is actually opened, has no
+# such effect. --account and --password-file are a legal pair.
+#
+# Opt-in and empty by default, so nothing changes unless it is set:
+#     ZORPHA_PASSWORD_FILE=/path/to/pw ./script/...
+PW=()
+[[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
+  [[ -r "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: cannot read $ZORPHA_PASSWORD_FILE" >&2; exit 1; }
+  PW=(--password-file "$ZORPHA_PASSWORD_FILE")
+}
+
 RPC="${RH_TESTNET_RPC_URL:-https://rpc.testnet.chain.robinhood.com/rpc}"
 WEB_ENV="../../zorpha-web/.env.local"
 PROOFS="../../zorpha-web/data/airdrop/proofs.json"
@@ -60,7 +87,7 @@ call()   { cast call "$@" --rpc-url "$RPC" | num; }
 ZOR=$(env_of NEXT_PUBLIC_ZOR_ADDRESS)
 DIST=$(env_of NEXT_PUBLIC_MERKLE_DISTRIBUTOR_ADDRESS)
 VEST=$(env_of NEXT_PUBLIC_VESTING_ADDRESS)
-ACTOR=$(cast wallet address --account "$ACCOUNT")
+ACTOR=$(cast wallet address --account "$ACCOUNT" "${PW[@]}")
 KEY=$(printf '%s' "$ACTOR" | tr 'A-F' 'a-f' | sed 's/^0x//')
 
 bold "Token layer drill"
@@ -92,7 +119,7 @@ if eq "$(call "$DIST" 'isClaimed(uint256)(bool)' "$INDEX")" true; then
 else
   B0=$(call "$ZOR" 'balanceOf(address)(uint256)' "$ACTOR")
   cast send "$DIST" 'claim(uint256,address,uint256,bytes32[])' "$INDEX" "$ACTOR" "$AMOUNT" "$PROOF" \
-    --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null
+    --rpc-url "$RPC" --account "$ACCOUNT" "${PW[@]}" >/dev/null
   B1=$(call "$ZOR" 'balanceOf(address)(uint256)' "$ACTOR")
   GOT=$(bi "$B1" sub "$B0")
   eq "$GOT" "$AMOUNT" || die "received $GOT ZOR, allocation was $AMOUNT"
@@ -104,7 +131,7 @@ fi
 bold "3/4  Airdrop: the two reverts that matter"
 # Same proof again. Must fail.
 if cast send "$DIST" 'claim(uint256,address,uint256,bytes32[])' "$INDEX" "$ACTOR" "$AMOUNT" "$PROOF" \
-     --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null 2>/tmp/zorpha-claim-err; then
+     --rpc-url "$RPC" --account "$ACCOUNT" "${PW[@]}" >/dev/null 2>/tmp/zorpha-claim-err; then
   die "a SECOND claim succeeded. The airdrop can be drained."
 fi
 ok "second claim reverted: $(grep -oE '[A-Z][A-Za-z]+\(\)' /tmp/zorpha-claim-err | head -1 || echo reverted)"
@@ -112,7 +139,7 @@ ok "second claim reverted: $(grep -oE '[A-Z][A-Za-z]+\(\)' /tmp/zorpha-claim-err
 # A valid proof presented for the wrong account. Must fail.
 STRANGER=0x000000000000000000000000000000000000BEEF
 if cast send "$DIST" 'claim(uint256,address,uint256,bytes32[])' "$INDEX" "$STRANGER" "$AMOUNT" "$PROOF" \
-     --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null 2>/tmp/zorpha-claim-err; then
+     --rpc-url "$RPC" --account "$ACCOUNT" "${PW[@]}" >/dev/null 2>/tmp/zorpha-claim-err; then
   die "a claim for an address NOT in the tree succeeded"
 fi
 ok "ineligible address reverted: $(grep -oE '[A-Z][A-Za-z]+\(\)' /tmp/zorpha-claim-err | head -1 || echo reverted)"
