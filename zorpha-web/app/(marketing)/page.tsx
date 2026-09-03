@@ -4,6 +4,7 @@ import { Hero } from '@/components/marketing/Hero';
 import { ReceiptVerifier } from '@/components/marketing/ReceiptVerifier';
 import { SectionHeading } from '@/components/ui/Primitives';
 import { ReceiptMarquee } from '@/components/marketing/ReceiptMarquee';
+import { GuardRails } from '@/components/marketing/GuardRails';
 import { Reveal } from '@/components/motion/Reveal';
 import { TOKEN } from '@/lib/tokenomics';
 import { TEST_STATUS } from '@/lib/audit';
@@ -176,6 +177,16 @@ export default function HomePage() {
                 <p className="mt-2.5 text-sm leading-relaxed text-ink-400">{item.body}</p>
               </Reveal>
             ))}
+          </div>
+
+          {/* The four claims above are properties of the contract, so they can
+              be tested rather than asserted. These run against it live. */}
+          <div className="mt-12">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+              <span className="eyebrow">Watch it refuse</span>
+              <span className="badge-verified">live simulation</span>
+            </div>
+            <GuardRails />
           </div>
         </div>
       </section>
