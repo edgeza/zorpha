@@ -61,6 +61,33 @@ done
 GOV_ACCT="${1:-}"
 [[ -n "$GOV_ACCT" ]] || { echo "usage: $0 <governance-keystore>" >&2; exit 1; }
 
+# Optional non-interactive signing.
+#
+# This drill unlocks a keystore once per governance send, plus an address
+# lookup and a signature per instruction, and every one of them prompts. A
+# single mistyped password aborts the run partway through -- after it may
+# already have spent gas, which is how testnet-spot-lifecycle.sh lost a run
+# with two contracts already deployed.
+#
+# ETH_PASSWORD is NOT the fix, despite being cast's own env var for this. Set
+# it and clap marks --password-file as supplied for EVERY subcommand, so plain
+# reads start failing:
+#
+#     cast call ... -> error: the following required arguments were not
+#                      provided: --keystore <PATH>
+#
+# because --password-file "is used with --keystore" and cast call has neither.
+# Passing the flag explicitly, only where a keystore is actually opened, has no
+# such effect. --account and --password-file are a legal pair.
+#
+# Opt-in and empty by default, so nothing changes unless it is set:
+#     ZORPHA_PASSWORD_FILE=/path/to/pw ./script/...
+PW=()
+[[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
+  [[ -r "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: cannot read $ZORPHA_PASSWORD_FILE" >&2; exit 1; }
+  PW=(--password-file "$ZORPHA_PASSWORD_FILE")
+}
+
 RPC="${RH_TESTNET_RPC_URL:-https://rpc.testnet.chain.robinhood.com/rpc}"
 WEB_ENV="../../zorpha-web/.env.local"
 
@@ -78,7 +105,7 @@ num()     { awk '{print $1}'; }
 # diagnostic sitting unreachable two lines below.
 env_of()  { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2- || true; }
 call()    { cast call "$@" --rpc-url "$RPC" | num; }
-send()    { cast send "$@" --rpc-url "$RPC" --account "$GOV_ACCT" >/dev/null; }
+send()    { cast send "$@" --rpc-url "$RPC" --account "$GOV_ACCT" "${PW[@]}" >/dev/null; }
 bi()      { MSYS_NO_PATHCONV=1 node -e 'const [a,op,b]=process.argv.slice(1);const A=BigInt(a),B=BigInt(b);
   const f={add:()=>A+B,sub:()=>A-B,mul:()=>A*B,div:()=>A/B}[op];
   process.stdout.write(f().toString())' -- "$1" "$2" "$3"; }
@@ -108,7 +135,7 @@ refuses_with() {
 
 [[ -f "$WEB_ENV" ]] || die "no $WEB_ENV"
 
-ACTOR=$(cast wallet address --account "$GOV_ACCT")
+ACTOR=$(cast wallet address --account "$GOV_ACCT" "${PW[@]}")
 LAUNCHER=$(env_of NEXT_PUBLIC_VAULT_LAUNCHER_ADDRESS)
 ZOR=$(env_of NEXT_PUBLIC_ZOR_ADDRESS)
 TREASURY=$(env_of NEXT_PUBLIC_TREASURY_ADDRESS)
