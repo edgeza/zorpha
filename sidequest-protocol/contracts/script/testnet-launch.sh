@@ -72,7 +72,15 @@ ok "forge, cast and node are on PATH"
 #
 # Bare `cast wallet new` prints the private key to stdout. That is exactly how
 # the existing keys were lost.
-DEPLOY_ACCT="${ZORPHA_DEPLOY_ACCOUNT:-}"
+# DEPLOY_ACCOUNT is the canonical name -- script/deploy-and-verify.sh, which
+# phases 2 and 3 delegate to, has always read it. ZORPHA_DEPLOY_ACCOUNT is
+# accepted as an alias because this wrapper briefly documented it, and having
+# two names for one thing is how phase 1 succeeded and phase 2 died on
+# "set DEPLOY_ACCOUNT to a cast keystore name".
+#
+# It is EXPORTED, not just read: the child script runs in its own process and
+# inherits nothing that is merely local here.
+DEPLOY_ACCT="${DEPLOY_ACCOUNT:-${ZORPHA_DEPLOY_ACCOUNT:-}}"
 PW=()
 [[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
   [[ -r "$ZORPHA_PASSWORD_FILE" ]] || die "cannot read $ZORPHA_PASSWORD_FILE"
@@ -80,6 +88,10 @@ PW=()
 }
 
 if [[ -n "$DEPLOY_ACCT" ]]; then
+  # The child refuses when BOTH are set, so a keystore run must not leak a
+  # stale PRIVATE_KEY from the caller's environment into it.
+  export DEPLOY_ACCOUNT="$DEPLOY_ACCT"
+  unset PRIVATE_KEY
   SIGNER=(--account "$DEPLOY_ACCT" "${PW[@]}")
   DEPLOYER=$(cast wallet address --account "$DEPLOY_ACCT" "${PW[@]}")
   ok "deployer resolves to $DEPLOYER (keystore $DEPLOY_ACCT)"

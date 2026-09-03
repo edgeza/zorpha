@@ -99,10 +99,17 @@ done
 # --sender -- the deploy scripts read msg.sender when PRIVATE_KEY is absent, and
 # forge resolves msg.sender from it, verified by probe. `cast wallet address`
 # rejects --sender outright ("unexpected argument"), so it gets its own.
+# Same opt-in as the drills, so a keystore run is not fifteen prompts.
+KS_PW=()
+[[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
+  [[ -r "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: cannot read $ZORPHA_PASSWORD_FILE" >&2; exit 1; }
+  KS_PW=(--password-file "$ZORPHA_PASSWORD_FILE")
+}
+
 if [[ -n "${DEPLOY_ACCOUNT:-}" ]]; then
-  WALLET_ARGS=(--account "$DEPLOY_ACCOUNT")
+  WALLET_ARGS=(--account "$DEPLOY_ACCOUNT" "${KS_PW[@]}")
   DEPLOYER=$(cast wallet address "${WALLET_ARGS[@]}")
-  SIGNER_ARGS=(--account "$DEPLOY_ACCOUNT" --sender "$DEPLOYER")
+  SIGNER_ARGS=(--account "$DEPLOY_ACCOUNT" "${KS_PW[@]}" --sender "$DEPLOYER")
 else
   WALLET_ARGS=(--private-key "$PRIVATE_KEY")
   DEPLOYER=$(cast wallet address "${WALLET_ARGS[@]}")
