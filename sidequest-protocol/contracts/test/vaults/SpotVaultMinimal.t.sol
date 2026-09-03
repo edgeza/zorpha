@@ -8,6 +8,7 @@ import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockOracle} from "../mocks/MockOracle.sol";
 import {MockSpotAdapter} from "../mocks/MockSpotAdapter.sol";
 import {ReceiptRenderer} from "../../src/lib/ReceiptRenderer.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 contract SpotVaultMinimalTest is Test {
     MockERC20 wbtc;
@@ -165,7 +166,13 @@ contract SpotVaultMinimalTest is Test {
 
     function test_KeeperOnly_Rebalance() public {
         _deposit();
-        vm.expectRevert();
+        // This contract was never granted KEEPER_ROLE. Named so the test cannot
+        // pass on a bad weight or a stale oracle instead of the role check.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), vault.KEEPER_ROLE()
+            )
+        );
         vault.rebalanceTo(0);
         vm.prank(keeper);
         vault.rebalanceTo(0); // should succeed
@@ -236,7 +243,13 @@ contract SpotVaultMinimalTest is Test {
     function test_StaleOracle_Reverts() public {
         _deposit();
         oracle.setUpdatedAt(block.timestamp - MAX_STALE - 1);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                SpotVaultMinimal.StaleOracle.selector,
+                block.timestamp - MAX_STALE - 1,
+                block.timestamp
+            )
+        );
         vm.prank(keeper);
         vault.rebalanceTo(0);
     }
@@ -303,11 +316,18 @@ contract SpotVaultMinimalTest is Test {
         oracle.setAnswer(0); // InvalidOraclePrice for anything that reads it
 
         vm.prank(keeper);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(SpotVaultMinimal.InvalidOraclePrice.selector, int256(0))
+        );
         vault.rebalanceTo(7000);
 
         vm.prank(alice);
-        vm.expectRevert();
+        // redeem reads the oracle to price the cash leg, so a zero answer stops
+        // the ordinary exit too -- which is the whole reason redeemEmergency
+        // exists and is exercised immediately below.
+        vm.expectRevert(
+            abi.encodeWithSelector(SpotVaultMinimal.InvalidOraclePrice.selector, int256(0))
+        );
         vault.redeem(shares, alice, alice);
 
         uint256 assetLeg = wbtc.balanceOf(address(vault));
@@ -415,8 +435,24 @@ contract SpotVaultMinimalTest is Test {
         vm.prank(alice);
         vault.redeemEmergency(shares / 4, alice, alice);
 
+        // The cooldown, not the oracle. nextAllowed is derived from the vault's
+        // own state rather than recomputed from constants, so a change to the
+        // cooldown does not silently make this pass against the wrong number.
+        //
+        // And read BEFORE the prank. I put these two lines AFTER it first time,
+        // in the same edit as a comment warning not to -- both are external
+        // calls, so they consumed the prank and the call under test ran as this
+        // contract. It still passed, because the cooldown is keyed on `owner`
+        // rather than msg.sender, which is exactly the kind of accident that
+        // makes a consumed prank hard to notice.
+        uint256 nextAllowed =
+            vault.lastEmergencyRedeemAt(alice) + vault.emergencyRedeemCooldown();
         vm.prank(alice);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                SpotVaultMinimal.EmergencyCooldownActive.selector, nextAllowed
+            )
+        );
         vault.redeemEmergency(shares / 4, alice, alice);
 
         vm.warp(block.timestamp + cooldown + 1);
@@ -743,7 +779,11 @@ contract SpotVaultWriteDownTest is Test {
     function test_WriteDown_AdminOnly() public {
         _accrueAFee();
         vm.prank(alice);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, alice, bytes32(0)
+            )
+        );
         vault.writeDownAccruedFees(1);
     }
 }
