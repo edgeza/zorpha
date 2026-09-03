@@ -80,13 +80,52 @@ contract StrategyExecutorTest is Test {
         assertEq(executor.nonces(address(vault)), 1);
     }
 
+    // ─── The seven refusals ─────────────────────────────────────────────────
+    //
+    // These all guard the SAME call, and all seven used a bare
+    // `vm.expectRevert()`. A bare expectRevert accepts ANY revert, so seven
+    // tests over one function could every one of them have been passing for a
+    // single shared wrong reason -- a missing role, a mock that rejects
+    // everything -- and the suite would have looked green.
+    //
+    // That matters here more than anywhere else in this repo: this function
+    // decides who can move depositor funds.
+    //
+    // Pinning them established that each was ALREADY reverting for its own
+    // reason -- no shared wrong cause was hiding underneath. Worth stating,
+    // because the opposite result was the thing being checked for.
+    //
+    // Arguments are pinned as well as selectors. Foundry's expectRevert(bytes4)
+    // only matches a revert whose data is exactly four bytes, so the two
+    // argument-free errors could be pinned by selector alone and the other five
+    // needed the full encoding. Having gone that far, asserting the values
+    // costs nothing and catches a changed constant.
+    //
+    // The check order in executeRebalance, which is what makes each reachable:
+    //
+    //   whenNotPaused          -> PausedError
+    //   onlyRole(KEEPER_ROLE)  -> AccessControlUnauthorizedAccount
+    //   vault == 0             -> ZeroVault
+    //   weight > 10000         -> InvalidWeight
+    //   _checkTimingAndNonce   -> SignalExpired | ExpiryTooFar | NonceAlreadyUsed
+    //   _enforceRateLimit      -> DailyLimitExceeded
+    //   _verifySignature       -> InvalidSignature
+    //
+    // Worth noting that InvalidWeight and DailyLimitExceeded are both checked
+    // BEFORE the signature, so those two tests say nothing about signature
+    // validation -- which is fine, and is why WrongSigner exists separately.
+
     function test_ReplayedNonce_Reverts() public {
         uint16 weight = 5000;
         uint256 nonce = 1;
         uint256 expiry = block.timestamp + 1 days;
         bytes memory sig = _signRebalance(address(vault), weight, nonce, expiry);
         executor.executeRebalance(address(vault), weight, nonce, expiry, sig);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                StrategyExecutor.NonceAlreadyUsed.selector, address(vault), nonce
+            )
+        );
         executor.executeRebalance(address(vault), weight, nonce, expiry, sig);
     }
 
@@ -95,7 +134,11 @@ contract StrategyExecutorTest is Test {
         uint256 nonce = 1;
         uint256 expiry = block.timestamp - 1;
         bytes memory sig = _signRebalance(address(vault), weight, nonce, expiry);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                StrategyExecutor.SignalExpired.selector, expiry, block.timestamp
+            )
+        );
         executor.executeRebalance(address(vault), weight, nonce, expiry, sig);
     }
 
@@ -104,7 +147,13 @@ contract StrategyExecutorTest is Test {
         uint256 nonce = 1;
         uint256 expiry = block.timestamp + 30 days;
         bytes memory sig = _signRebalance(address(vault), weight, nonce, expiry);
-        vm.expectRevert();
+        // maxExpiry is block.timestamp + 7 days, asserted here rather than
+        // hardcoded so a change to the window fails this test loudly.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                StrategyExecutor.ExpiryTooFar.selector, expiry, block.timestamp + 7 days
+            )
+        );
         executor.executeRebalance(address(vault), weight, nonce, expiry, sig);
     }
 
@@ -113,7 +162,7 @@ contract StrategyExecutorTest is Test {
         uint256 nonce = 1;
         uint256 expiry = block.timestamp + 1 days;
         bytes memory sig = _signRebalance(address(vault), weight, nonce, expiry);
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(StrategyExecutor.InvalidWeight.selector, weight));
         executor.executeRebalance(address(vault), weight, nonce, expiry, sig);
     }
 
@@ -125,7 +174,7 @@ contract StrategyExecutorTest is Test {
         uint256 nonce = 1;
         uint256 expiry = block.timestamp + 1 days;
         bytes memory sig = _signRebalance(address(vault), weight, nonce, expiry);
-        vm.expectRevert();
+        vm.expectRevert(StrategyExecutor.InvalidSignature.selector);
         executor.executeRebalance(address(vault), weight, nonce, expiry, sig);
     }
 
@@ -135,7 +184,7 @@ contract StrategyExecutorTest is Test {
         uint256 nonce = 1;
         uint256 expiry = block.timestamp + 1 days;
         bytes memory sig = _signRebalance(address(vault), weight, nonce, expiry);
-        vm.expectRevert();
+        vm.expectRevert(StrategyExecutor.PausedError.selector);
         executor.executeRebalance(address(vault), weight, nonce, expiry, sig);
     }
 
@@ -152,7 +201,13 @@ contract StrategyExecutorTest is Test {
         uint256 nonce = 6;
         uint256 expiry = block.timestamp + 1 days;
         bytes memory sig = _signRebalance(address(vault), weight, nonce, expiry);
-        vm.expectRevert();
+        // Five in the window, limit five. Both pinned: a raised limit that
+        // silently let a sixth through would otherwise still pass.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                StrategyExecutor.DailyLimitExceeded.selector, uint256(5), uint256(5)
+            )
+        );
         executor.executeRebalance(address(vault), weight, nonce, expiry, sig);
     }
 
