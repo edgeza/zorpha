@@ -157,7 +157,16 @@ contract VaultLauncherTest is Test {
             address(usdg), vault, leader, treasury, 8000, 500
         );
         vm.prank(leader);
-        vm.expectRevert(); // not admin, and it is set-once anyway
+        // The comment here used to read "not admin, and it is set-once anyway",
+        // which is two possible reasons and a bare assertion that could not
+        // tell them apart. It is the ROLE: setFirstLossEscrow is
+        // onlyRole(DEFAULT_ADMIN_ROLE) and the leader never holds it, so the
+        // set-once require is never even reached.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, leader, bytes32(0)
+            )
+        ); // not admin, and it is set-once anyway
         YieldVault(vault).setFirstLossEscrow(address(other));
 
         assertEq(YieldVault(vault).firstLossEscrow(), escrow, "escrow was swapped");
@@ -255,8 +264,19 @@ contract VaultLauncherTest is Test {
         YieldVault(vault).deposit(5_000 * ONE, alice);
         vm.stopPrank();
 
+        // The bond is not reclaimable while somebody else's money is in the
+        // vault. Named so it cannot pass on the leader lacking a role or the
+        // bond already being resolved -- both of which also revert here.
+        //
+        // Read BEFORE the prank: totalSupply() is an external call, and inside
+        // a pranked call's argument list it consumes the prank, so reclaimBond
+        // ran as this contract and reverted NotLeader(). Fifth time in this
+        // codebase.
+        uint256 outstanding = YieldVault(vault).totalSupply();
         vm.prank(leader);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(VaultLauncher.VaultNotEmpty.selector, outstanding)
+        );
         launcher.reclaimBond(1);
 
         vm.startPrank(alice);
@@ -284,8 +304,19 @@ contract VaultLauncherTest is Test {
 
     function test_OnlyGovernanceCanSlash() public {
         _launch(leader, address(steak), bytes32("a"));
+        // Role hash read BEFORE the prank. `launcher.GOVERNANCE_ROLE()` is an
+        // external call, and inside a pranked call's argument list it consumes
+        // the prank -- slashBond then runs as this contract and the assertion
+        // compares the wrong account. Fourth time this pattern has bitten in
+        // this codebase, so: never an external call inside expectRevert's
+        // arguments while a prank is pending.
+        bytes32 govRole = launcher.GOVERNANCE_ROLE();
         vm.prank(stranger);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, stranger, govRole
+            )
+        );
         launcher.slashBond(1, "because");
     }
 

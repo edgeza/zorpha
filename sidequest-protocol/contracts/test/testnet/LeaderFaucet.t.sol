@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {LeaderFaucet} from "../../src/testnet/LeaderFaucet.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// A launcher stand-in exposing only the two parameters the faucet reads.
 contract StubLauncher {
@@ -176,13 +177,17 @@ contract LeaderFaucetTest is Test {
 
     function test_Sweep_IsOwnerOnly() public {
         vm.prank(alice);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice)
+        );
         faucet.sweep(alice, 1);
     }
 
     function test_SetMaxClaims_IsOwnerOnly() public {
         vm.prank(alice);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice)
+        );
         faucet.setMaxClaims(999);
     }
 

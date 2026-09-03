@@ -9,6 +9,7 @@ import {YieldVault} from "../src/vaults/YieldVault.sol";
 import {StubYieldAdapter} from "../src/adapters/StubYieldAdapter.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockOracle} from "./mocks/MockOracle.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 contract VaultFactoryTest is Test {
     VaultFactory factory;
@@ -119,7 +120,16 @@ contract VaultFactoryTest is Test {
             performanceFeeBps: 0,
             feeRecipient: user, admin: user
         });
-        vm.expectRevert();
+        // Named, so this cannot pass on a malformed params struct or a bad
+        // adapter instead of the role check it is about. No prank: the caller
+        // is this contract, which was never granted DEPLOYER_ROLE.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                address(this),
+                factory.DEPLOYER_ROLE()
+            )
+        );
         factory.deployYieldVault(p, bytes32("non-deployer-salt"));
     }
 }

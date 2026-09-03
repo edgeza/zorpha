@@ -8,6 +8,7 @@ import {ZorphaBuyback} from "../src/ZorphaBuyback.sol";
 import {MerkleDistributor} from "../src/MerkleDistributor.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @dev Swap venue that actually moves both legs, so a buyback test proves a
 ///      real purchase happened rather than just an event firing.
@@ -492,17 +493,28 @@ contract ZorphaBuybackTest is Test {
         assertEq(usdc.balanceOf(treasury), 7_500e6, "fee revenue must never be strandable");
     }
 
+    /// @dev All three are Ownable2Step, and the deploy hands ownership to the
+    ///      Timelock -- so "timelock only" is true in production but the check
+    ///      being exercised here is the OWNER check. Naming the error makes
+    ///      that explicit; a bare revert would also have accepted a
+    ///      ReentrancyGuard trip or a zero-address require.
     function test_PrivilegedSettersAreTimelockOnly() public {
         vm.prank(keeper);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, keeper)
+        );
         buyback.setRouter(address(router));
 
         vm.prank(keeper);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, keeper)
+        );
         buyback.withdrawUsdg(keeper, 1);
 
         vm.prank(keeper);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, keeper)
+        );
         buyback.setThreshold(0);
     }
 
