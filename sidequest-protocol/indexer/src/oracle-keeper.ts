@@ -170,6 +170,37 @@ async function newestReportAge(now: bigint): Promise<number> {
 }
 
 async function preflight() {
+  /**
+   * Every read below assumes ORACLE_ADDRESS names the oracle CONTRACT. When it
+   * does not, viem reports each read as `returned no data ("0x")` and blames
+   * whichever function it happened to be calling, never the address:
+   *
+   *     The contract function "updaterCount" returned no data ("0x").
+   *       address: 0xF2FEb9B3E49890320539CfdEed28dE8A84da03DF
+   *
+   * Measured: ORACLE_ADDRESS had been set to the keeper's OWN address, and the
+   * restart loop blamed updaterCount, UPDATER_ROLE, maxStaleness and decimals
+   * in turn -- whichever promise below settled first -- so eight restarts read
+   * like four unrelated faults instead of one swapped variable.
+   *
+   * The signing key already gets this treatment; the address deserves it too.
+   * One eth_getCode separates "not a contract" from "wrong contract", and the
+   * swap is worth naming outright because these two vars sit next to each
+   * other and invite exactly this.
+   */
+  const code = await publicClient.getBytecode({ address: ORACLE });
+  if (!code || code === '0x') {
+    log('error', 'ORACLE_ADDRESS is not a contract on this chain', {
+      oracle: ORACLE,
+      chainId: CHAIN_ID,
+      hint:
+        ORACLE.toLowerCase() === account.address.toLowerCase()
+          ? 'this is the KEEPER address -- ORACLE_ADDRESS and ORACLE_KEEPER_PRIVATE_KEY have been swapped'
+          : 'check the address, and that it is deployed on this chain',
+    });
+    process.exit(1);
+  }
+
   const [id, role, staleness, quorum, count, decimals] = await Promise.all([
     publicClient.getChainId(),
     read<Hex>('UPDATER_ROLE'),

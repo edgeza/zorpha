@@ -49,6 +49,32 @@ GOV_ACCT="${2:-}"
   exit 1
 }
 
+# Optional non-interactive signing.
+#
+# This drill unlocks a keystore ~14 times -- once per governance send, plus the
+# two address lookups and one signature per rebalance -- and every one of them
+# prompts. A single mistyped password aborts the run partway through, which
+# happened at step 3/9 with two contracts already deployed.
+#
+# ETH_PASSWORD is NOT the fix, despite being cast's own env var for this. Set
+# it and clap marks --password-file as supplied for EVERY subcommand, so plain
+# reads start failing:
+#
+#     cast call ... -> error: the following required arguments were not
+#                      provided: --keystore <PATH>
+#
+# because --password-file "is used with --keystore" and cast call has neither.
+# Passing the flag explicitly, only where a keystore is actually opened, has no
+# such effect. --account and --password-file are a legal pair.
+#
+# Opt-in and empty by default, so nothing changes unless it is set:
+#     ZORPHA_PASSWORD_FILE=/path/to/pw ./script/...
+PW=()
+[[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
+  [[ -r "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: cannot read $ZORPHA_PASSWORD_FILE" >&2; exit 1; }
+  PW=(--password-file "$ZORPHA_PASSWORD_FILE")
+}
+
 RPC="${RH_TESTNET_RPC_URL:-https://rpc.testnet.chain.robinhood.com/rpc}"
 CHAIN_ID=46630
 WEB_ENV="../../zorpha-web/.env.local"
@@ -96,14 +122,14 @@ call()   { cast call "$@" --rpc-url "$RPC" | num; }
 # rendered "Zorpha HOOD Long/Flat V2" as `"Zorpha`. Strings get their own reader.
 callstr() { cast call "$@" --rpc-url "$RPC" | head -1; }
 try()    { cast call "$@" --rpc-url "$RPC" 2>/dev/null | num || true; }
-gov()    { cast send "$@" --rpc-url "$RPC" --account "$GOV_ACCT" >/dev/null; }
+gov()    { cast send "$@" --rpc-url "$RPC" --account "$GOV_ACCT" "${PW[@]}" >/dev/null; }
 
 [[ -f "$WEB_ENV" ]]  || die "no $WEB_ENV"
 [[ -f "$FIXTURES" ]] || die "no $FIXTURES"
 [[ -f "$VAULTS" ]]   || die "no $VAULTS"
 
-ACTOR=$(cast wallet address --account "$GOV_ACCT")
-SIGNER=$(cast wallet address --account "$SIGNER_ACCT")
+ACTOR=$(cast wallet address --account "$GOV_ACCT" "${PW[@]}")
+SIGNER=$(cast wallet address --account "$SIGNER_ACCT" "${PW[@]}")
 EXEC=$(env_of NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS)
 FACTORY=$(env_of NEXT_PUBLIC_VAULT_FACTORY_ADDRESS)
 TREASURY=$(env_of NEXT_PUBLIC_TREASURY_ADDRESS)
@@ -170,7 +196,7 @@ if [[ -f "$ADAPTER_CACHE" ]] && [[ -n "$(cat "$ADAPTER_CACHE")" ]]; then
   ok "reusing $ADAPTER"
 else
   OUT=$(forge create src/adapters/RobinhoodChainRouterAdapter.sol:StubSwapAdapter \
-        --rpc-url "$RPC" --account "$GOV_ACCT" --broadcast --json \
+        --rpc-url "$RPC" --account "$GOV_ACCT" "${PW[@]}" --broadcast --json \
         --constructor-args "$ASSET" "$CASH" "$ORACLE" "$ACTOR")
   ADAPTER=$(MSYS_NO_PATHCONV=1 node -e 'process.stdout.write(JSON.parse(process.argv[1]).deployedTo || "")' -- "$OUT")
   [[ -n "$ADAPTER" ]] || die "could not read the adapter address"
@@ -309,10 +335,10 @@ rebalance() {
   sh=$(cast keccak "$(cast abi-encode 'f(bytes32,address,uint16,uint256,uint256)' \
         "$RTH" "$VAULT" "$weight" "$nonce" "$expiry")")
   digest=$(cast keccak "$(printf '0x1901%s%s' "${DOMAIN#0x}" "${sh#0x}")")
-  sig=$(cast wallet sign --no-hash --account "$SIGNER_ACCT" "$digest")
+  sig=$(cast wallet sign --no-hash --account "$SIGNER_ACCT" "${PW[@]}" "$digest")
   cast send "$EXEC" 'executeRebalance(address,uint16,uint256,uint256,bytes)' \
     "$VAULT" "$weight" "$nonce" "$expiry" "$sig" \
-    --rpc-url "$RPC" --account "$GOV_ACCT" >/dev/null 2>"$ERRFILE"
+    --rpc-url "$RPC" --account "$GOV_ACCT" "${PW[@]}" >/dev/null 2>"$ERRFILE"
 }
 reason() {
   local r
@@ -385,7 +411,7 @@ ok "still sane after two trades"
 bold "9/9  Redeem everything through the venue"
 BEFORE=$(call "$ASSET" 'balanceOf(address)(uint256)' "$ACTOR")
 cast send "$VAULT" 'redeem(uint256,address,address)' "$SHARES" "$ACTOR" "$ACTOR" \
-  --rpc-url "$RPC" --account "$GOV_ACCT" >/dev/null 2>"$ERRFILE" \
+  --rpc-url "$RPC" --account "$GOV_ACCT" "${PW[@]}" >/dev/null 2>"$ERRFILE" \
   || die "the normal redemption was rejected: $(reason)
      This is what redeemEmergency existed to work around.
      $(tail -2 "$ERRFILE")"
