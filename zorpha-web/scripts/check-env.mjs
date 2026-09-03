@@ -91,13 +91,34 @@ loadEnvFiles();
 
 const isProd =
   process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+
+// A Vercel PREVIEW is a production Next.js build -- NODE_ENV is 'production'
+// there -- so isProd above is true for it, and this script demanded a
+// NEXT_PUBLIC_SITE_URL that only the production environment has. Every preview
+// deployment failed on it:
+//
+//     Environment check failed (1):
+//       - NEXT_PUBLIC_SITE_URL is not set.
+//     Refusing to build.
+//
+// while the same commit built fine in GitHub Actions, which sets one. The
+// check was right that a build must know its own origin and wrong that only a
+// human can supply it: Vercel already publishes the origin this deployment
+// will be served from, as VERCEL_URL. lib/site-url.ts consumes the public
+// twin of it, so a preview now labels itself correctly instead of claiming to
+// be zorpha.xyz.
+const isPreview = process.env.VERCEL_ENV === 'preview';
 const problems = [];
 const notes = [];
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
 if (!siteUrl) {
-  if (isProd) {
+  if (isPreview && process.env.VERCEL_URL) {
+    notes.push(
+      `NEXT_PUBLIC_SITE_URL unset — preview build, using https://${process.env.VERCEL_URL}`,
+    );
+  } else if (isProd) {
     problems.push(
       [
         'NEXT_PUBLIC_SITE_URL is not set.',

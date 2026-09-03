@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import { Schibsted_Grotesk, Newsreader, IBM_Plex_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { Providers } from './providers';
+import { SITE_URL } from '@/lib/site-url';
 
 /**
  * Text face.
@@ -52,7 +53,7 @@ const mono = IBM_Plex_Mono({
   variable: '--font-mono',
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://zorpha.xyz';
+const siteUrl = SITE_URL;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
