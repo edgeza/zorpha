@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   useAccount,
   useReadContract,
@@ -78,7 +78,7 @@ export function VaultActions({
   // so the form waits rather than guessing a scale.
   const scalesKnown = assetDecimals !== undefined && shareDecimals !== undefined;
 
-  const { data: assetBalance } = useReadContract({
+  const { data: assetBalance, refetch: refetchAssetBalance } = useReadContract({
     abi: erc20Abi,
     address: assetAddress,
     functionName: 'balanceOf',
@@ -86,7 +86,7 @@ export function VaultActions({
     query: { enabled: VAULT_DEPOSITS_ENABLED && Boolean(address) },
   });
 
-  const { data: shareBalance } = useReadContract({
+  const { data: shareBalance, refetch: refetchShareBalance } = useReadContract({
     abi: vaultAbi,
     address: vaultAddress,
     functionName: 'balanceOf',
@@ -94,7 +94,7 @@ export function VaultActions({
     query: { enabled: VAULT_DEPOSITS_ENABLED && Boolean(address) },
   });
 
-  const { data: allowance } = useReadContract({
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
     abi: erc20Abi,
     address: assetAddress,
     functionName: 'allowance',
@@ -102,8 +102,32 @@ export function VaultActions({
     query: { enabled: VAULT_DEPOSITS_ENABLED && Boolean(address) },
   });
 
-  const { writeContract, data: txHash, isPending, error } = useWriteContract();
-  const { isLoading: confirming } = useWaitForTransactionReceipt({ hash: txHash });
+  const { writeContract, data: txHash, isPending, error, reset } = useWriteContract();
+  const { isLoading: confirming, isSuccess: confirmed } = useWaitForTransactionReceipt({
+    hash: txHash,
+  });
+
+  /**
+   * What the transaction in flight actually IS.
+   *
+   * Depositing takes two transactions and the button used to be the only clue,
+   * so an approval that had landed looked exactly like a completed deposit: the
+   * same "View transaction" link appeared, and the button still read "Approve"
+   * because nothing refetched the allowance. The first deposit anyone attempted
+   * on this protocol stopped here -- the approve confirmed on chain, the
+   * deposit was never sent, and the page gave no reason to think a second
+   * signature was owed.
+   */
+  const [lastAction, setLastAction] = useState<'approve' | 'deposit' | 'withdraw' | null>(null);
+
+  // The allowance read is the one that MUST refresh: `needsApproval` derives
+  // from it, so a stale value pins the form on step one forever.
+  useEffect(() => {
+    if (!confirmed) return;
+    void refetchAllowance();
+    void refetchAssetBalance();
+    void refetchShareBalance();
+  }, [confirmed, refetchAllowance, refetchAssetBalance, refetchShareBalance]);
 
   if (!VAULT_DEPOSITS_ENABLED) {
     return (
@@ -199,6 +223,8 @@ export function VaultActions({
         onClick={() => {
           if (parsed === null || !address) return;
           if (needsApproval) {
+            reset();
+            setLastAction('approve');
             writeContract({
               abi: erc20Abi,
               address: assetAddress,
@@ -207,6 +233,8 @@ export function VaultActions({
             });
             return;
           }
+          reset();
+          setLastAction(mode);
           writeContract({
             abi: vaultAbi,
             address: vaultAddress,
@@ -219,11 +247,19 @@ export function VaultActions({
         {busy
           ? 'Confirming…'
           : needsApproval
-            ? `Approve ${assetSymbol ?? 'asset'}`
+            ? `Approve ${assetSymbol ?? 'asset'} — step 1 of 2`
             : mode === 'deposit'
               ? 'Deposit'
               : 'Withdraw'}
       </button>
+
+      {/* Said before the first click, not discovered after it. */}
+      {needsApproval && !busy && (
+        <p className="mt-2 text-xs leading-relaxed text-ink-500">
+          Depositing takes two transactions: one to let the vault move your{' '}
+          {assetSymbol ?? 'asset'}, then the deposit itself. Approving on its own moves nothing.
+        </p>
+      )}
 
       {error ? (
         <p className="mt-3 text-xs leading-relaxed text-danger-400">
@@ -232,14 +268,31 @@ export function VaultActions({
       ) : null}
 
       {txHash ? (
-        <a
-          href={explorerTx(txHash)}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="link-quiet mt-3 inline-block text-xs"
-        >
-          View transaction ↗
-        </a>
+        <div className="mt-3 flex flex-col gap-1">
+          <p className="text-xs leading-relaxed text-ink-400">
+            {confirming
+              ? lastAction === 'approve'
+                ? 'Approving…'
+                : lastAction === 'withdraw'
+                  ? 'Withdrawing…'
+                  : 'Depositing…'
+              : confirmed
+                ? lastAction === 'approve'
+                  ? 'Approved. Nothing has moved yet — press Deposit to send the second transaction.'
+                  : lastAction === 'withdraw'
+                    ? 'Withdrawn.'
+                    : 'Deposited.'
+                : null}
+          </p>
+          <a
+            href={explorerTx(txHash)}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="link-quiet inline-block text-xs"
+          >
+            View {lastAction === 'approve' ? 'approval' : lastAction ?? 'transaction'} ↗
+          </a>
+        </div>
       ) : null}
     </div>
   );
