@@ -43,6 +43,42 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 ///            decorative. Risk-council and adapter-setter authority now sit
 ///            behind it.
 contract DeployVaultsV1 is Script {
+    /// @notice Oracle staleness window for the vaults this script deploys.
+    ///
+    /// 1 hours was wrong, and measurably so. Chainlink on chain 4663 publishes on
+    /// an 86,400s heartbeat with a 0.5% deviation trigger, so an old timestamp is
+    /// the feed working rather than a broken feed. Read live at block 53,639,835:
+    /// 31 of 57 feeds -- 54% -- were older than one hour, mid-week and
+    /// mid-session, the oldest at 85,240s. Ship 1 hours and every rebalance and
+    /// NAV read reverts StaleOracle on most assets. The parameter is immutable
+    /// with no setter, so no governance call fixes it: every vault would be
+    /// redeployed.
+    ///
+    /// WHY ONE WINDOW, WHEN THE MACHINERY NOW ALLOWS PER-ASSET
+    ///
+    /// Because the measurements do not support per-asset. The heartbeat is
+    /// uniform; what varies is how often the deviation trigger fires, and that
+    /// follows volatility, not the asset. Sampled mid-session, 3 Sep 2026,
+    /// 19:48 UTC with the US market open:
+    ///
+    ///     GME     209s     TSLA    366s     NVDA    580s   <- moving, so fresh
+    ///     ETH/USD 2,394s
+    ///     SPY  16,591s     SLV  14,446s
+    ///     SGOV 71,239s (19.8h)                            <- market OPEN
+    ///
+    /// NVDA is fresh because it is moving; at 03:00 it will not be. SGOV sat 19.8
+    /// hours stale while its own market was open, because a treasury ETF does not
+    /// move half a percent. A per-asset window would be tuned to observed
+    /// freshness that nothing guarantees, and would fail closed the first quiet
+    /// session.
+    ///
+    /// So: one window that clears the heartbeat, and StrategyExecutor's trading
+    /// window doing the real work of stopping a manager trading an overnight
+    /// price. OracleWindow enforces that this is never set tighter than the
+    /// oracle it reads -- the MedianOracle below stays at 1 hour deliberately,
+    /// because our own keeper posts every 900s and should be held to it.
+    uint256 internal constant ORACLE_STALENESS = 90_000; // 86,400s heartbeat + 1h
+
     struct Deployed {
         MedianOracle oracle;
         VaultFactory factory;
@@ -200,7 +236,7 @@ contract DeployVaultsV1 is Script {
                     asset: stockToken1,
                     cashAsset: usdc,
                     oracle: stockFeed1 == address(0) ? defaultOracle : stockFeed1,
-                    maxOracleStaleness: 1 hours,
+                    maxOracleStaleness: ORACLE_STALENESS,
                     name: string.concat("Zorpha ", _symbolOf(stockToken1), " Long/Flat Vault"),
                     symbol: string.concat("zq", _symbolOf(stockToken1)),
                     rebalanceThresholdBps: 200,
@@ -235,7 +271,7 @@ contract DeployVaultsV1 is Script {
                         baseAsset: usdc,
                         tokens: tokens,
                         oracles: oracles,
-                        maxOracleStaleness: 1 hours,
+                        maxOracleStaleness: ORACLE_STALENESS,
                         initialWeightsBps: weights,
                         // A basket has no single asset to take a name from,
                         // so this one names the unit it is measured in
