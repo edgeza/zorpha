@@ -24,10 +24,61 @@ contract MainnetSafetyTest is Test {
         MainnetSafety.check(chainId, swapIsReal, yieldIsReal, updaterCount, minQuorum);
     }
 
+    function _checkToken(
+        uint256 chainId,
+        address recipient,
+        uint256 codeLength,
+        address deployer
+    ) external pure {
+        MainnetSafety.checkTokenLaunch(chainId, recipient, codeLength, deployer);
+    }
+
+    address constant EOA = address(0xE0A);
+    address constant DEPLOYER = address(0xDEAD);
+    address constant LOCKER = address(0x10CC);
+
     uint256 constant MAINNET = 4663;
     uint256 constant TESTNET = 46630;
 
     // ─── The mainnet refusals ───────────────────────────────────────────────
+
+    /// 13% of supply -- 130,000,000 ZOR -- moves in one plain `transfer` during
+    /// the token deploy, and the only constraint was `!= address(0)`. On
+    /// mainnet that could be a bare private key.
+    ///
+    /// Not merely a governance preference: "locked liquidity" is one of three
+    /// published curation criteria on this chain, and curation is the discovery
+    /// path because there are no paid listings. An unlocked launch tranche
+    /// fails a check that decides whether anyone sees the token.
+    function test_Mainnet_RejectsLiquidityToAnEOA() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(MainnetSafety.LiquidityRecipientNotAContract.selector, EOA)
+        );
+        this._checkToken(MAINNET, EOA, 0, DEPLOYER);
+    }
+
+    /// The specific case worth naming separately, because this deployment's
+    /// original deployer key was published in plaintext.
+    function test_Mainnet_RejectsLiquidityToTheDeployer() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(MainnetSafety.LiquidityRecipientIsDeployer.selector, DEPLOYER)
+        );
+        // Contract or not is irrelevant -- the deployer check comes first.
+        this._checkToken(MAINNET, DEPLOYER, 4321, DEPLOYER);
+    }
+
+    /// Any contract passes: a Timelock, a locker, or a CCA pool seeder. Naming
+    /// one would force a library redeploy the first time the launch plan
+    /// changed, and what is being excluded is the no-accountability case.
+    function test_Mainnet_AcceptsAContract() public view {
+        this._checkToken(MAINNET, LOCKER, 2048, DEPLOYER);
+    }
+
+    /// Testnet is unconstrained on purpose. The drills send liquidity to an
+    /// EOA constantly and must keep working.
+    function test_Testnet_AllowsLiquidityToAnEOA() public view {
+        this._checkToken(TESTNET, EOA, 0, DEPLOYER);
+    }
 
     function test_Mainnet_RejectsStubSwapAdapter() public {
         vm.expectRevert(MainnetSafety.StubSwapAdapterOnMainnet.selector);

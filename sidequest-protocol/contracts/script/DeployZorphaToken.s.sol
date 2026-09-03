@@ -7,6 +7,7 @@ import {Zorpha} from "../src/Zorpha.sol";
 import {ZorphaVesting} from "../src/ZorphaVesting.sol";
 import {ZorphaBuyback} from "../src/ZorphaBuyback.sol";
 import {ProtocolTreasury} from "../src/ProtocolTreasury.sol";
+import {MainnetSafety} from "../src/lib/MainnetSafety.sol";
 import {InsuranceFund} from "../src/InsuranceFund.sol";
 import {MerkleDistributor} from "../src/MerkleDistributor.sol";
 import {Timelock} from "../src/governance/Timelock.sol";
@@ -147,6 +148,17 @@ contract DeployZorphaToken is Script {
         // ecosystem emissions tail, the DAO treasury tranche, and the
         // contributor + backer tranche awaiting real vesting schedules.
         uint256 govAmount = supply - airdropAmount - liquidityAmount - insuranceAmount;
+
+        // Refuse a mainnet launch that would hand 13% of supply to a bare
+        // private key. `locked liquidity` is one of three published curation
+        // criteria on this chain, and curation is the discovery path -- there
+        // are no paid listings to fall back on.
+        MainnetSafety.checkTokenLaunch(
+            block.chainid,
+            liquidityRecipient,
+            liquidityRecipient.code.length,
+            msg.sender
+        );
 
         d.zor.transfer(address(d.distributor), airdropAmount);
         d.zor.transfer(liquidityRecipient, liquidityAmount);
