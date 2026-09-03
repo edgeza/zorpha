@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {ERC4626YieldAdapter} from "../../src/adapters/ERC4626YieldAdapter.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockERC4626} from "../mocks/MockERC4626.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// What happens when the venue's share price has been inflated.
 ///
@@ -38,6 +39,38 @@ import {MockERC4626} from "../mocks/MockERC4626.sol";
 /// on the day it is approved, and a third party can inflate it at any time --
 /// the donation costs the attacker nothing they do not get back from the next
 /// depositor.
+/// A venue that pockets fewer assets than it was asked for and hands the
+/// remainder straight back.
+///
+/// NOT ERC-4626 compliant, deliberately: `deposit(assets, receiver)` is
+/// specified to take `assets` or revert, never to partially fill. The guard
+/// exists for venues that do not behave, so a misbehaving venue is what tests
+/// it.
+///
+/// What it actually does, since the numbers are not obvious: it pulls 60% for
+/// shares, then returns 40% of the ORIGINAL amount out of that same 60% -- so
+/// it also gives away part of what was backing the shares it just minted. On a
+/// 1e9 deposit the adapter ends with 8e8 idle and shares worth 2e8. A full 1e9
+/// retained, split unevenly across the two legs.
+///
+/// That is the point. The old guard looked only at the share leg, saw 2e8
+/// against 1e9 paid, and rejected a deposit that had lost nothing. The
+/// distinction it was missing is real: assets sitting in the adapter are still
+/// the adapter's, while assets a venue keeps without issuing shares are gone.
+contract PartialFillVenue is MockERC4626 {
+    uint16 public takeBps = 6_000;
+
+    constructor(IERC20 a) MockERC4626(a, "Partial", "pTKN") {}
+
+    function deposit(uint256 assets, address receiver) public override returns (uint256) {
+        uint256 take = (assets * takeBps) / 10_000;
+        uint256 shares = super.deposit(take, receiver);
+        // Hand back what was not taken, rather than keeping it unbacked.
+        IERC20(asset()).transfer(msg.sender, assets - take);
+        return shares;
+    }
+}
+
 contract ERC4626YieldAdapterTest is Test {
     MockERC20 asset;
     MockERC4626 venue;
@@ -169,6 +202,33 @@ contract ERC4626YieldAdapterTest is Test {
         uint256 before = adapter.totalAssets();
         adapter.deposit(1_000_000_000);
         assertGt(adapter.totalAssets(), before, "a deposit after real yield must still land");
+    }
+
+    /// A venue that takes only part of the deposit and returns the rest must
+    /// NOT be treated as a loss. The returned portion is still the adapter's,
+    /// and `totalAssets()` counts it.
+    ///
+    /// The guard originally compared `convertToAssets(shares)` alone against
+    /// the amount paid, so the returned remainder was invisible to it and a
+    /// 60%-fill venue looked like a 40% loss. It now measures value RETAINED --
+    /// shares plus idle balance -- which is what "did this deposit lose
+    /// anything" actually means.
+    function test_Deposit_VenueTakesOnlyPart_IsNotALoss() public {
+        PartialFillVenue venuePF = new PartialFillVenue(asset);
+        ERC4626YieldAdapter a2 =
+            new ERC4626YieldAdapter(address(asset), address(venuePF), address(this));
+        a2.grantRole(a2.VAULT_ROLE(), address(this));
+        asset.approve(address(a2), type(uint256).max);
+
+        uint256 amount = 1_000_000_000;
+        a2.deposit(amount);   // must not revert
+
+        assertApproxEqAbs(
+            a2.totalAssets(), amount, 2,
+            "a partial fill loses nothing: the remainder is idle in the adapter"
+        );
+        assertGt(asset.balanceOf(address(a2)), 0, "setup: some of it should be idle");
+        assertGt(venuePF.balanceOf(address(a2)), 0, "setup: and some should be in shares");
     }
 
     /// Dust deposits must not trip a basis-point tolerance that rounds to zero.

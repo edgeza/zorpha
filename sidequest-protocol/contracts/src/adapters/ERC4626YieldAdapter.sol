@@ -134,11 +134,44 @@ contract ERC4626YieldAdapter is IYieldAdapter, AccessControl, ReentrancyGuard {
         // a vault that just lost a slice of their principal. It cannot brick
         // migration either -- `setAdapter` unwinds through `withdraw`, which
         // has no such guard by design.
-        uint256 worth = target.convertToAssets(shares);
+        // Value RETAINED, not just the value of the shares: whatever the venue
+        // did not take is still sitting here, still ours, and still counted by
+        // `totalAssets()`.
+        //
+        // Comparing only `convertToAssets(shares)` against the amount paid
+        // rejected a venue that partially filled -- the unfilled remainder
+        // stays as idle balance in this contract, so no value was lost, but the
+        // share leg alone looked short and the guard fired. That would have
+        // blocked deposits into any venue with a deposit cap or a utilisation
+        // limit, which is a normal thing for a curated vault to have.
+        //
+        // Reading the balance AFTER the call also answers slither's
+        // reentrancy-balance finding on this function directly, rather than by
+        // argument: the comparison no longer mixes a pre-call balance with a
+        // post-call value.
+        uint256 worth = target.convertToAssets(shares) + asset.balanceOf(address(this));
+        // slither: reentrancy-balance on the comparison below, flagging
+        // `toDeposit` as a balance read before the external call and used in a
+        // condition after it.
+        //
+        // Inherent to the check rather than a defect in it. `toDeposit` is what
+        // was PAID, which can only be measured before paying; `worth` is what
+        // is HELD, which can only be measured after. A guard that compared two
+        // post-call figures would not be measuring a loss at all.
+        //
+        // Not exploitable. `deposit` is nonReentrant and VAULT_ROLE-gated, so a
+        // hostile target cannot re-enter it or `withdraw`. It does hold an
+        // unlimited approval on this contract, granted in the constructor, so
+        // it could pull more than `toDeposit` during its own call -- but the
+        // adapter's balance at that moment IS `toDeposit`, having just received
+        // exactly that from the vault, so there is nothing further to take. And
+        // a target that pulled the assets without issuing shares makes `worth`
+        // smaller, which trips the guard rather than evading it.
         uint256 tolerance = (toDeposit * MAX_DEPOSIT_LOSS_BPS) / 10_000;
         // A bps tolerance rounds to zero on dust, where one wei of ordinary
         // rounding would then trip the guard and block the deposit.
         if (tolerance < MIN_ABS_TOLERANCE) tolerance = MIN_ABS_TOLERANCE;
+        // slither-disable-next-line reentrancy-balance
         if (worth + tolerance < toDeposit) revert DepositValueLost(toDeposit, worth);
 
         emit Deposited(toDeposit, shares);
