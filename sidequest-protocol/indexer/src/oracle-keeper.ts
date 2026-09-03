@@ -64,7 +64,51 @@ function required(name: string): string {
 
 const RPC_URL = process.env.RPC_URL ?? process.env.RH_TESTNET_RPC_URL ?? '';
 const ORACLE = required('ORACLE_ADDRESS') as Address;
-const PRIVATE_KEY = required('ORACLE_KEEPER_PRIVATE_KEY') as Hex;
+
+/**
+ * Normalise and check the signing key BEFORE viem sees it.
+ *
+ * viem's own failure is a stack trace from inside @noble/curves:
+ *
+ *     Error: invalid private key, expected hex or 32 bytes, got string
+ *       at normPrivateKeyToScalar (.../weierstrass.js:269:19)
+ *
+ * which says nothing about WHICH of the plausible mistakes was made -- a
+ * missing 0x, a trailing newline from a copy-paste, an address pasted where a
+ * key belongs, or a truncated value. In a container that restarts on failure,
+ * that trace repeats forever and the operator has to guess.
+ *
+ * The value itself is never logged. Only its shape.
+ */
+function privateKeyFrom(name: string): Hex {
+  const raw = required(name).trim();
+  const body = raw.startsWith('0x') || raw.startsWith('0X') ? raw.slice(2) : raw;
+
+  if (body.length === 40) {
+    log('error', 'that looks like an ADDRESS, not a private key', {
+      name, expected: '64 hex characters', got: `${body.length} characters`,
+    });
+    process.exit(1);
+  }
+  if (body.length !== 64) {
+    log('error', 'private key is the wrong length', {
+      name,
+      expected: '64 hex characters, with or without a 0x prefix',
+      got: `${body.length} characters`,
+      hint: body.length > 64 ? 'check for quotes or trailing whitespace' : 'the value looks truncated',
+    });
+    process.exit(1);
+  }
+  if (!/^[0-9a-fA-F]{64}$/.test(body)) {
+    log('error', 'private key contains non-hex characters', {
+      name, hint: 'check for quotes, spaces or a newline in the pasted value',
+    });
+    process.exit(1);
+  }
+  return `0x${body.toLowerCase()}` as Hex;
+}
+
+const PRIVATE_KEY = privateKeyFrom('ORACLE_KEEPER_PRIVATE_KEY');
 const CHAIN_ID = Number(process.env.CHAIN_ID ?? '46630');
 
 /** Post once the price is older than this. Well inside maxStaleness so a few
