@@ -309,9 +309,28 @@ export function fixedFindings(): Finding[] {
   );
 }
 
+/**
+ * Counts from the contract suite, refreshed by hand.
+ *
+ * `suiteTests` said 97 for long enough that it drifted to roughly a third of
+ * the truth -- the suite is 283 -- and the copy hardcoded "seven stateful
+ * invariants" against an actual 13. Understating is not a harmless direction to
+ * be wrong in: every other number on the marketing pages is load-bearing, and a
+ * reader who checks one and finds it wrong has no reason to trust the rest.
+ *
+ * Refresh with, from sidequest-protocol/contracts:
+ *
+ *     forge test --list --json | node -e '...'   # 23 files, 283 tests, 13 invariants
+ *
+ * The durable fix is to generate this at build time rather than type it. Until
+ * then, treat it as a number that must be re-read whenever tests are added.
+ */
 export const TEST_STATUS = {
   tokenLayerTests: 40,
   tokenLayerPassing: 40,
-  suiteTests: 97,
+  /** Everything `forge test` runs: 270 unit and fuzz tests plus 13 invariants. */
+  suiteTests: 283,
   suiteFailing: 0,
+  /** Stateful invariant runs, counted separately because the copy calls them out. */
+  suiteInvariants: 13,
 } as const;

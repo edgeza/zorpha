@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { Hero } from '@/components/marketing/Hero';
-import { ReceiptAnatomy } from '@/components/marketing/ReceiptAnatomy';
+import { ReceiptVerifier } from '@/components/marketing/ReceiptVerifier';
 import { SectionHeading } from '@/components/ui/Primitives';
 import { ReceiptMarquee } from '@/components/marketing/ReceiptMarquee';
 import { Reveal } from '@/components/motion/Reveal';
@@ -94,10 +94,10 @@ export default function HomePage() {
 
           <div id="receipts">
             <div className="mb-3 flex items-center justify-between">
-              <span className="eyebrow">Anatomy of a receipt</span>
+              <span className="eyebrow">Check a real receipt</span>
               <span className="badge-verified">verifiable</span>
             </div>
-            <ReceiptAnatomy />
+            <ReceiptVerifier />
           </div>
         </div>
       </section>
@@ -156,7 +156,7 @@ export default function HomePage() {
             Read the whitepaper
           </Link>
           <span className="text-sm text-ink-400">
-            {TEST_STATUS.suiteTests} contract tests, seven stateful invariants
+            {TEST_STATUS.suiteTests} contract tests, {TEST_STATUS.suiteInvariants} stateful invariants
           </span>
         </div>
       </section>
