@@ -7,6 +7,7 @@ import {RWRotationVault} from "../../src/vaults/RWRotationVault.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockOracle} from "../mocks/MockOracle.sol";
 import {ReceiptRenderer} from "../../src/lib/ReceiptRenderer.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 contract RWRotationVaultTest is Test {
     MockERC20 usdc;
@@ -64,7 +65,7 @@ contract RWRotationVaultTest is Test {
     function test_BadWeights_Reverts() public {
         uint16[] memory bad = new uint16[](2);
         bad[0] = 5000; bad[1] = 4000; // sum != 10000
-        vm.expectRevert();
+        vm.expectRevert(RWRotationVault.BadWeights.selector);
         vm.prank(keeper);
         vault.rebalanceTo(bad);
     }
@@ -147,7 +148,9 @@ contract RWRotationVaultTest is Test {
     function test_RebalanceLengthMismatch_Reverts() public {
         uint16[] memory bad = new uint16[](3);
         bad[0] = 5000; bad[1] = 3000; bad[2] = 2000;
-        vm.expectRevert();
+        // The length require fires BEFORE the weight sum, which is why a
+        // three-element array reaches this and not BadWeights.
+        vm.expectRevert(bytes("RWRotationVault: length mismatch"));
         vm.prank(keeper);
         vault.rebalanceTo(bad);
     }
@@ -399,7 +402,13 @@ contract RWRotationVaultTest is Test {
 
     function test_EvaluateFees_IsKeeperOnly() public {
         _depositUnderlying();
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                address(this),
+                keccak256("KEEPER_ROLE")
+            )
+        );
         vault.evaluateFees();
     }
 

@@ -438,7 +438,14 @@ contract FirstLossEscrowTest is Test {
 
         vm.warp(block.timestamp + 7 days);
         vm.prank(leader);
-        vm.expectRevert();
+        // The whole point: the request was fine when made, and the vault doubling
+        // in the meantime is what makes it fail now. WouldBreachMinimum is
+        // therefore the assertion -- TooEarly would mean the warp did not work.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                FirstLossEscrow.WouldBreachMinimum.selector, 250, MIN_COVERAGE
+            )
+        );
         escrow.executeWithdrawal();
     }
 

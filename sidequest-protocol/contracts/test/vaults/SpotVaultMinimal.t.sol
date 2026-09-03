@@ -9,6 +9,7 @@ import {MockOracle} from "../mocks/MockOracle.sol";
 import {MockSpotAdapter} from "../mocks/MockSpotAdapter.sol";
 import {ReceiptRenderer} from "../../src/lib/ReceiptRenderer.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 
 contract SpotVaultMinimalTest is Test {
     MockERC20 wbtc;
@@ -187,14 +188,44 @@ contract SpotVaultMinimalTest is Test {
         assertEq(vault.rebalanceCount(), 5);
     }
 
-    function test_EmergencyRedeem_HaircutOnZeroNAV() public {
-        _deposit();
-        oracle.setPrice(0);
-        // Stale-oracle path would revert on rebalance; emergency path skips oracle.
-        // We simulate a "depositor trapped by zero nav" state by burning cash + transferring out the underlying.
-        // This is a smoke test that emergencyRedeem reverts on the empty-vault edge case.
-        vm.expectRevert();
-        vault.redeemEmergency(1, alice, alice);
+    /// A vault holding NOTHING while shares are still outstanding.
+    ///
+    /// This test used to be vacuous, and its own comments described setup it
+    /// did not perform: "we simulate a depositor trapped by zero nav by
+    /// burning cash + transferring out the underlying" -- it did neither -- and
+    /// "a smoke test that emergencyRedeem reverts on the empty-vault edge
+    /// case", against a vault alice had just funded.
+    ///
+    /// What it actually asserted was ERC20InsufficientAllowance(testContract,
+    /// 0, 1): it called redeemEmergency with no prank, so it proved only that
+    /// a stranger cannot redeem alice's shares. True, unrelated to the name,
+    /// and already guaranteed by ERC-4626. A bare `vm.expectRevert()` let it
+    /// sit there passing.
+    ///
+    /// The state it MEANT to describe is real and worth covering -- it is what
+    /// the original spot vault ended up in and was written off for, after the
+    /// 1:1 stub adapter corrupted its cash leg. So this now actually drains the
+    /// vault and asserts what the emergency exit does about it.
+    function test_EmergencyRedeem_OnADrainedVault() public {
+        uint256 shares = _deposit();
+
+        // Drain both legs. MockERC20.burn is permissionless, which is the only
+        // way to reach a state the vault cannot reach by itself.
+        wbtc.burn(address(vault), wbtc.balanceOf(address(vault)));
+        usdc.burn(address(vault), usdc.balanceOf(address(vault)));
+        assertEq(vault.grossValue(), 0, "setup: the vault must hold nothing");
+        assertGt(vault.totalSupply(), 0, "setup: but shares must remain outstanding");
+
+        // Emergency exit pays in kind and pro-rata, so with nothing to pay it
+        // pays nothing -- and must NOT revert, or the depositor is trapped
+        // holding shares in a vault that cannot even acknowledge them.
+        vm.prank(alice);
+        (uint256 paid, uint256 paidCash) = vault.redeemEmergency(shares, alice, alice);
+
+        assertEq(paid, 0, "nothing to pay from an empty vault");
+        assertEq(paidCash, 0, "and nothing on the cash leg either");
+        assertEq(vault.balanceOf(alice), 0, "but the shares must still be burned");
+        assertEq(vault.totalSupply(), 0, "so the vault is left clean rather than stuck");
     }
 
     /// The assertion that would have caught the worst bug in this codebase on
@@ -291,7 +322,14 @@ contract SpotVaultMinimalTest is Test {
         vault.setSwapAdapter(address(dry));
 
         vm.prank(alice);
-        vm.expectRevert();
+        // The fresh adapter holds neither leg, so the ordinary redeem cannot
+        // settle its swap -- which is the precondition for the emergency exit
+        // exercised below, not an incidental failure.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC20Errors.ERC20InsufficientBalance.selector, address(dry), 0, 500_000_000
+            )
+        );
         vault.redeem(shares, alice, alice);
 
         uint256 assetLeg = wbtc.balanceOf(address(vault));

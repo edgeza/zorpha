@@ -9,6 +9,7 @@ import {ERC4626YieldAdapter} from "../../src/adapters/ERC4626YieldAdapter.sol";
 import {YieldVault} from "../../src/vaults/YieldVault.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockERC4626} from "../mocks/MockERC4626.sol";
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 
 /// @notice Covers the adapter that replaces `StubYieldAdapter`, whose own
 ///         comment concedes it earns nothing. The cases that matter are the
@@ -249,7 +250,17 @@ contract ERC4626YieldAdapterTest is Test {
         uint256 aliceBefore = usdg.balanceOf(alice);
 
         vm.startPrank(alice);
-        vm.expectRevert();
+        // The vault holds 1e9 and owes 9e9, so the payout transfer is what fails.
+        // That is the assertion in the name: a short recall fails the whole
+        // redemption rather than paying out less than the shares are worth.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC20Errors.ERC20InsufficientBalance.selector,
+                address(vault),
+                1_000 * ONE,
+                9_000 * ONE
+            )
+        );
         vault.withdraw(9_000 * ONE, alice, alice);
         vm.stopPrank();
 

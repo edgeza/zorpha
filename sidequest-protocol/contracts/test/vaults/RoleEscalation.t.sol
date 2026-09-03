@@ -190,9 +190,19 @@ contract RoleEscalationTest is Test {
         assertTrue(vault.hasRole(RISK, riskCouncil), "setup: the grant must have landed");
 
         vm.startPrank(riskCouncil);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, riskCouncil, bytes32(0)
+            )
+        );
         vault.grantRole(SETTER, riskCouncil);
-        vm.expectRevert();
+        // A DIFFERENT role from the line above: granting SETTER needs its admin
+        // (DEFAULT_ADMIN), calling setAdapter needs SETTER itself.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, riskCouncil, SETTER
+            )
+        );
         vault.setAdapter(address(otherAdapter));
         vm.stopPrank();
     }

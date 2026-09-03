@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {StubSwapAdapter} from "../../src/adapters/RobinhoodChainRouterAdapter.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockOracle} from "../mocks/MockOracle.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 /// The testnet swap stub, which used to corrupt every vault it touched.
 ///
@@ -134,7 +135,13 @@ contract StubSwapAdapterTest is Test {
         equity.mint(stranger, 1e18);
         vm.startPrank(stranger);
         equity.approve(address(adapter), 1e18);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                stranger,
+                keccak256("VAULT_ROLE")
+            )
+        );
         adapter.swap(address(equity), address(stable), 1e18, 0);
         vm.stopPrank();
     }

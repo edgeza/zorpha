@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {ReputationRegistry} from "../../src/reputation/ReputationRegistry.sol";
 import {ReceiptRenderer} from "../../src/lib/ReceiptRenderer.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 contract ReputationRegistryTest is Test {
     ReputationRegistry registry;
@@ -39,12 +40,15 @@ contract ReputationRegistryTest is Test {
     }
 
     function test_Publish_BadWindow_Reverts() public {
-        vm.expectRevert();
+        // A require string, not the BadWindow() custom error this contract also
+        // declares. publish validates with strings; the custom error belongs to
+        // other paths, and a bare assertion hid which of the two applied.
+        vm.expectRevert(bytes("ReputationRegistry: bad window"));
         registry.publish(manager, bytes32("x"), 100, 50);
     }
 
     function test_Publish_ZeroCommitment_Reverts() public {
-        vm.expectRevert();
+        vm.expectRevert(bytes("ReputationRegistry: zero commitment"));
         registry.publish(manager, bytes32(0), T0 - 1, T0);
     }
 
@@ -89,7 +93,15 @@ contract ReputationRegistryTest is Test {
         registry.challenge(manager, 0, keccak256("wrong"));
 
         vm.prank(challenger);
-        vm.expectRevert();
+        // The gate is DEFAULT_ADMIN_ROLE, despite the name. There is no separate
+        // arbiter role on this contract.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                challenger,
+                bytes32(0)
+            )
+        );
         registry.resolveChallenge(manager, 0, true);
 
         vm.expectEmit(true, true, true, true);

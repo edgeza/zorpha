@@ -178,6 +178,21 @@ contract MainnetAdaptersForkTest is Test {
         deal(USDG, address(this), large);
         IERC20(USDG).approve(address(adapter), large);
 
+        // The last bare expectRevert in the suite, deliberately.
+        //
+        // Every other one has been given its error. This one cannot be, yet: it
+        // only runs with RH_MAINNET_RPC_URL set, mainnet is not deployed, so it
+        // has never executed. The revert would come from either the adapter's
+        // own slippage guard or the router's, depending on which trips first
+        // against a real pool at a real depth -- and that is exactly what this
+        // test exists to find out.
+        //
+        // Guessing would be worse than leaving it open. A wrong expectation
+        // fails the first time somebody runs this against a live fork, which is
+        // the one moment they need it to tell them the truth about the pool
+        // rather than about my guess.
+        //
+        // Name it once this has run for real, and record which layer rejected.
         vm.expectRevert();
         adapter.swap(USDG, AAPL, large, minOut);
     }

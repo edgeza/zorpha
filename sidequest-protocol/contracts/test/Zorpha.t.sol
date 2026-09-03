@@ -9,6 +9,8 @@ import {MerkleDistributor} from "../src/MerkleDistributor.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 /// @dev Swap venue that actually moves both legs, so a buyback test proves a
 ///      real purchase happened rather than just an event firing.
@@ -112,7 +114,11 @@ contract ZorphaTokenTest is Test {
         assertEq(token.totalSupply(), 1_000_000_000e18 - 500e18);
 
         vm.prank(spender);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC20Errors.ERC20InsufficientAllowance.selector, spender, 0, 1
+            )
+        );
         token.burnFrom(holder, 1);
     }
 
@@ -617,7 +623,13 @@ contract MerkleDistributorTest is Test {
     function test_SweepIsRoleGated() public {
         vm.warp(block.timestamp + 31 days);
         vm.prank(alice);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                alice,
+                keccak256("SWEEPER_ROLE")
+            )
+        );
         dist.sweep(alice);
     }
 
