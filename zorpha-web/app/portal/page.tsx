@@ -14,6 +14,8 @@ export default async function PortalDashboard() {
     listManagers(),
   ]);
 
+  const totalRebalances = managers.reduce((sum, m) => sum + m.total_rebalances, 0);
+
   return (
     <div className="flex flex-col gap-8">
       <header>
@@ -29,15 +31,44 @@ export default async function PortalDashboard() {
         <BuybackPanel />
       </section>
 
+      {/*
+        A zero next to a label reads as a broken feed unless something says
+        otherwise. "Vaults live 3 / Managers 0 / Receipts indexed 0" is the
+        protocol's true state -- three vaults deployed, nobody deposited,
+        nothing rebalanced -- but presented bare it looks like an indexer that
+        fell over, which is exactly the wrong conclusion. Each zero now carries
+        the condition that would change it.
+      */}
       <section className="grid grid-cols-2 gap-5 sm:grid-cols-4">
-        <Stat label="Vaults live" value={vaults.length} />
-        <Stat label="Managers" value={managers.length} />
+        <Stat label="Vaults live" value={vaults.length} sub="Deployed and verified" />
+        <Stat
+          label="Managers"
+          value={managers.length}
+          sub={managers.length === 0 ? 'Counted from signed rebalances' : undefined}
+        />
         <Stat
           label="Receipts indexed"
-          value={managers.reduce((sum, m) => sum + m.total_rebalances, 0).toLocaleString('en-US')}
+          value={totalRebalances.toLocaleString('en-US')}
+          sub={totalRebalances === 0 ? 'None signed yet' : undefined}
         />
         <Stat label="Network" value="Testnet" tone="warn" size="md" sub="Mainnet is not deployed" />
       </section>
+
+      {totalRebalances === 0 && (
+        <div className="card flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold">Where this stands</h2>
+            <p className="mt-1 max-w-prose text-sm leading-relaxed text-ink-400">
+              The contracts are live and the vaults are open, but nothing has been deposited and
+              no manager has signed a rebalance, so the record below is genuinely empty rather
+              than unavailable. The first instruction anyone signs starts it.
+            </p>
+          </div>
+          <Link href="/portal/manage" className="btn-primary btn-sm shrink-0 self-start sm:self-auto">
+            Open the terminal
+          </Link>
+        </div>
+      )}
 
       <section>
         <div className="mb-4 flex items-baseline justify-between gap-4">
@@ -50,7 +81,12 @@ export default async function PortalDashboard() {
         {receipts.length === 0 ? (
           <EmptyState
             title="No receipts yet"
-            body="Once a manager signs their first rebalance, it appears here within a block. If the indexer is not running, this stays empty rather than showing placeholder data."
+            body="Once a manager signs their first rebalance it appears here within a block. Nothing is placeholdered while this is empty."
+            action={
+              <Link href="/portal/manage" className="btn-primary btn-sm">
+                Open the terminal
+              </Link>
+            }
           />
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
