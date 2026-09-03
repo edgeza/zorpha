@@ -81,6 +81,53 @@ export function LaunchVaultForm() {
   const minSeed = params?.[1]?.status === 'success' ? (params[1].result as bigint) : undefined;
   const zor = params?.[2]?.status === 'success' ? (params[2].result as `0x${string}`) : contracts.zor;
 
+  // The allowlist, rendered rather than guessed at.
+  //
+  // `approvedTarget` is a mapping: it can confirm a guess and cannot produce
+  // the list, so this form used to ask a leader to paste a raw address and
+  // only then told them whether governance allowed it. That is a menu you
+  // cannot read. `allApprovedTargets` exists now, so the menu is the input.
+  const { data: allTargets } = useReadContracts({
+    contracts: [
+      {
+        address: launcher,
+        abi: vaultLauncherAbi,
+        functionName: 'allApprovedTargets',
+        chainId: activeChain.id,
+      },
+    ],
+    query: { enabled: configured },
+  });
+
+  const approvedList = useMemo(() => {
+    const r = allTargets?.[0];
+    return r?.status === 'success' && Array.isArray(r.result)
+      ? (r.result as `0x${string}`[])
+      : [];
+  }, [allTargets]);
+
+  const { data: venueMeta } = useReadContracts({
+    contracts: approvedList.flatMap((t) => [
+      { address: t, abi: erc20Abi, functionName: 'symbol' as const, chainId: activeChain.id },
+      { address: t, abi: erc4626Abi, functionName: 'asset' as const, chainId: activeChain.id },
+    ]),
+    query: { enabled: approvedList.length > 0 },
+  });
+
+  const venues = useMemo(
+    () =>
+      approvedList.map((addr, i) => {
+        const sym = venueMeta?.[i * 2];
+        const ass = venueMeta?.[i * 2 + 1];
+        return {
+          addr,
+          symbol: sym?.status === 'success' ? (sym.result as string) : undefined,
+          asset: ass?.status === 'success' ? (ass.result as `0x${string}`) : undefined,
+        };
+      }),
+    [approvedList, venueMeta],
+  );
+
   const targetValid = /^0x[0-9a-fA-F]{40}$/.test(target.trim());
   const targetAddr = targetValid ? (target.trim() as `0x${string}`) : undefined;
 
@@ -220,8 +267,45 @@ export function LaunchVaultForm() {
       <div className="card-pad space-y-4">
         <h3 className="text-sm font-semibold text-ink-100">Your vault</h3>
 
+        {venues.length > 0 ? (
+          <div>
+            <span className="stat-label">Approved venues</span>
+            <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+              {venues.map((v) => {
+                const active = v.addr.toLowerCase() === target.trim().toLowerCase();
+                return (
+                  <button
+                    key={v.addr}
+                    type="button"
+                    aria-current={active ? 'true' : undefined}
+                    onClick={() => setTarget(v.addr)}
+                    className={`rounded-md border px-3 py-2 text-left transition-colors ${
+                      active
+                        ? 'border-zor-500 bg-void-800'
+                        : 'border-void-600 hover:border-void-500 hover:bg-void-800/60'
+                    }`}
+                  >
+                    <span className="block text-sm text-ink-100">
+                      {v.symbol ?? 'Venue'}
+                    </span>
+                    <span className="mt-0.5 block font-mono text-2xs text-ink-500">
+                      {shorten(v.addr)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-xs text-ink-500">
+              Governance approves these. A venue not on this list cannot be launched
+              against &mdash; the transaction reverts.
+            </p>
+          </div>
+        ) : null}
+
         <label className="block">
-          <span className="stat-label">Venue (an approved ERC-4626 address)</span>
+          <span className="stat-label">
+            {venues.length > 0 ? 'Venue address' : 'Venue (an approved ERC-4626 address)'}
+          </span>
           <input
             value={target}
             onChange={(e) => setTarget(e.target.value)}

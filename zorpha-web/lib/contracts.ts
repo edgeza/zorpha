@@ -386,6 +386,16 @@ export const vaultLauncherAbi = [
     inputs: [{ type: 'address' }],
     outputs: [{ type: 'bool' }],
   },
+  // The allowlist, enumerable. approvedTarget answers "is this one approved?"
+  // and cannot answer "which ones are?", which is why the launch form used to
+  // ask a leader to paste an address and guess.
+  {
+    type: 'function',
+    name: 'allApprovedTargets',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address[]' }],
+  },
   {
     type: 'function',
     name: 'zor',
