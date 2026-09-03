@@ -196,16 +196,35 @@ contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
     }
 
     /// @notice Convert `amount` of `tokens[i]` to baseAsset units using the oracle.
+    /// @dev A basket member that IS the base asset converts one-for-one, and
+    ///      its oracle is not consulted.
+    ///
+    ///      This is what makes a cash-denominated basket work -- the shape a
+    ///      multi-asset fund actually wants, where depositors pay in and are
+    ///      redeemed in the stablecoin and the manager allocates across cash
+    ///      plus risk assets. Nothing forbids tokens[0] == baseAsset, and
+    ///      asset() is tokens[0], so that vault is dollar-denominated.
+    ///
+    ///      Without the short circuit the cash sleeve is marked through a
+    ///      USDG/USD feed at its USD price, while NAV is denominated in USDG.
+    ///      That feed carries a 0.5% deviation threshold, so the unit of
+    ///      account could be marked up to half a percent away from itself and
+    ///      every deposit and redemption would clear at the wrong price. A
+    ///      dollar is one dollar measured in dollars; there is no price to
+    ///      look up, and looking one up can only introduce error.
     function tokenToBase(uint256 i, uint256 amount) public view returns (uint256) {
         if (amount == 0) return 0;
+        if (address(tokens[i]) == address(baseAsset)) return amount;
         uint256 p = _readPrice(i);
         uint8 tDec = IERC20Metadata(address(tokens[i])).decimals();
         uint8 pDec = oracleDecimals[i];
         return (amount * (10 ** baseDecimals) * p) / ((10 ** tDec) * (10 ** pDec));
     }
 
+    /// @dev Mirror of tokenToBase: the base asset converts one-for-one back.
     function baseToToken(uint256 i, uint256 baseAmt) public view returns (uint256) {
         if (baseAmt == 0) return 0;
+        if (address(tokens[i]) == address(baseAsset)) return baseAmt;
         uint256 p = _readPrice(i);
         uint8 tDec = IERC20Metadata(address(tokens[i])).decimals();
         uint8 pDec = oracleDecimals[i];
