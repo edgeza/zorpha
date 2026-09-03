@@ -323,8 +323,16 @@ contract FirstLossEscrowTest is Test {
         vm.prank(leader);
         escrow.requestWithdrawal(500 * ONE);
 
+        // Read BEFORE the prank. `escrow.withdrawalReadyAt()` is an external
+        // call, and evaluating it inside a pranked call's arguments consumes
+        // the prank -- the call under test then runs as this contract and
+        // reverts NotLeader(). Which incidentally proves the point of naming
+        // the error: the bare `vm.expectRevert()` this replaces was equally
+        // satisfied by NotLeader() as by the delay it was meant to be testing.
+        uint256 readyAt = escrow.withdrawalReadyAt();
+
         vm.prank(leader);
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(FirstLossEscrow.TooEarly.selector, readyAt));
         escrow.executeWithdrawal();
 
         vm.warp(block.timestamp + 7 days);
@@ -334,6 +342,71 @@ contract FirstLossEscrowTest is Test {
 
         assertEq(usdg.balanceOf(leader) - before, 500 * ONE, "leader was not paid");
         assertEq(escrow.escrow(), 500 * ONE, "escrow balance wrong");
+    }
+
+    /// The seven-day delay at its boundary, and by reason.
+    ///
+    /// `test_WithdrawalIsTimelocked` above already covers the delay, so this is
+    /// not new ground -- but it covered it with a bare `vm.expectRevert()`,
+    /// which accepts ANY revert. That assertion passes if the call fails for a
+    /// missing role, an empty pending amount, or a coverage breach, none of
+    /// which is the delay. It is now given the error to expect.
+    ///
+    /// What this test adds is the boundary and the constant: one second short
+    /// must fail with `TooEarly(readyAt)`, exactly on time must succeed, and
+    /// the delay must actually be seven days. A delay silently shortened to
+    /// zero would still satisfy a warp-then-succeed test.
+    ///
+    /// Found while writing the on-chain drill: `executeWithdrawal` checks
+    /// `TooEarly` BEFORE the coverage floor, so the drill can never reach
+    /// `WouldBreachMinimum` in a single run.
+    function test_WithdrawalCannotBeExecutedBeforeTheDelay() public {
+        _fund(1_000 * ONE);
+        _deposit(alice, 10_000 * ONE);
+
+        vm.prank(leader);
+        escrow.requestWithdrawal(100 * ONE); // well inside the coverage floor
+
+        uint256 readyAt = escrow.withdrawalReadyAt();
+        assertEq(readyAt, block.timestamp + 7 days, "the delay should be seven days");
+
+        // One second short.
+        vm.warp(readyAt - 1);
+        vm.prank(leader);
+        vm.expectRevert(abi.encodeWithSelector(FirstLossEscrow.TooEarly.selector, readyAt));
+        escrow.executeWithdrawal();
+
+        // And exactly on time it goes through, so the delay is a delay rather
+        // than a block.
+        vm.warp(readyAt);
+        uint256 before = usdg.balanceOf(leader);
+        vm.prank(leader);
+        escrow.executeWithdrawal();
+        assertEq(usdg.balanceOf(leader) - before, 100 * ONE, "the leader should be paid on time");
+    }
+
+    /// And the delay cannot be shortened by asking again. A leader who could
+    /// re-request without resetting the clock would have a seven-day delay once
+    /// and none afterwards.
+    function test_RerequestingResetsTheClock() public {
+        _fund(1_000 * ONE);
+        _deposit(alice, 10_000 * ONE);
+
+        vm.prank(leader);
+        escrow.requestWithdrawal(100 * ONE);
+        uint256 first = escrow.withdrawalReadyAt();
+
+        vm.warp(block.timestamp + 6 days);
+        vm.prank(leader);
+        escrow.requestWithdrawal(100 * ONE);
+        uint256 second = escrow.withdrawalReadyAt();
+
+        assertGt(second, first, "a fresh request must push the ready time out");
+
+        vm.warp(first);   // when the FIRST request would have matured
+        vm.prank(leader);
+        vm.expectRevert(abi.encodeWithSelector(FirstLossEscrow.TooEarly.selector, second));
+        escrow.executeWithdrawal();
     }
 
     function test_WithdrawalCannotBreachTheMinimum() public {

@@ -32,11 +32,16 @@
 # "minimum" suggests, and `adequatelyCovered` can read false while the vault
 # still takes money with no warning at the deposit call.
 #
-# So Part B asserts the behaviour as it IS, in both directions: the dilution
-# succeeds, and the leader's withdrawal is refused. It deliberately does not
-# assert a guarantee that does not exist. Whether inflows should be capped is a
-# product decision with real consequences for growth, and belongs to governance
-# and the audit, not to this script.
+# So Part B asserts the behaviour as it IS: the dilution succeeds, and
+# `adequatelyCovered` correctly reports false once it crosses the floor. It
+# deliberately does NOT assert that deposits are refused -- writing that would
+# fail against correct code and send someone to "fix" a design decision by
+# accident. Whether inflows should be capped belongs to governance and the
+# audit, not to this script.
+#
+# The floor's enforcement on the leader's exit is also not asserted here, for a
+# duller reason: it sits behind a seven-day delay, so a single run cannot reach
+# it. What the drill proves instead is that delay. See step 4.
 #
 # Usage:
 #   ./script/testnet-leader-bond-drill.sh zorpha-gov
@@ -250,17 +255,42 @@ else
 fi
 
 # ── 4. The floor that IS enforced: the leader's exit ────────────────────────
-bold "4/9  The floor blocks the leader's withdrawal"
+bold "4/9  The leader cannot exit on demand"
+#
+# What is provable here is the DELAY, not the coverage floor.
+#
+# executeWithdrawal checks in this order:
+#
+#     amount == 0                     -> NothingPending()
+#     block.timestamp < readyAt       -> TooEarly(readyAt)          <-- 7 DAYS
+#     after_ < minCoverageBps         -> WouldBreachMinimum(...)
+#
+# WITHDRAWAL_DELAY is seven days, so the coverage branch is unreachable in a
+# single run. This step originally asserted WouldBreachMinimum, which would
+# have warned about an unrecognised revert reason and then printed a success
+# line saying the floor had blocked the withdrawal. A false claim, in the one
+# place a reader would trust it.
+#
+# WouldBreachMinimum is covered by test_WithdrawalCannotBreachTheMinimum,
+# which warps past the delay. What is asserted here is the delay itself, on
+# chain, against a real clock.
 if [[ -n "$ESCROW" ]]; then
   WD=$(call "$ESCROW" 'escrow()(uint256)')
   send "$ESCROW" 'requestWithdrawal(uint256)' "$WD"
+  READY=$(call "$ESCROW" 'withdrawalReadyAt()(uint256)')
+  NOW=$(cast block latest --rpc-url "$RPC" --field timestamp | num)
   ok "requested withdrawal of the entire escrow $WD"
-  refuses_with "WouldBreachMinimum" "executeWithdrawal below the floor" \
+  info "ready at $READY, now $NOW -- $(( (READY - NOW) / 86400 )) days out"
+  refuses_with "TooEarly" "executeWithdrawal before the delay matures" \
     "$ESCROW" 'executeWithdrawal()'
-  ok "the leader cannot withdraw capital out from under the coverage floor"
-  info "This is the one direction minCoverageBps binds, and it works."
+  ok "the leader cannot pull first-loss capital on demand"
+  info "Seven days is the window depositors have to react to a leader"
+  info "starting an exit, and it binds before coverage is even checked."
+  info ""
+  info "The coverage floor is NOT asserted here: it sits behind this same"
+  info "delay. See test_WithdrawalCannotBreachTheMinimum."
 else
-  warn "escrow address unavailable; skipping the withdrawal assertion"
+  warn "escrow address unavailable; skipping the withdrawal assertions"
 fi
 
 # ── 5. Empty the vault so reclaim becomes legitimate ────────────────────────
@@ -322,10 +352,14 @@ info "Bond: reclaim refused while depositors were in, refused after the slash,"
 info "and the slash could not be repeated. The full $BOND reached the treasury"
 info "once and only once."
 info ""
-info "Coverage: the floor blocked the leader's withdrawal, which is the"
-info "direction it is written to block. It did NOT block deposits that diluted"
-info "coverage, because maxDeposit consults no escrow -- recorded as observed"
-info "behaviour, and a question for governance rather than a bug this drill"
-info "should pretend to settle."
+info "Exit: the leader could not pull first-loss capital on demand -- the"
+info "seven-day delay refused it, before coverage was even consulted. That"
+info "delay is the window depositors have to react to a leader leaving."
+info ""
+info "Coverage: deposits that diluted coverage were NOT blocked, because"
+info "maxDeposit consults no escrow. Recorded as observed behaviour and a"
+info "question for governance, not a bug this drill should pretend to settle."
+info "Its enforcement on the leader's exit sits behind the same seven-day"
+info "delay and is covered by test_WithdrawalCannotBreachTheMinimum instead."
 info ""
 info "Vault $VAULT is left empty with its bond slashed."
