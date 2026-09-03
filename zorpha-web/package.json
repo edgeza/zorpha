@@ -1,19 +1,20 @@
 {
   "name": "zorpha-web",
   "version": "1.0.0",
-  "description": "Zorpha ($ZOR) — marketing site and protocol portal",
+  "description": "Zorpha ($ZOR) \u2014 marketing site and protocol portal",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "dev:verify": "node scripts/dev-verify.mjs",
-    "prebuild": "node scripts/check-tokenomics.mjs",
+    "prebuild": "node scripts/check-env.mjs && node scripts/check-tokenomics.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "check:tokenomics": "node scripts/check-tokenomics.mjs",
     "logo:crop": "node script/crop-logo.js",
-    "logo:favicon": "node script/crop-logo.js app/favicon.png app/icon.png --square --fill=92"
+    "logo:favicon": "node script/crop-logo.js app/favicon.png app/icon.png --square --fill=92",
+    "check:env": "node scripts/check-env.mjs"
   },
   "dependencies": {
     "@coinbase/wallet-sdk": "^4.3.7",
