@@ -4,6 +4,7 @@ import { listVaults } from '@/lib/queries';
 import { EmptyState, Callout } from '@/components/ui/Primitives';
 import { VAULT_DEPOSITS_ENABLED } from '@/lib/contracts';
 import { formatAddress, formatDate } from '@/lib/format';
+import { LaunchLink } from '@/components/portal/VaultLeaderboard';
 
 export const metadata: Metadata = { title: 'Vaults' };
 export const revalidate = 60;
@@ -13,13 +14,26 @@ export default async function VaultsPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Vaults</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-400">
-          Each vault is an ERC-4626 contract with a fixed mandate. Managers can request rebalances
-          within the vault&rsquo;s limits; they cannot withdraw your funds, change the mandate, or
-          raise the fee.
-        </p>
+      {/*
+        The launch route belongs HERE, not only on /portal/leaders.
+        Someone browsing vaults is exactly the person who might run one, and
+        until now this page offered no path to it -- LaunchLink existed and was
+        used on the leaderboard only, so the whole leader programme was
+        reachable only by already knowing where it lived.
+      */}
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Vaults</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-400">
+            Each vault is an ERC-4626 contract with a fixed mandate. Managers can request
+            rebalances within the vault&rsquo;s limits; they cannot withdraw your funds, change the
+            mandate, or raise the fee.
+          </p>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-400">
+            Anyone can run one. The gate is capital, not permission.
+          </p>
+        </div>
+        <LaunchLink className="shrink-0" />
       </header>
 
       {!VAULT_DEPOSITS_ENABLED ? (
