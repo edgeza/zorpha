@@ -378,17 +378,33 @@ verify_broadcast() {
   local addr target args ok=0 bad=0
   while read -r addr target args; do
     [[ -z "$addr" ]] && continue
-    if forge verify-contract "$addr" "$target" \
+    # The output is CAPTURED, not discarded. forge can exit non-zero while the
+    # contract is in fact verified -- the explorer answers slowly, --watch gives
+    # up, and the verification lands anyway. Reporting that as FAILED sends the
+    # operator off to redo something already done, which is exactly what
+    # happened to VaultFactory and SpotVaultMinimal on the first testnet run:
+    # both were reported failed, and both were already verified on chain.
+    #
+    # So trust what the verifier SAYS, not only what it returns.
+    local out rc
+    out=$(forge verify-contract "$addr" "$target" \
          --chain-id "$CHAIN_ID" \
          --verifier blockscout \
          --verifier-url "${RH_EXPLORER_URL:-}/api" \
          "${key_args[@]}" \
          ${args:+--constructor-args "$args"} \
-         --watch >/dev/null 2>&1; then
+         --watch 2>&1) && rc=0 || rc=$?
+
+    if [[ $rc -eq 0 ]]; then
       echo "    verified  ${target##*:}  $addr"
       ok=$((ok + 1))
+    elif grep -qi "already verified" <<< "$out"; then
+      echo "    verified  ${target##*:}  $addr  (already verified)"
+      ok=$((ok + 1))
     else
-      echo "    FAILED    ${target##*:}  $addr  (retry manually)"
+      echo "    FAILED    ${target##*:}  $addr"
+      # One line of cause beats "retry manually" with nothing to act on.
+      printf "              %s\n" "$(grep -iE 'error|reason|failed' <<< "$out" | head -1)"
       bad=$((bad + 1))
     fi
   done < <(node script/broadcast-contracts.js "$artifact")
@@ -508,27 +524,25 @@ mkdir -p "$(dirname "$WEB_ENV")"
 # overwrote the whole file and silently destroyed all three, which shows up
 # later as "wallet connect does nothing" with no obvious cause.
 #
-# Every key this script owns is stripped from the old file first, then written
-# fresh below, so re-running is still idempotent for the values it manages.
-OWNED_KEYS=(
-  NEXT_PUBLIC_CHAIN_ID NEXT_PUBLIC_RPC_URL NEXT_PUBLIC_EXPLORER_URL
-  NEXT_PUBLIC_ZOR_ADDRESS NEXT_PUBLIC_TIMELOCK_ADDRESS
-  NEXT_PUBLIC_TREASURY_ADDRESS NEXT_PUBLIC_BUYBACK_ADDRESS
-  NEXT_PUBLIC_INSURANCE_ADDRESS NEXT_PUBLIC_MERKLE_DISTRIBUTOR_ADDRESS
-  NEXT_PUBLIC_VESTING_ADDRESS NEXT_PUBLIC_VAULT_FACTORY_ADDRESS
-  NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS NEXT_PUBLIC_REPUTATION_REGISTRY_ADDRESS
-  NEXT_PUBLIC_ENABLE_VAULT_DEPOSITS
-)
+# The keys this script owns are DERIVED from the block it actually writes,
+# not maintained as a second list beside it.
+#
+# A hand-kept list drifted: it named thirteen keys while the writer emitted
+# seventeen. ORACLE_ADDRESS, SPOT_VAULT_ADDRESS, ROTATION_VAULT_ADDRESS and
+# YIELD_VAULT_ADDRESS were therefore written fresh AND preserved from the
+# previous file -- appearing twice, with the STALE value last. dotenv keeps the
+# last occurrence, so a deploy that printed the correct addresses left the app
+# pointed at the superseded ones, including an oracle nobody posts to. Nothing
+# errored, and the file looked right to anyone grepping for the new address.
+#
+# This is the third instance of one shape in this codebase: two things that
+# must agree, kept in step by hand. Deriving one from the other is the only
+# fix that stays fixed.
 
-PRESERVED=""
-if [[ -f "$WEB_ENV" ]]; then
-  cp "$WEB_ENV" "$WEB_ENV.bak"
-  echo "    previous file backed up to $WEB_ENV.bak"
-  PRESERVED=$(grep -v '^[[:space:]]*#' "$WEB_ENV" | grep '=' || true)
-  for k in "${OWNED_KEYS[@]}"; do
-    PRESERVED=$(printf '%s\n' "$PRESERVED" | grep -v "^${k}=" || true)
-  done
-fi
+# Checked before the block is built rather than inside it: the block is
+# captured in a command substitution, where `exit 1` would end the subshell and
+# let the deploy carry on regardless.
+[[ -n "${RH_EXPLORER_URL:-}" ]] || { echo "ERROR: RH_EXPLORER_URL empty at env-write time." >&2; exit 1; }
 
 if [[ "$VAULTS_DEPLOYED" == "true" ]]; then
   DEPOSITS_ENABLED=true
@@ -538,17 +552,9 @@ else
   DEPOSITS_ENABLED=false
 fi
 
-{
-  echo "# Written by contracts/script/deploy-and-verify.sh. Values above the"
-  echo "# separator are managed by that script and will be replaced on the next"
-  echo "# run; anything below it is preserved."
-  echo ""
+MANAGED=$(
   echo "NEXT_PUBLIC_CHAIN_ID=$CHAIN_ID"
   echo "NEXT_PUBLIC_RPC_URL=$RH_TESTNET_RPC_URL"
-  # Never write this empty. It is required above, so an empty value here means
-  # the check was bypassed -- and silently blanking a correct value is worse
-  # than failing.
-  [[ -n "${RH_EXPLORER_URL:-}" ]] || { echo "ERROR: RH_EXPLORER_URL empty at env-write time." >&2; exit 1; }
   echo "NEXT_PUBLIC_EXPLORER_URL=${RH_EXPLORER_URL}"
   echo ""
   echo "NEXT_PUBLIC_ZOR_ADDRESS=$ZOR_ADDR"
@@ -569,12 +575,43 @@ fi
   echo "NEXT_PUBLIC_YIELD_VAULT_ADDRESS=$YIELD_VAULT_ADDR"
   echo ""
   echo "NEXT_PUBLIC_ENABLE_VAULT_DEPOSITS=$DEPOSITS_ENABLED"
+)
+
+mapfile -t OWNED_KEYS < <(printf '%s\n' "$MANAGED" | sed -nE 's/^([A-Za-z_][A-Za-z0-9_]*)=.*/\1/p')
+
+PRESERVED=""
+if [[ -f "$WEB_ENV" ]]; then
+  cp "$WEB_ENV" "$WEB_ENV.bak"
+  echo "    previous file backed up to $WEB_ENV.bak"
+  PRESERVED=$(grep -v '^[[:space:]]*#' "$WEB_ENV" | grep '=' || true)
+  for k in "${OWNED_KEYS[@]}"; do
+    PRESERVED=$(printf '%s\n' "$PRESERVED" | grep -v "^${k}=" || true)
+  done
+fi
+
+{
+  echo "# Written by contracts/script/deploy-and-verify.sh. Values above the"
+  echo "# separator are managed by that script and will be replaced on the next"
+  echo "# run; anything below it is preserved."
+  echo ""
+  printf '%s\n' "$MANAGED"
   echo ""
   echo "# ─── preserved from the previous file ───────────────────────────────"
   if [[ -n "$PRESERVED" ]]; then
     printf '%s\n' "$PRESERVED"
   fi
 } > "$WEB_ENV"
+
+# A duplicated key resolves to whichever copy comes last, silently. Assert it
+# cannot happen rather than trusting the filter above to have been complete --
+# that trust is exactly what failed.
+DUPES=$(grep -oE '^[A-Za-z_][A-Za-z0-9_]*=' "$WEB_ENV" | sort | uniq -d || true)
+if [[ -n "$DUPES" ]]; then
+  echo "ERROR: $WEB_ENV has duplicate keys. The LAST occurrence wins, so the" >&2
+  echo "       app would silently use a value this deploy did not choose:" >&2
+  printf '       %s\n' $DUPES >&2
+  exit 1
+fi
 
 echo "    wrote $WEB_ENV"
 if [[ -n "$PRESERVED" ]]; then
