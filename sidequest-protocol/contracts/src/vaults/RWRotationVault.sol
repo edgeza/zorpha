@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {OracleWindow} from "../oracle/OracleWindow.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -105,6 +106,10 @@ contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
             require(tokens_[i] != address(0) && oracles_[i] != address(0), "zero addr");
             tokens.push(IERC20(tokens_[i]));
             oracles.push(AggregatorV3Interface(oracles_[i]));
+            // Checked per token: the basket's window is a single number and
+            // must clear the WIDEST oracle in it, so a per-asset feed with a
+            // longer heartbeat cannot silently outlive it.
+            OracleWindow.requireNotTighterThan(oracles_[i], maxOracleStaleness_);
             oracleDecimals.push(AggregatorV3Interface(oracles_[i]).decimals());
         }
 

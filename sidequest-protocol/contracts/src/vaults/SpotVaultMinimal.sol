@@ -11,6 +11,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 import {ISpotSwapAdapter} from "../adapters/RobinhoodChainRouterAdapter.sol";
 import {AggregatorV3Interface} from "../oracle/MedianOracle.sol";
+import {OracleWindow} from "../oracle/OracleWindow.sol";
 import {ReceiptRenderer} from "../lib/ReceiptRenderer.sol";
 
 /// @title SpotVaultMinimal
@@ -113,6 +114,10 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         require(feeRecipient_ != address(0) && admin_ != address(0), "zero addr");
         require(rebalanceThresholdBps_ <= 10000 && maxSlippageBps_ <= 10000 && performanceFeeBps_ <= 10000, "bad bps");
         require(maxOracleStaleness_ > 0, "zero staleness");
+        // Must not be TIGHTER than the oracle's own window, or a report living
+        // in the gap drags updatedAt past what this vault accepts. See
+        // OracleWindow for the measurement.
+        OracleWindow.requireNotTighterThan(oracle_, maxOracleStaleness_);
 
         cashAsset = IERC20(cashAsset_);
         oracle = AggregatorV3Interface(oracle_);
