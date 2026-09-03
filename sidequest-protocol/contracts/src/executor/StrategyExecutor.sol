@@ -98,6 +98,34 @@ contract StrategyExecutor is AccessControl, EIP712 {
     /// @notice Sliding-window nonce timestamps for the daily limit check.
     mapping(address => uint256[]) public recentRebalanceTimestamps;
 
+    /// @notice Per-vault trading window, in UTC minutes of the day.
+    ///
+    ///         A tokenised equity trades 24/7 on this chain while its reference
+    ///         market is shut sixteen hours a day and all weekend. Chainlink's
+    ///         deviation trigger guards against acting on a stale price only
+    ///         while there IS a live price to deviate from; overnight the feed
+    ///         is frozen because the market is closed, not because the price is
+    ///         steady. Without this, a manager who knows the stock gapped after
+    ///         hours can sign a rebalance against the previous close and every
+    ///         other check here passes.
+    ///
+    ///         Unset means unrestricted, so 24/7 assets and every vault that
+    ///         existed before this are unaffected.
+    struct TradingWindow {
+        uint16 openMinuteUTC;   // 0..1439
+        uint16 closeMinuteUTC;  // 0..1439; below open means the window wraps midnight
+        uint8  weekdayMask;     // bit d set => day d allowed, 0 = Sunday
+        bool   enforced;
+    }
+    mapping(address => TradingWindow) public tradingWindow;
+
+    /// @notice Holiday override: rebalances refused until this timestamp.
+    ///
+    ///         Separate from the weekly schedule because market holidays do not
+    ///         follow one, and half-days are a closure like any other. Governance
+    ///         sets it; nothing off-chain is trusted to.
+    mapping(address => uint64) public closedUntil;
+
     bool public paused;
 
     event RebalanceExecuted(
@@ -115,6 +143,9 @@ contract StrategyExecutor is AccessControl, EIP712 {
     event SignalRejected(address indexed vault, string reason);
     event PausedSet(bool paused);
     event AuthorizedSignerSet(address indexed newSigner);
+    event TradingWindowSet(address indexed vault, uint16 openMinuteUTC, uint16 closeMinuteUTC, uint8 weekdayMask);
+    event TradingWindowCleared(address indexed vault);
+    event ClosedUntilSet(address indexed vault, uint64 until);
 
     error PausedError();
     error InvalidSignature();
@@ -124,6 +155,9 @@ contract StrategyExecutor is AccessControl, EIP712 {
     error ExpiryTooFar(uint256 expiry, uint256 maxExpiry);
     error DailyLimitExceeded(uint256 count, uint256 limit);
     error ZeroVault();
+    error MarketClosed(address vault, uint256 minuteUTC, uint256 dayOfWeek);
+    error MarketHalted(address vault, uint64 until);
+    error BadTradingWindow();
 
     modifier whenNotPaused() {
         if (paused) revert PausedError();
@@ -164,6 +198,7 @@ contract StrategyExecutor is AccessControl, EIP712 {
         if (targetWeightBps > 10000) revert InvalidWeight(targetWeightBps);
         // Shared with executeBasketRebalance, so the two paths cannot drift.
         _checkTimingAndNonce(vault, nonce, expiry);
+        _checkTradingWindow(vault);
         _enforceRateLimit(vault);
 
         bytes32 structHash = keccak256(
@@ -214,6 +249,7 @@ contract StrategyExecutor is AccessControl, EIP712 {
     {
         if (vault == address(0)) revert ZeroVault();
         _checkTimingAndNonce(vault, nonce, expiry);
+        _checkTradingWindow(vault);
         _enforceRateLimit(vault);
 
         bytes32 structHash = keccak256(
@@ -260,6 +296,39 @@ contract StrategyExecutor is AccessControl, EIP712 {
 
     /// @dev Sliding 24h window: compact out anything older than the cutoff,
     ///      then refuse if the survivors already fill the limit.
+    /// @dev Refuse while the vault's reference market is shut.
+    ///
+    ///      DST IS NOT HANDLED, DELIBERATELY. The schedule is fixed UTC, and a
+    ///      market keeping local hours moves by an hour twice a year: US equities
+    ///      run 13:30-20:00 UTC in summer and 14:30-21:00 in winter. Governance
+    ///      must reset the window at each transition -- two transactions a year,
+    ///      explicit and auditable through TradingWindowSet.
+    ///
+    ///      The alternative is encoding one jurisdiction's DST rules on chain,
+    ///      where they are wrong for every other market and wrong again whenever
+    ///      a legislature changes them. A schedule that is visibly an hour off
+    ///      for a fortnight is recoverable; one that is confidently wrong is not.
+    function _checkTradingWindow(address vault) internal view {
+        TradingWindow memory w = tradingWindow[vault];
+        if (!w.enforced) return;
+
+        uint64 until = closedUntil[vault];
+        if (block.timestamp < until) revert MarketHalted(vault, until);
+
+        // Unix epoch day 0 was a Thursday, so +4 lands 0 on Sunday.
+        uint256 dayOfWeek = ((block.timestamp / 1 days) + 4) % 7;
+        uint256 minuteUTC = (block.timestamp % 1 days) / 60;
+
+        if (((w.weekdayMask >> dayOfWeek) & 1) == 0) {
+            revert MarketClosed(vault, minuteUTC, dayOfWeek);
+        }
+
+        bool open = w.openMinuteUTC < w.closeMinuteUTC
+            ? (minuteUTC >= w.openMinuteUTC && minuteUTC < w.closeMinuteUTC)
+            : (minuteUTC >= w.openMinuteUTC || minuteUTC < w.closeMinuteUTC);
+        if (!open) revert MarketClosed(vault, minuteUTC, dayOfWeek);
+    }
+
     function _enforceRateLimit(address vault) internal {
         uint256 limit = dailyLimit[vault];
         if (limit == 0) return;
@@ -295,6 +364,46 @@ contract StrategyExecutor is AccessControl, EIP712 {
         require(signer != address(0), "StrategyExecutor: zero signer");
         authorizedSigner = signer;
         emit AuthorizedSignerSet(signer);
+    }
+
+    /// @notice Restrict a vault's rebalances to its reference market's hours.
+    /// @param  weekdayMask bit d set => day d allowed, 0 = Sunday. Mon-Fri is 0x3E.
+    function setTradingWindow(
+        address vault,
+        uint16  openMinuteUTC,
+        uint16  closeMinuteUTC,
+        uint8   weekdayMask
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (vault == address(0)) revert ZeroVault();
+        // Each rejection is a configuration that would silently never open:
+        // an out-of-range minute, an empty mask, or a zero-length window. Use
+        // clearTradingWindow to lift the restriction and setClosedUntil or
+        // setPaused to halt -- none of them should be spelled as a schedule
+        // that can never match.
+        if (openMinuteUTC > 1439 || closeMinuteUTC > 1439) revert BadTradingWindow();
+        if (weekdayMask == 0 || weekdayMask > 0x7F) revert BadTradingWindow();
+        if (openMinuteUTC == closeMinuteUTC) revert BadTradingWindow();
+
+        tradingWindow[vault] = TradingWindow({
+            openMinuteUTC: openMinuteUTC,
+            closeMinuteUTC: closeMinuteUTC,
+            weekdayMask: weekdayMask,
+            enforced: true
+        });
+        emit TradingWindowSet(vault, openMinuteUTC, closeMinuteUTC, weekdayMask);
+    }
+
+    /// @notice Lift the restriction entirely. For 24/7 assets.
+    function clearTradingWindow(address vault) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        delete tradingWindow[vault];
+        emit TradingWindowCleared(vault);
+    }
+
+    /// @notice Refuse rebalances until `until`, over and above the weekly schedule.
+    function setClosedUntil(address vault, uint64 until) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (vault == address(0)) revert ZeroVault();
+        closedUntil[vault] = until;
+        emit ClosedUntilSet(vault, until);
     }
 
     function setDailyLimit(address vault, uint256 limit) external onlyRole(DEFAULT_ADMIN_ROLE) {

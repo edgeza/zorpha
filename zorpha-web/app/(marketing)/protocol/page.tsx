@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { ReceiptAnatomy } from '@/components/marketing/ReceiptAnatomy';
+import { ReceiptVerifier } from '@/components/marketing/ReceiptVerifier';
 import { SectionHeading, Callout, SpecRow } from '@/components/ui/Primitives';
 import { VAULT_CLASSES, vaultSymbol } from '@/lib/vault-classes';
+import { TEST_STATUS } from '@/lib/audit';
 
 // Symbols come from lib/vault-classes, not from literals here. This page and
 // the front page each had their own copy, and two of the three had drifted
@@ -120,10 +121,11 @@ export default function ProtocolPage() {
               <span className="eyebrow">The output</span>
               <span className="badge-verified">immutable</span>
             </div>
-            <ReceiptAnatomy />
+            <ReceiptVerifier />
             <p className="mt-4 text-xs leading-relaxed text-ink-500">
               The commitment hash is what makes a track record checkable rather than merely public.
-              Recompute it from the fields; if it does not match, the record has been tampered with.
+              Edit any field above and it is recomputed in your browser, from the contract&rsquo;s own
+              encoding; if it does not match, the record has been tampered with.
             </p>
           </div>
         </div>
@@ -205,9 +207,10 @@ export default function ProtocolPage() {
         <div className="mt-8">
           <Callout tone="verified" title="Each of these is pinned by a test">
             <p>
-              Each guarantee above is covered by tests rather than asserted in prose: 97 unit and
-              fuzz tests plus seven stateful invariants, including one that fails the run outright
-              if the fuzzer never actually managed a deposit or a rebalance.
+              Each guarantee above is covered by tests rather than asserted in prose:{' '}
+              {TEST_STATUS.suiteTests - TEST_STATUS.suiteInvariants} unit and fuzz tests plus{' '}
+              {TEST_STATUS.suiteInvariants} stateful invariants, including one that fails the run
+              outright if the fuzzer never actually managed a deposit or a rebalance.
             </p>
             <p>
               <Link href="/whitepaper#receipts" className="link-quiet">
