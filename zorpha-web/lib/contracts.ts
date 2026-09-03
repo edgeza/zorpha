@@ -40,6 +40,7 @@ export const contracts = {
   strategyExecutor: normalise(process.env.NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS),
   reputationRegistry: normalise(process.env.NEXT_PUBLIC_REPUTATION_REGISTRY_ADDRESS),
   vaultLauncher: normalise(process.env.NEXT_PUBLIC_VAULT_LAUNCHER_ADDRESS),
+  leaderFaucet: normalise(process.env.NEXT_PUBLIC_LEADER_FAUCET_ADDRESS),
 } as const;
 
 export type ContractKey = keyof typeof contracts;
@@ -353,6 +354,57 @@ export const vaultLauncherAbi = [
     outputs: [
       { name: 'vault', type: 'address' },
       { name: 'escrow', type: 'address' },
+    ],
+  },
+] as const;
+
+/**
+ * LeaderFaucet: one bond plus one seed per address, testnet only.
+ *
+ * It exists because the leader programme was impossible to enter. Launching a
+ * vault costs a 10,000 $ZOR bond and $ZOR has no mint function -- the whole
+ * supply is minted in the constructor -- so a prospective leader had to ask
+ * governance for tokens by hand. That is a favour, not a programme, and it is
+ * why exactly one person has ever launched a vault here.
+ *
+ * `ticket` is read from the launcher on every call rather than stored, so a
+ * governance change to the bond cannot leave the faucet paying the wrong
+ * amount. `claimsRemaining` is bounded by the faucet's actual balance as well
+ * as its cap, so the UI never promises a claim that would revert.
+ */
+export const leaderFaucetAbi = [
+  {
+    type: 'function',
+    name: 'ticket',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [
+      { name: 'bond', type: 'uint256' },
+      { name: 'seed', type: 'uint256' },
+    ],
+  },
+  {
+    type: 'function',
+    name: 'claimsRemaining',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'hasClaimed',
+    stateMutability: 'view',
+    inputs: [{ name: '', type: 'address' }],
+    outputs: [{ type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'claim',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [
+      { name: 'bond', type: 'uint256' },
+      { name: 'seed', type: 'uint256' },
     ],
   },
 ] as const;

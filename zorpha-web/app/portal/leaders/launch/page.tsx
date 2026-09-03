@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LaunchVaultForm } from '@/components/portal/LaunchVaultForm';
+import { LeaderFaucetClaim } from '@/components/portal/LeaderFaucetClaim';
 
 export const metadata: Metadata = {
   title: 'Launch a vault',
@@ -23,6 +24,15 @@ export default function LaunchVaultPage() {
           bond, and your own money standing in front of your depositors&rsquo;.
         </p>
       </div>
+
+      {/*
+        Before the form, not after. The bond requirement is the first thing
+        that stops a prospective leader, and $ZOR has no mint function -- so
+        somebody arriving here without a bond previously had no route forward
+        at all and no explanation of why. Putting the faucet above the form
+        means the blocker and its remedy are in the same glance.
+      */}
+      <LeaderFaucetClaim />
 
       <LaunchVaultForm />
 
