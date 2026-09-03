@@ -13,7 +13,8 @@
 # prints, logs or writes it anywhere.
 #
 # Usage:
-#   export PRIVATE_KEY=0x...          deployer, the funded account
+#   export ZORPHA_DEPLOY_ACCOUNT=name  a keystore in ~/.foundry/keystores
+#                                      (or PRIVATE_KEY=0x... on TESTNET only)
 #   export GOVERNANCE=0x...           a DIFFERENT account you control
 #   ./script/testnet-launch.sh
 #
@@ -51,11 +52,49 @@ command -v cast  >/dev/null || die "cast not found. Install foundry, then reopen
 command -v node  >/dev/null || die "node not found."
 ok "forge, cast and node are on PATH"
 
-[[ -n "${PRIVATE_KEY:-}" ]] || die "PRIVATE_KEY is not set. export PRIVATE_KEY=0x... first."
-[[ -n "${GOVERNANCE:-}"  ]] || die "GOVERNANCE is not set. It must be a SECOND account you control."
+# A KEYSTORE, or a raw key for testnet only.
+#
+# This wrapper used to require PRIVATE_KEY in the environment and pass it as
+# --private-key. That is the practice that burned two of this project's keys:
+# a raw key in a shell is one `history` or one pasted terminal buffer from
+# being public, and both of ours went that way. It is also the one thing that
+# must not happen on mainnet, where the deployer holds every role from the
+# first block.
+#
+# The Solidity scripts already supported keystores -- PRIVATE_KEY is read with
+# vm.envOr and they fall back to forge's own signer -- so only this wrapper
+# stood in the way.
+#
+# ZORPHA_DEPLOY_ACCOUNT wins when both are set. Create one with a PATH, which
+# prints the address and nothing else:
+#
+#     cast wallet new ~/.foundry/keystores zorpha-mainnet-deployer
+#
+# Bare `cast wallet new` prints the private key to stdout. That is exactly how
+# the existing keys were lost.
+DEPLOY_ACCT="${ZORPHA_DEPLOY_ACCOUNT:-}"
+PW=()
+[[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
+  [[ -r "$ZORPHA_PASSWORD_FILE" ]] || die "cannot read $ZORPHA_PASSWORD_FILE"
+  PW=(--password-file "$ZORPHA_PASSWORD_FILE")
+}
 
-DEPLOYER=$(cast wallet address --private-key "$PRIVATE_KEY")
-ok "deployer resolves to $DEPLOYER"
+if [[ -n "$DEPLOY_ACCT" ]]; then
+  SIGNER=(--account "$DEPLOY_ACCT" "${PW[@]}")
+  DEPLOYER=$(cast wallet address --account "$DEPLOY_ACCT" "${PW[@]}")
+  ok "deployer resolves to $DEPLOYER (keystore $DEPLOY_ACCT)"
+elif [[ -n "${PRIVATE_KEY:-}" ]]; then
+  SIGNER=(--private-key "$PRIVATE_KEY")
+  DEPLOYER=$(cast wallet address --private-key "$PRIVATE_KEY")
+  warn "using a raw PRIVATE_KEY. Acceptable on testnet, never on mainnet --"
+  warn "set ZORPHA_DEPLOY_ACCOUNT to a keystore instead."
+  ok "deployer resolves to $DEPLOYER"
+else
+  die "no signer. Set ZORPHA_DEPLOY_ACCOUNT to a keystore name (preferred), or
+     PRIVATE_KEY for testnet only."
+fi
+
+[[ -n "${GOVERNANCE:-}"  ]] || die "GOVERNANCE is not set. It must be a SECOND account you control."
 
 if [[ "${DEPLOYER,,}" == "${GOVERNANCE,,}" ]]; then
   die "GOVERNANCE must not equal the deployer.
@@ -93,7 +132,7 @@ bold "1/4  Testnet fixtures"
 echo "  Testnet has no USDG, no curated vaults and no DEX, so these stand in."
 
 forge script script/DeployTestnetFixtures.s.sol:DeployTestnetFixtures \
-  --rpc-url "$RPC" --private-key "$PRIVATE_KEY" --broadcast >/dev/null
+  --rpc-url "$RPC" "${SIGNER[@]}" --sender "$DEPLOYER" --broadcast >/dev/null
 
 FIX="broadcast/DeployTestnetFixtures.s.sol/$CHAIN_ID/run-latest.json"
 [[ -f "$FIX" ]] || die "no broadcast artifact at $FIX"
@@ -155,7 +194,7 @@ bold "4/4  Leadership layer"
 
 export APPROVED_YIELD_TARGETS="$YIELD_TARGET"
 forge script script/DeployLeadership.s.sol:DeployLeadership \
-  --rpc-url "$RPC" --private-key "$PRIVATE_KEY" --broadcast >/dev/null
+  --rpc-url "$RPC" "${SIGNER[@]}" --sender "$DEPLOYER" --broadcast >/dev/null
 
 LDR="broadcast/DeployLeadership.s.sol/$CHAIN_ID/run-latest.json"
 LAUNCHER=$(addr_of VaultLauncher "$LDR")
@@ -199,9 +238,10 @@ cat <<NEXT
          "grantRole(bytes32,address)" \\
          0x$(cast keccak "DEPLOYER_ROLE" | sed 's/^0x//') \\
          $LAUNCHER \\
-         --rpc-url $RPC --private-key <GOVERNANCE_KEY>
+         --rpc-url $RPC --account <GOVERNANCE_KEYSTORE>
 
-     Or paste the same call into Rabby if you would rather not export that key.
+     --account, not --private-key: exporting a governance key to a shell is how
+     this project lost two of its own. Or paste the same call into Rabby.
 
   2. Accept treasury ownership.
 
