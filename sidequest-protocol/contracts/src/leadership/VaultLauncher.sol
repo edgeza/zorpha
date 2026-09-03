@@ -126,7 +126,13 @@ contract VaultLauncher is AccessControl, ReentrancyGuard {
 
         bondAmount = 10_000e18; // 10k ZOR
         minSeedEscrow = 1_000e6; // 1,000 units of a 6dp asset
-        minCoverageBps = 500; // 5%, the level Hyperliquid settled on
+        // 5%, the level Hyperliquid settled on. Note that the RISK parameter
+        // was benchmarked against that comparable and the FEE was not -- the
+        // spot and rotation vaults charge twice Hyperliquid's 10%. That is a
+        // leader-recruitment decision rather than a revenue one: with
+        // leaderFeeShareBps at 8000, a 20% fee pays the leader 16 points and
+        // the protocol 4. Reasoning in docs/FEE-DESIGN.md.
+        minCoverageBps = 500;
         leaderFeeShareBps = 8000; // 80% of the fee to the leader
         performanceFeeBps = 1000; // 10%
     }
