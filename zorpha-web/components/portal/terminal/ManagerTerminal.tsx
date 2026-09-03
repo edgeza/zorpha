@@ -35,6 +35,7 @@ import { Callout, Mono } from '@/components/ui/Primitives';
 import { WalletButton } from '@/components/portal/WalletButton';
 import { SpotRebalance, RotationRebalance, YieldRebalance } from './RebalancePanel';
 import { LeaderActions } from './LeaderActions';
+import { VaultBook } from './VaultBook';
 
 /**
  * The manager terminal.
@@ -137,6 +138,15 @@ export function ManagerTerminal() {
   const allVaults: TerminalVault[] = useMemo(
     () => [...factory, ...launchedVaults],
     [factory, launchedVaults],
+  );
+
+  // A leader holds no ROLE on the vault they launched -- the launcher hands
+  // every role to governance at launch, which is precisely why a leader
+  // cannot move depositor funds. Reading roles alone would therefore label
+  // their own vault "view only", so leadership is carried separately.
+  const leaderKeys = useMemo(
+    () => new Set(launchedVaults.map((v) => v.key)),
+    [launchedVaults],
   );
 
   const selected = allVaults.find((v) => v.key === selectedKey) ?? allVaults[0];
@@ -372,17 +382,30 @@ export function ManagerTerminal() {
     );
   }
 
+  // Disconnected still shows the book. The page used to render nothing but a
+  // connect prompt, so the honest answer to "what can I operate here?" was
+  // unavailable until you had already committed a wallet to finding out. The
+  // vaults and their balances are public; only the question of which are YOURS
+  // needs an address, and the book says so in place of the role column.
   if (!isConnected) {
     return (
-      <div className="card flex flex-col items-start gap-4 p-6">
-        <div>
-          <h2 className="font-semibold tracking-tight">Connect to operate</h2>
-          <p className="mt-2 max-w-prose text-sm leading-relaxed text-ink-400">
-            The terminal reads your roles from the chain and shows you exactly the actions your
-            address can take. Nothing is enabled on a hunch.
-          </p>
+      <div className="flex flex-col gap-6">
+        <VaultBook
+          vaults={allVaults}
+          leaderKeys={leaderKeys}
+          selectedKey={selected?.key}
+          onSelect={setSelectedKey}
+        />
+        <div className="card flex flex-col items-start gap-4 p-6">
+          <div>
+            <h2 className="font-semibold tracking-tight">Connect to operate</h2>
+            <p className="mt-2 max-w-prose text-sm leading-relaxed text-ink-400">
+              The terminal reads your roles from the chain and shows you exactly the actions your
+              address can take. Nothing is enabled on a hunch.
+            </p>
+          </div>
+          <WalletButton />
         </div>
-        <WalletButton />
       </div>
     );
   }
@@ -410,20 +433,15 @@ export function ManagerTerminal() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Vault switcher. Hidden entirely when there is only one thing to pick,
-          because a single inert pill reads as a broken control. */}
-      <div className={allVaults.length > 1 ? 'flex flex-wrap items-center gap-2' : 'hidden'}>
-        {allVaults.map((v) => (
-          <button
-            key={v.key}
-            type="button"
-            onClick={() => setSelectedKey(v.key)}
-            className={v.key === selected?.key ? 'nav-pill nav-link-active' : 'nav-pill'}
-          >
-            {v.name}
-          </button>
-        ))}
-      </div>
+      {/* The book. Replaces a row of name-only pills that required clicking
+          each one to learn anything about it. */}
+      <VaultBook
+        vaults={allVaults}
+        address={address}
+        leaderKeys={leaderKeys}
+        selectedKey={selected?.key}
+        onSelect={setSelectedKey}
+      />
 
       {!selected ? (
         <Callout tone="warn" title="No vault is configured in this build">
