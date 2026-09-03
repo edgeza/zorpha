@@ -101,23 +101,23 @@ export function factoryVaults(): TerminalVault[] {
   add(
     'spot',
     'spot',
-    process.env.NEXT_PUBLIC_SPOT_VAULT_ADDRESS,
+    contracts.spotVault,
     'Spot',
     'How much of the vault sits in the underlying, and how much in cash.',
   );
   add(
     'rotation',
     'rotation',
-    process.env.NEXT_PUBLIC_ROTATION_VAULT_ADDRESS,
+    contracts.rotationVault,
     'Rotation',
     'The weight of each basket leg. They must total 100%.',
   );
   add(
     'yield',
     'yield',
-    process.env.NEXT_PUBLIC_YIELD_VAULT_ADDRESS,
+    contracts.yieldVault,
     'Yield',
-    'Nothing directly — rebalancing moves idle cash into the venue.',
+    'Nothing directly — a rebalance here stamps a checkpoint, it moves no funds.',
   );
   return out;
 }

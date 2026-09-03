@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
+import { connectSrc } from '../lib/security-headers.mjs';
 
 /**
  * Build-time environment check.
@@ -196,6 +197,59 @@ if (missingAddresses.length) {
       'EVERY address is unset. The build will produce a site with no on-chain ' +
         'reads at all, while database-backed panels keep working and hide it.',
     );
+  }
+}
+
+// The RPC origin must be inside the CSP's connect-src, or the browser blocks
+// every JSON-RPC call and the whole on-chain layer dies silently.
+//
+// This exact mismatch shipped: production ran with
+// NEXT_PUBLIC_RPC_URL=https://testnet.rpc.robinhood.com/ against an allowlist
+// admitting only https://*.chain.robinhood.com. Those two look alike, do not
+// match, and the only evidence was a console error nobody was reading. Every
+// figure on the site rendered as an em dash and the vault launch buttons never
+// enabled, because they wait on a bond amount that could not be fetched.
+//
+// connect-src is now derived from this same variable, so the check should
+// always pass -- it exists to catch an edit that reintroduces a literal list.
+const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
+if (rpcUrl) {
+  let rpcOrigin = null;
+  try {
+    rpcOrigin = new URL(rpcUrl).origin;
+  } catch {
+    problems.push(`NEXT_PUBLIC_RPC_URL is not a valid URL: ${rpcUrl}`);
+  }
+
+  if (rpcOrigin) {
+    const allowed = connectSrc(process.env).split(/\s+/).filter(Boolean);
+    const { hostname, protocol } = new URL(rpcUrl);
+
+    const covered = allowed.some((entry) => {
+      if (entry === rpcOrigin) return true;
+      if (!entry.startsWith('http')) return false;
+      let pattern;
+      try {
+        pattern = new URL(entry.replace('*.', 'WILDCARD.'));
+      } catch {
+        return false;
+      }
+      if (pattern.protocol !== protocol) return false;
+      if (!entry.includes('*.')) return pattern.hostname === hostname;
+      const suffix = pattern.hostname.replace('wildcard.', '');
+      return hostname === suffix || hostname.endsWith(`.${suffix}`);
+    });
+
+    if (!covered) {
+      problems.push(
+        [
+          `The RPC origin ${rpcOrigin} is not covered by the CSP connect-src.`,
+          '  Every chain read would be blocked by the browser, and the site',
+          '  would render an em dash in every on-chain field while otherwise',
+          '  looking healthy. Add the origin in lib/security-headers.mjs.',
+        ].join(LF + '      '),
+      );
+    }
   }
 }
 

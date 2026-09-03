@@ -41,6 +41,16 @@ export const contracts = {
   reputationRegistry: normalise(process.env.NEXT_PUBLIC_REPUTATION_REGISTRY_ADDRESS),
   vaultLauncher: normalise(process.env.NEXT_PUBLIC_VAULT_LAUNCHER_ADDRESS),
   leaderFaucet: normalise(process.env.NEXT_PUBLIC_LEADER_FAUCET_ADDRESS),
+
+  // The oracle and the three factory vaults. These were read straight from
+  // process.env elsewhere and never appeared in this map, so `missingContracts`
+  // could not see them and the environment banner could not report them. That
+  // is why a deployment with no vault addresses at all still announced exactly
+  // one missing entry -- it was only ever counting the twelve above.
+  oracle: normalise(process.env.NEXT_PUBLIC_ORACLE_ADDRESS),
+  spotVault: normalise(process.env.NEXT_PUBLIC_SPOT_VAULT_ADDRESS),
+  rotationVault: normalise(process.env.NEXT_PUBLIC_ROTATION_VAULT_ADDRESS),
+  yieldVault: normalise(process.env.NEXT_PUBLIC_YIELD_VAULT_ADDRESS),
 } as const;
 
 export type ContractKey = keyof typeof contracts;
