@@ -1,3 +1,13 @@
+-- SUPERSEDED BY 005-baseline.sql. DO NOT RUN THIS FILE.
+--
+-- Kept for history. It is folded into 005 verbatim, and 005 is
+-- idempotent, so running 005 after this one changes nothing.
+--
+-- This file was numbered as though 001 and 002 existed. They did not --
+-- the schema was created outside the repo, so there was no definition of
+-- it anywhere and "run migration 004" was not a followable instruction.
+-- 005 is the whole schema plus this content, in one runnable file.
+
 -- Vault visibility, because deleting rows was a one-shot and did not hold.
 --
 -- WHAT WENT WRONG
