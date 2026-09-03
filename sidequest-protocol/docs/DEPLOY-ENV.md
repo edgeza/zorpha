@@ -113,7 +113,7 @@ Optional, with sane defaults if omitted:
 | `CHAIN_ID` | `46630` | Set to `4663` for mainnet |
 | `DEPLOY_VAULTS` | `false` | Set `true` to run phase B |
 | `STOCK_TOKEN_2`, `STOCK_FEED_1`, `STOCK_FEED_2` | unset | Phase B. Without feeds, vaults fall back to the median oracle |
-| `ORACLE_UPDATERS`, `ORACLE_QUORUM` | deployer, 1 | Phase B. See section 4.4 |
+| `ORACLE_UPDATERS`, `ORACLE_QUORUM` | **required** | Phase B. Must be the address your price keeper signs with, never the deployer. See section 4.4 |
 
 ---
 
@@ -187,12 +187,29 @@ revenue accumulates in the contract and is withdrawable via `withdrawUsdc`. The
 buyback cannot execute against an unset router, so nothing is at risk while you
 wait.
 
-**4.4 Seat the real oracle updater set.** Phase B defaults `ORACLE_UPDATERS` to
-the deployer alone and `ORACLE_QUORUM` to 1. A single-updater median is a single
-point of failure feeding every vault's pricing. Raise both before accepting live
-deposits. The script asserts quorum is satisfiable by the updater set, so it
-will refuse a quorum higher than the number of updaters, but it cannot tell you
-that one updater is too few.
+**4.4 Seat the real oracle updater set.** `ORACLE_UPDATERS` has no usable
+default. Phase B would fall back to the deployer alone, and `_handOver`
+renounces `UPDATER_ROLE` from the deployer while leaving it in the `updaters`
+array -- an oracle that can never reach quorum, and vaults that revert on their
+first NAV read. Both the deploy script and `testnet-launch.sh` now refuse that
+outright, the wrapper in preflight so it costs nothing.
+
+Set it to the address your price keeper actually signs with. Seating an address
+nobody posts from is the same dead oracle by a slower route: the deploy
+succeeds and the first rebalance reverts on staleness. To read the address the
+current keeper posts from, ask the oracle it is already feeding -- the entry
+whose report is fresh is the live one:
+
+```bash
+cast call $ORACLE 'updaterCount()(uint256)' --rpc-url $RPC_URL
+cast call $ORACLE 'updaters(uint256)(address)' 1 --rpc-url $RPC_URL
+cast call $ORACLE 'reports(address)(int256,uint64)' $CANDIDATE --rpc-url $RPC_URL
+```
+
+A single-updater median is still a single point of failure feeding every vault's
+pricing. `ORACLE_QUORUM=1` is acceptable on testnet only. Raise both before
+accepting live deposits: the script refuses a quorum higher than the number of
+updaters, but it cannot tell you that one updater is too few.
 
 **4.5 Publish the Season 1 snapshot criteria** before opening claims. The root
 is committed on-chain at deploy; publishing the criteria afterwards means
