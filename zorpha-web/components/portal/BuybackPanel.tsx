@@ -17,12 +17,23 @@ import { TOKEN } from '@/lib/tokenomics';
 export function BuybackPanel() {
   const deployed = isDeployed('buyback');
 
-  const { data: usdcSpent } = useReadContract({
+  // Read both spellings and take whichever the deployed contract answers.
+  // The live bytecode predates the USDC -> USDG rename, so `totalUsdgSpent`
+  // reverts with an empty reason there while `totalUsdcSpent` returns 0. One
+  // of the two always resolves, before and after a redeploy.
+  const { data: usdgSpentNew } = useReadContract({
     abi: buybackAbi,
     address: contracts.buyback,
     functionName: 'totalUsdgSpent',
-    query: { enabled: deployed },
+    query: { enabled: deployed, retry: false },
   });
+  const { data: usdgSpentLegacy } = useReadContract({
+    abi: buybackAbi,
+    address: contracts.buyback,
+    functionName: 'totalUsdcSpent',
+    query: { enabled: deployed, retry: false },
+  });
+  const usdcSpent = usdgSpentNew ?? usdgSpentLegacy;
 
   const { data: zorBurned } = useReadContract({
     abi: buybackAbi,

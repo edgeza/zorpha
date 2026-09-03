@@ -220,10 +220,40 @@ export const merkleDistributorAbi = [
   },
 ] as const;
 
+/**
+ * The deployed buyback contract PREDATES the USDC -> USDG rename.
+ *
+ * `ZorphaBuyback.sol` now declares `uint256 public totalUsdgSpent`, and this
+ * ABI was updated to match -- but the contract at the deployed address was
+ * never redeployed, so that selector is simply absent from its bytecode:
+ *
+ *   cast call $BUYBACK 'totalUsdgSpent()(uint256)'  ->  execution reverted, data: "0x"
+ *   cast call $BUYBACK 'totalUsdcSpent()(uint256)'  ->  0
+ *   cast call $BUYBACK 'usdg()(address)'            ->  execution reverted
+ *   cast call $BUYBACK 'usdc()(address)'            ->  0x1C23...
+ *
+ * An empty revert reason is what an unknown selector looks like, and wagmi
+ * surfaces it as `undefined`, so "USDG spent" rendered an em dash next to a
+ * "$ZOR burned" of 0 read from the same contract in the same breath. The event
+ * signature still says `usdcSpent`, which is the fingerprint of the same rename.
+ *
+ * Both names are declared so the panel can read whichever the deployed
+ * bytecode actually has. That keeps working after a redeploy instead of
+ * needing a matching code change on the day.
+ */
 export const buybackAbi = [
   {
     type: 'function',
+    // NOT the only spelling that matters. See `totalUsdcSpent` below.
     name: 'totalUsdgSpent',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    // The name actually present in the deployed bytecode today.
+    type: 'function',
+    name: 'totalUsdcSpent',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ type: 'uint256' }],
