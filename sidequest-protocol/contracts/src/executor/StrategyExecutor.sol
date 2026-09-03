@@ -315,8 +315,25 @@ contract StrategyExecutor is AccessControl, EIP712 {
         uint64 until = closedUntil[vault];
         if (block.timestamp < until) revert MarketHalted(vault, until);
 
+        // Slither flags both of these as weak-prng, and both are calendar
+        // arithmetic rather than randomness: a modulo of a Unix timestamp is
+        // how a day of week and a minute of day are derived, and there is no
+        // other way to get them on chain.
+        //
+        // The adversarial question is whether a validator can bias the result
+        // usefully. They can nudge block.timestamp by seconds, which can move a
+        // rebalance a few seconds either side of an open or a close. The
+        // property this defends is that a manager cannot trade against a price
+        // frozen because the market shut sixteen hours ago -- so seconds of
+        // slop at a boundary is immaterial to it, and is the accepted residual.
+        //
+        // Nothing here allocates, prices or selects on the value; it is
+        // compared against a schedule governance set in advance.
+        //
         // Unix epoch day 0 was a Thursday, so +4 lands 0 on Sunday.
+        // slither-disable-next-line weak-prng
         uint256 dayOfWeek = ((block.timestamp / 1 days) + 4) % 7;
+        // slither-disable-next-line weak-prng
         uint256 minuteUTC = (block.timestamp % 1 days) / 60;
 
         if (((w.weekdayMask >> dayOfWeek) & 1) == 0) {
