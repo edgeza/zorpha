@@ -115,8 +115,22 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
 if (!siteUrl) {
   if (isPreview && process.env.VERCEL_URL) {
+    // Report what the APP will use, not what this script can see. The two are
+    // different variables: VERCEL_URL is always present in the build
+    // environment, while lib/site-url.ts can only read NEXT_PUBLIC_VERCEL_URL,
+    // which Vercel exposes only while "Automatically expose System Environment
+    // Variables" is on. Noting the first while the app falls back to the second
+    // would print a reassuring origin that nothing actually serves.
+    const publicUrl = process.env.NEXT_PUBLIC_VERCEL_URL;
     notes.push(
-      `NEXT_PUBLIC_SITE_URL unset — preview build, using https://${process.env.VERCEL_URL}`,
+      publicUrl
+        ? `NEXT_PUBLIC_SITE_URL unset — preview build, using https://${publicUrl}`
+        : [
+            `NEXT_PUBLIC_SITE_URL unset, and NEXT_PUBLIC_VERCEL_URL is not exposed.`,
+            `  This preview will label itself https://zorpha.xyz, not ${process.env.VERCEL_URL}.`,
+            `  Turn on "Automatically expose System Environment Variables" in the`,
+            `  Vercel project, or set NEXT_PUBLIC_SITE_URL for the Preview scope.`,
+          ].join(LF + '        '),
     );
   } else if (isProd) {
     problems.push(
