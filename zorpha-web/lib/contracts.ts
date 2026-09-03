@@ -260,8 +260,21 @@ export const vaultAbi = [
     outputs: [{ type: 'uint256' }],
   },
   {
+    // `isCircuitBreakerActive`, NOT `circuitBreakerActive`.
+    //
+    // This read was wrong from the start and failed silently for it. All three
+    // vaults declare `bool public isCircuitBreakerActive`, so the getter the
+    // app asked for does not exist and every call reverted:
+    //
+    //   cast call $SPOT 'isCircuitBreakerActive()(bool)'  ->  false
+    //   cast call $SPOT 'circuitBreakerActive()(bool)'    ->  execution reverted
+    //
+    // wagmi surfaces that as `undefined` rather than an error, so a halted
+    // vault and a healthy one rendered identically -- the one piece of state
+    // where being wrong matters most, because it is the state that says
+    // "deposits are stopped".
     type: 'function',
-    name: 'circuitBreakerActive',
+    name: 'isCircuitBreakerActive',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ type: 'bool' }],

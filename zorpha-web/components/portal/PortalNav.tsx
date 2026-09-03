@@ -27,6 +27,16 @@ const GROUPS: Array<{ label: string; items: Array<{ href: string; label: string 
     ],
   },
   {
+    // Its own group rather than an item under Invest: operating a vault and
+    // depositing into one are different jobs done by different people, and the
+    // terminal is useless to anyone without a role. Listed for everyone all the
+    // same -- it reads your roles on arrival and says plainly which actions
+    // your address can and cannot take, which is a better answer to "how do I
+    // run a vault" than an absent link.
+    label: 'Operate',
+    items: [{ href: '/portal/manage', label: 'Terminal' }],
+  },
+  {
     label: 'Record',
     items: [
       { href: '/portal/receipts', label: 'Receipts' },
