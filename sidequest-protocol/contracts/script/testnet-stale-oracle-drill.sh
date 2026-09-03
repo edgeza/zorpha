@@ -58,7 +58,7 @@ VAULTS="broadcast/DeployVaultsV1.s.sol/$CHAIN_ID/run-latest.json"
 
 # Short enough to wait out, long enough that the fresh assertions are not
 # racing the clock on a chain with ~2s blocks.
-STALENESS="${STALENESS_SECS:-45}"
+STALENESS="${STALENESS_SECS:-90}"
 PRICE_USD="${PRICE_USD:-250}"
 DEPOSIT="${DEPOSIT_AMOUNT:-10000000000000000000}"   # 10 equity, 18dp
 
@@ -91,6 +91,24 @@ named_of(){ MSYS_NO_PATHCONV=1 node -e '
 # pipeline must not be allowed to abort the script, and the reason has to be
 # checked -- any revert would satisfy a bare "it failed" test, including one
 # caused by a missing role or a bad balance, which would prove nothing.
+# Post a price NOW. Called immediately before each operation that needs one.
+#
+# The window is deliberately short so the wait in step 5 is short, and that
+# makes setup latency matter: every `cast send --account` prompts for a
+# keystore password, and a human typing three of those between the report and
+# the rebalance took 67 seconds against a 45 second window. The drill failed
+# with StaleOracle before it reached the part that tests StaleOracle.
+#
+# So freshness is established where it is needed rather than assumed to
+# persist from the top of the step. The one stretch that must NOT be
+# refreshed is step 5 into step 6, which is the whole point of the drill.
+oracle_updated_at() { cast call "$ORACLE" 'latestRoundData()(uint80,int256,uint256,uint256,uint80)' --rpc-url "$RPC" | sed -n "4p" | num; }
+chain_now() { cast block latest --rpc-url "$RPC" --field timestamp | num; }
+fresh_price() {
+  send "$ORACLE" 'report(int256)' "$(( PRICE_USD * 100000000 ))"
+  info "price posted; age $(bi "$(chain_now)" sub "$(oracle_updated_at)")s, window ${STALENESS}s"
+}
+
 refuses_as_stale() {
   local what="$1"; shift
   local err rc
@@ -223,8 +241,6 @@ ok "adapter funded on both legs so it can settle either direction"
 
 # ── 3. Fresh price, deposit, and hold BOTH legs ─────────────────────────────
 bold "3/7  Fresh price, then take both legs"
-send "$ORACLE" 'report(int256)' "$(( PRICE_USD * 100000000 ))"
-ok "reported \$$PRICE_USD"
 
 # Mint for BOTH deposits. Step 6 probes a stale deposit, and if the actor has
 # no asset left that probe reverts on balance instead of on staleness -- which
@@ -242,6 +258,8 @@ send "$VAULT" 'deposit(uint256,address)' "$DEPOSIT" "$ACTOR"
 SHARES=$(call "$VAULT" 'balanceOf(address)(uint256)' "$ACTOR")
 ok "deposited, shares $SHARES"
 
+# Fresh immediately before the trade, with only this one prompt between.
+fresh_price
 send "$VAULT" 'rebalanceTo(uint16)' 5000
 EQ=$(call "$ASSET" 'balanceOf(address)(uint256)' "$VAULT")
 CA=$(call "$CASH" 'balanceOf(address)(uint256)' "$VAULT")
@@ -254,6 +272,7 @@ ok "the vault holds BOTH legs, so the oracle is now load-bearing"
 
 # ── 4. Everything works while the price is fresh ────────────────────────────
 bold "4/7  Fresh: operations succeed"
+fresh_price
 GV=$(call "$VAULT" 'grossValue()(uint256)')
 NAV=$(call "$VAULT" 'getNavPerShare()(uint256)')
 ok "grossValue $GV, nav/share $NAV"
@@ -290,7 +309,7 @@ ok "a frozen feed halts the vault instead of mispricing it"
 
 # ── 7. And a new price must unfreeze it ─────────────────────────────────────
 bold "7/7  Recovery"
-send "$ORACLE" 'report(int256)' "$(( PRICE_USD * 100000000 ))"
+fresh_price
 ok "reported a fresh price"
 GV2=$(call "$VAULT" 'grossValue()(uint256)')
 ok "grossValue answers again: $GV2"
