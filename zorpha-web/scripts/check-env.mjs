@@ -147,11 +147,56 @@ if (!siteUrl) {
 
 // WalletConnect is optional: the connector is only registered when the project
 // id is present, and the app works without it. Worth a note, not a failure.
-if (!process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID) {
+//
+// NEXT_PUBLIC_WC_PROJECT_ID is the name lib/wagmi.ts actually reads. I first
+// wrote this check against NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID, which exists
+// nowhere in the codebase, so it emitted "WalletConnect will be unavailable"
+// on every build INCLUDING ones where it is correctly configured. A check that
+// cries wolf is worse than no check, which is the whole argument for this file.
+if (!process.env.NEXT_PUBLIC_WC_PROJECT_ID) {
   notes.push(
-    'NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID unset — WalletConnect and mobile ' +
-      'wallet pairing will be unavailable in this build',
+    'NEXT_PUBLIC_WC_PROJECT_ID unset — WalletConnect and mobile wallet ' +
+      'pairing will be unavailable in this build',
   );
+}
+
+// The contract addresses. Missing ones do NOT fail the build -- a staged
+// deploy legitimately has some unset, and the portal's EnvBanner names them at
+// runtime. But they are inlined at build time, so a build made without them
+// produces a site whose entire on-chain layer is dead: every balance, supply
+// and threshold renders as an em dash while the database-backed panels keep
+// working and make it look healthy.
+//
+// That is exactly what happened to the production deploy: all twelve unset on
+// Vercel, so circulating supply, burned-to-date, buyback figures and the
+// launch form's bond were all blank on a site that otherwise looked fine.
+const ADDRESS_VARS = [
+  'NEXT_PUBLIC_ZOR_ADDRESS',
+  'NEXT_PUBLIC_VESTING_ADDRESS',
+  'NEXT_PUBLIC_MERKLE_DISTRIBUTOR_ADDRESS',
+  'NEXT_PUBLIC_BUYBACK_ADDRESS',
+  'NEXT_PUBLIC_TREASURY_ADDRESS',
+  'NEXT_PUBLIC_INSURANCE_ADDRESS',
+  'NEXT_PUBLIC_TIMELOCK_ADDRESS',
+  'NEXT_PUBLIC_VAULT_FACTORY_ADDRESS',
+  'NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS',
+  'NEXT_PUBLIC_REPUTATION_REGISTRY_ADDRESS',
+  'NEXT_PUBLIC_VAULT_LAUNCHER_ADDRESS',
+  'NEXT_PUBLIC_LEADER_FAUCET_ADDRESS',
+];
+const missingAddresses = ADDRESS_VARS.filter((v) => !process.env[v]);
+if (missingAddresses.length) {
+  notes.push(
+    `${missingAddresses.length} of ${ADDRESS_VARS.length} contract addresses unset — ` +
+      'those panels will read nothing at runtime: ' +
+      missingAddresses.map((v) => v.replace('NEXT_PUBLIC_', '').replace('_ADDRESS', '')).join(', '),
+  );
+  if (missingAddresses.length === ADDRESS_VARS.length) {
+    notes.push(
+      'EVERY address is unset. The build will produce a site with no on-chain ' +
+        'reads at all, while database-backed panels keep working and hide it.',
+    );
+  }
 }
 
 for (const note of notes) console.warn(`  note: ${note}`);
