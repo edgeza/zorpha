@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { securityHeaders } from './lib/security-headers.mjs';
 import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -21,6 +22,19 @@ const nextConfig = {
 
   images: {
     remotePatterns: [{ protocol: 'https', hostname: '**' }],
+  },
+
+  // The security headers, including a CSP whose connect-src is built from
+  // NEXT_PUBLIC_RPC_URL rather than hardcoded. They used to live as a literal
+  // string in vercel.json, where the allowlist could not know what the app was
+  // configured to call -- and drifted, blocking every JSON-RPC request in
+  // production while the page still rendered perfectly.
+  //
+  // They are emitted HERE and deliberately no longer in vercel.json: a
+  // response carrying two CSP headers is held to the intersection of both, so
+  // leaving the old one in place would keep enforcing the broken allowlist.
+  async headers() {
+    return [{ source: '/(.*)', headers: securityHeaders() }];
   },
 
   webpack: (config) => {

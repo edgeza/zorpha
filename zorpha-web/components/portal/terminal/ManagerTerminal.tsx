@@ -410,8 +410,9 @@ export function ManagerTerminal() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Vault switcher */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Vault switcher. Hidden entirely when there is only one thing to pick,
+          because a single inert pill reads as a broken control. */}
+      <div className={allVaults.length > 1 ? 'flex flex-wrap items-center gap-2' : 'hidden'}>
         {allVaults.map((v) => (
           <button
             key={v.key}
@@ -425,8 +426,12 @@ export function ManagerTerminal() {
       </div>
 
       {!selected ? (
-        <Callout tone="info" title="Nothing to show">
-          <p>No vault selected.</p>
+        <Callout tone="warn" title="No vault is configured in this build">
+          <p>
+            The terminal lists vaults from the addresses baked into the build, and this one has
+            none. That is a deployment setting rather than anything about your wallet — the
+            banner at the top of the portal names exactly which addresses are missing.
+          </p>
         </Callout>
       ) : (
         <>
