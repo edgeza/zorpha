@@ -139,6 +139,70 @@ for v in LIQUIDITY_RECIPIENT AIRDROP_MERKLE_ROOT AIRDROP_CLAIM_DEADLINE; do
 done
 ok "airdrop root and liquidity recipient are set"
 
+# ─── Oracle updater set ─────────────────────────────────────────────────────
+# Phase B defaults ORACLE_UPDATERS to the deployer and then refuses, because
+# _handOver renounces UPDATER_ROLE from the deployer while addUpdater has
+# already pushed it into the `updaters` array and nothing removes it. The
+# result is an oracle that can never reach quorum and vaults that revert on
+# their first NAV read.
+#
+# That refusal is right. Where it lands is not: phase 3 of 4, after slither,
+# the full suite and a COMPLETED phase-A deploy have spent three minutes and
+# real gas on a run that was never going to finish. Every fact it checks is
+# already on the table here, so check it here.
+#
+# The seated address must be one the price keeper actually signs with. Seating
+# an address nobody posts from is the same dead oracle by a slower route: the
+# deploy succeeds, and the first rebalance reverts on staleness.
+if [[ -z "${ORACLE_UPDATERS:-}" ]]; then
+  die "ORACLE_UPDATERS is not set.
+
+     Phase B would default it to the deployer, whose roles are renounced at
+     handover -- an oracle that can never report. Set it to the address your
+     price keeper signs with, and set ORACLE_QUORUM to match:
+
+       export ORACLE_UPDATERS=0x<keeper address>
+       export ORACLE_QUORUM=1
+
+     To read the address the CURRENT keeper is posting from, ask the oracle it
+     is already feeding -- the entry whose report is fresh is the live one:
+
+       cast call \$NEXT_PUBLIC_ORACLE_ADDRESS 'updaters(uint256)(address)' 1 --rpc-url $RPC"
+fi
+
+IFS=',' read -ra _UPDATERS <<< "$ORACLE_UPDATERS"
+for u in "${_UPDATERS[@]}"; do
+  u="${u// /}"
+  [[ "$u" =~ ^0x[0-9a-fA-F]{40}$ ]] || die "ORACLE_UPDATERS entry '$u' is not an address."
+  if [[ "${u,,}" == "${DEPLOYER,,}" ]]; then
+    die "ORACLE_UPDATERS contains the deployer ($DEPLOYER).
+
+     Its roles are renounced at handover, so it would sit in the updaters
+     array holding no role: the oracle could never reach quorum and every
+     vault would revert on its first NAV read.
+
+     Set it to the address your price keeper signs with."
+  fi
+done
+
+_QUORUM="${ORACLE_QUORUM:-${#_UPDATERS[@]}}"
+[[ "$_QUORUM" -ge 1 && "$_QUORUM" -le "${#_UPDATERS[@]}" ]] \
+  || die "ORACLE_QUORUM=$_QUORUM but only ${#_UPDATERS[@]} updater(s) are listed."
+
+export ORACLE_UPDATERS
+export ORACLE_QUORUM="$_QUORUM"
+ok "oracle updaters: ${#_UPDATERS[@]}, quorum $_QUORUM, deployer not among them"
+
+# A seated updater with no gas cannot post, which is the dead oracle again with
+# an extra step. Warn rather than refuse -- it is fixable after the deploy.
+for u in "${_UPDATERS[@]}"; do
+  u="${u// /}"
+  if [[ "$(cast balance "$u" --rpc-url "$RPC")" == "0" ]]; then
+    warn "oracle updater $u has NO gas and cannot post prices."
+    warn "Fund it from the faucet, or the vaults will revert on staleness."
+  fi
+done
+
 # ─── 1. Fixtures ────────────────────────────────────────────────────────────
 bold "1/4  Testnet fixtures"
 echo "  Testnet has no USDG, no curated vaults and no DEX, so these stand in."
