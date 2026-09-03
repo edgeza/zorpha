@@ -55,6 +55,26 @@ contract VaultLauncher is AccessControl, ReentrancyGuard {
     ///      one transaction, escrow or not.
     mapping(address => bool) public approvedTarget;
 
+    /// @notice The same allowlist, enumerable.
+    ///
+    /// @dev A mapping answers "is this one approved?" and cannot answer "which
+    ///      ones are?", so nothing could show a leader the venues they may
+    ///      choose from. The launch form asked them to paste a raw address and
+    ///      only then told them whether it was allowed -- a list they could not
+    ///      see, guessed at one address at a time.
+    ///
+    ///      This is the same shape as the bug that cost a morning on the
+    ///      oracle: granting UPDATER_ROLE set a mapping while the contract
+    ///      iterated an array, so the role was held and the updater invisible.
+    ///      A membership set that something has to enumerate needs an array,
+    ///      and the array has to be maintained by whatever writes the mapping.
+    ///
+    ///      Order is not stable: revoking swaps the last entry into the gap
+    ///      rather than shifting, so callers must not treat an index as an
+    ///      identity across transactions.
+    address[] public approvedTargets;
+    mapping(address => uint256) private _targetIndex; // 1-indexed; 0 = absent
+
     uint256 public bondAmount;
     uint256 public minSeedEscrow;
     uint16 public minCoverageBps;
@@ -140,8 +160,41 @@ contract VaultLauncher is AccessControl, ReentrancyGuard {
     // ─── Governance ──────────────────────────────────────────────────────────
 
     function setTargetApproved(address target, bool approved) external onlyRole(GOVERNANCE_ROLE) {
+        if (target == address(0)) revert BadParams();
+
+        bool was = approvedTarget[target];
         approvedTarget[target] = approved;
+
+        // Idempotent on purpose: approving twice must not list a venue twice,
+        // and revoking one that was never approved must not underflow.
+        if (approved && !was) {
+            approvedTargets.push(target);
+            _targetIndex[target] = approvedTargets.length;
+        } else if (!approved && was) {
+            uint256 i = _targetIndex[target];
+            uint256 last = approvedTargets.length;
+            if (i != last) {
+                address moved = approvedTargets[last - 1];
+                approvedTargets[i - 1] = moved;
+                _targetIndex[moved] = i;
+            }
+            approvedTargets.pop();
+            delete _targetIndex[target];
+        }
+
         emit TargetApproved(target, approved);
+    }
+
+    /// @notice How many venues a leader may currently choose from.
+    function approvedTargetCount() external view returns (uint256) {
+        return approvedTargets.length;
+    }
+
+    /// @notice The whole allowlist, for a UI that has to render it.
+    /// @dev View-only and unbounded, which is safe here: the list is governance
+    ///      -maintained and measured in venues, not users.
+    function allApprovedTargets() external view returns (address[] memory) {
+        return approvedTargets;
     }
 
     function setParams(
