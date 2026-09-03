@@ -14,3 +14,4 @@ seed.sql
 .rotation-v2-*
 .yield-adapter-*
 .stale-oracle-*
+.noop-rebalancer-*
