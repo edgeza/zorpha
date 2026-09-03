@@ -44,7 +44,9 @@ function Cell({ row }: { row: Row }) {
       <span className="font-mono text-2xs text-ink-200">{row.nav}</span>
       <span className="font-mono text-2xs text-ink-500">by</span>
       <span className="font-mono text-2xs text-ink-400">{formatAddress(row.manager)}</span>
-      <span className="font-mono text-2xs text-ink-600">#{row.nonce}</span>
+      {/* ink-500, not ink-600: measured at 3.17:1 against this background,
+          under the 4.5:1 WCAG AA floor for 11px text. */}
+      <span className="font-mono text-2xs text-ink-500">#{row.nonce}</span>
     </div>
   );
 }
