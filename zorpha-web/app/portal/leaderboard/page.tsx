@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { listManagers } from '@/lib/queries';
 import { LeaderboardTable } from '@/components/portal/LeaderboardTable';
+import Link from 'next/link';
 import { EmptyState, Callout } from '@/components/ui/Primitives';
 
 export const metadata: Metadata = { title: 'Managers' };
@@ -28,8 +29,13 @@ export default async function LeaderboardPage() {
 
       {managers.length === 0 ? (
         <EmptyState
-          title="No managers indexed"
-          body="Managers appear here after their first signed rebalance is indexed."
+          title="Nobody has a record here yet"
+          body="A manager earns a row by signing a rebalance, not by launching a vault, so this stays empty until the first instruction is signed. That is the whole point of the ranking: it cannot be joined by announcement."
+          action={
+            <Link href="/portal/leaders/launch" className="btn-primary btn-sm">
+              Launch a vault
+            </Link>
+          }
         />
       ) : (
         <LeaderboardTable managers={managers} />

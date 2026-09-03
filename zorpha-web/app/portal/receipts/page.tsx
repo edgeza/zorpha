@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { listLatestRebalances } from '@/lib/queries';
 import { ReceiptCard } from '@/components/portal/ReceiptCard';
+import Link from 'next/link';
 import { EmptyState } from '@/components/ui/Primitives';
 
 export const metadata: Metadata = { title: 'Receipts' };
@@ -22,8 +23,13 @@ export default async function ReceiptsPage() {
 
       {receipts.length === 0 ? (
         <EmptyState
-          title="No receipts indexed"
-          body="Either no rebalance has happened yet, or the indexer is not connected to a Supabase project in this environment. Nothing is being hidden; there is simply nothing to show."
+          title="No rebalance has been signed yet"
+          body="Every vault reports rebalanceCount 0 on chain, so this is the protocol's real state rather than a gap in the index. The first manager instruction ever signed will appear here, and it cannot be edited or removed afterwards."
+          action={
+            <Link href="/portal/manage" className="btn-primary btn-sm">
+              Open the terminal
+            </Link>
+          }
         />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
