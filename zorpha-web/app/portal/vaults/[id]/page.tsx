@@ -46,6 +46,25 @@ export default async function VaultDetailPage({
         <span className="text-ink-300">{vault.symbol}</span>
       </nav>
 
+      {/*
+        Unlisted vaults stay reachable by address on purpose -- the contract
+        exists on chain whether or not the index advertises it, and hiding it
+        from the storefront should not mean pretending it is not there.
+        Somebody arriving from a stale link does need to know it is not a
+        product, though, which is what this says.
+      */}
+      {vault.listed === false && (
+        <div
+          role="note"
+          className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+        >
+          <strong className="font-semibold">Not a listed vault.</strong>{' '}
+          This contract was deployed for testing or as a protocol drill. It is
+          shown because the address resolves on chain, not because it is
+          offered as a product. Do not deposit into it.
+        </div>
+      )}
+
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="stat-label">{vault.vault_type} vault</div>

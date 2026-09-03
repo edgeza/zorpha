@@ -33,6 +33,15 @@ export function getSupabase(): SupabaseClient | null {
 export type VaultType = 'spot' | 'rotation' | 'yield';
 
 export type VaultRow = {
+  /**
+   * False hides the vault from the portal index. See migration 004.
+   *
+   * Optional because rows written before that migration have no value for it,
+   * and the column defaults to true -- a real vault should appear without
+   * anyone remembering a flag. What must not happen by accident is a drill
+   * vault appearing, and the migration's trigger handles that on write.
+   */
+  listed?: boolean;
   address: `0x${string}`;
   vault_type: VaultType;
   name: string;

@@ -7,6 +7,12 @@ import { ReceiptMarquee } from '@/components/marketing/ReceiptMarquee';
 import { Reveal } from '@/components/motion/Reveal';
 import { TOKEN } from '@/lib/tokenomics';
 import { TEST_STATUS } from '@/lib/audit';
+import { VAULTS_FOR_DISPLAY } from '@/lib/vault-classes';
+
+// Single source of truth. These symbols used to be hardcoded here AND in
+// the sibling page, and two of the three had drifted away from the
+// contracts actually deployed on chain.
+const VAULTS = VAULTS_FOR_DISPLAY;
 
 export const metadata: Metadata = {
   alternates: { canonical: '/' },
@@ -35,26 +41,6 @@ const STEPS = [
   },
 ];
 
-const VAULTS = [
-  {
-    symbol: 'zqEQ',
-    name: 'Long / Flat Equity',
-    mandate: 'Moves a single Stock Token between full exposure and cash.',
-    detail: 'Oracle-gated · 1% max slippage · 20% performance fee',
-  },
-  {
-    symbol: 'zqROT',
-    name: 'RWA Rotation',
-    mandate: 'Reweights a basket of Stock Tokens against a USDG base.',
-    detail: 'Per-asset oracles · basket weights onchain · 20% performance fee',
-  },
-  {
-    symbol: 'zqUSD',
-    name: 'USDG Yield',
-    mandate: 'Routes idle USDG through a pluggable yield adapter.',
-    detail: 'Adapter swaps are timelocked · 10% performance fee',
-  },
-];
 
 const DIFFERENTIATORS = [
   {

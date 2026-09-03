@@ -2,6 +2,13 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { ReceiptAnatomy } from '@/components/marketing/ReceiptAnatomy';
 import { SectionHeading, Callout, SpecRow } from '@/components/ui/Primitives';
+import { VAULT_CLASSES, vaultSymbol } from '@/lib/vault-classes';
+
+// Symbols come from lib/vault-classes, not from literals here. This page and
+// the front page each had their own copy, and two of the three had drifted
+// away from the deployed contracts (zqEQ and zqUSD exist nowhere on chain).
+// The prose below is page-specific and stays.
+const SYM = Object.fromEntries(VAULT_CLASSES.map((v) => [v.name, vaultSymbol(v)]));
 
 export const metadata: Metadata = {
   alternates: { canonical: '/protocol' },
@@ -12,7 +19,7 @@ export const metadata: Metadata = {
 
 const VAULTS = [
   {
-    symbol: 'zqEQ',
+    symbol: SYM['Long / Flat Equity'],
     name: 'Long / Flat Equity',
     body: 'Holds a single Stock Token or sits in cash. The manager sets a target exposure in basis points; the vault will not act on a target that moves less than its rebalance threshold, which stops fee-generating churn.',
     specs: [
@@ -23,7 +30,7 @@ const VAULTS = [
     ],
   },
   {
-    symbol: 'zqROT',
+    symbol: SYM['RWA Rotation'],
     name: 'RWA Rotation',
     body: 'Holds a basket of Stock Tokens against a USDG base and reweights between them. Target weights are stored onchain, so the intended portfolio is public before the trades settle.',
     specs: [
@@ -34,7 +41,7 @@ const VAULTS = [
     ],
   },
   {
-    symbol: 'zqUSD',
+    symbol: SYM['USDG Yield'],
     name: 'USDG Yield',
     body: 'Routes idle USDG through a pluggable yield adapter. V1 ships a zero-yield, zero-risk stub so the slot is real before a lending market is wired in; swapping the adapter is a timelocked action.',
     specs: [

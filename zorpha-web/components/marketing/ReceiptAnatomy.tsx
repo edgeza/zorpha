@@ -33,13 +33,31 @@ const FIELDS: { label: string; value: string; note: string; hash?: boolean }[] =
   },
 ];
 
+/**
+ * WHY THIS SAYS "ILLUSTRATIVE" ON THE PAGE
+ *
+ * The field values below are invented. `navPerShare` 1.04182 and manager
+ * 0x8f2a…4c19 belong to no transaction, and the sibling marquee showed block
+ * 1,284,551 while Robinhood Chain was at 112,141,793.
+ *
+ * That was unlabelled, in the one section of the site whose entire argument is
+ * "do not trust a manager's summary of their own performance, read the chain".
+ * Fabricated evidence under that heading does more damage than a blank space,
+ * and the portal already holds the right standard -- it renders an em dash for
+ * anything it cannot read and says so: "If the indexer is not running, this
+ * stays empty rather than showing placeholder data."
+ *
+ * The marketing page now meets the same bar. The diagram is worth keeping,
+ * because a labelled diagram of a receipt teaches the shape of the thing; an
+ * unlabelled one just asserts a track record that does not exist yet.
+ */
 export function ReceiptAnatomy() {
   const { ref, inView, reduced } = useInView<HTMLDivElement>({ threshold: 0.25 });
   const animate = inView || reduced;
 
   return (
     <div ref={ref} className="card overflow-hidden">
-      <div className="flex items-center justify-between border-b border-void-700 bg-void-850 px-5 py-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-void-700 bg-void-850 px-5 py-3.5">
         <div className="flex items-center gap-2">
           <span
             className={`h-1.5 w-1.5 rounded-full bg-verified-400 ${reduced ? '' : 'animate-pulse-dot'}`}
@@ -80,6 +98,10 @@ export function ReceiptAnatomy() {
       </dl>
 
       <div className="border-t border-void-700 bg-void-850 px-5 py-3.5">
+        <p className="mb-2 text-xs font-semibold leading-relaxed text-amber-300">
+          Field values above are illustrative, not a real transaction. Live
+          receipts are in the portal.
+        </p>
         <p className="text-xs leading-relaxed text-ink-400">
           Emitted by the vault contract itself, so it exists whether or not this website does.
         </p>
