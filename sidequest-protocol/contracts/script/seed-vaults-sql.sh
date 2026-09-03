@@ -40,7 +40,12 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ -f "$WEB_ENV" ]] || die "no $WEB_ENV"
 
-env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2-; }
+# `|| true` is load-bearing under `set -euo pipefail`. grep exits 1 when it
+# finds nothing, pipefail propagates that, and the assignment then kills the
+# script -- BEFORE the `[[ -n "$X" ]] || die` meant to report the missing key.
+# A drill died three times printing nothing at all this way, with its own
+# diagnostic sitting unreachable two lines below.
+env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2- || true; }
 num()    { awk '{print $1}'; }
 # A failed call means "this vault type does not have that accessor", which is
 # how the type is detected. Never fatal.

@@ -40,7 +40,12 @@ bad()  { printf '  \033[31mPHANTOM\033[0m %-12s %s\n' "$1" "$2"; }
 die()  { printf '\n  \033[31mx %s\033[0m\n\n' "$1" >&2; exit 1; }
 
 [[ -f "$WEB_ENV" ]] || die "no $WEB_ENV"
-env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2-; }
+# `|| true` is load-bearing under `set -euo pipefail`. grep exits 1 when it
+# finds nothing, pipefail propagates that, and the assignment then kills the
+# script -- BEFORE the `[[ -n "$X" ]] || die` meant to report the missing key.
+# A drill died three times printing nothing at all this way, with its own
+# diagnostic sitting unreachable two lines below.
+env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2- || true; }
 
 # Extract topic1 of every RoleGranted, distinct.
 #

@@ -78,7 +78,12 @@ bi()      { MSYS_NO_PATHCONV=1 node -e 'const [a,op,b]=process.argv.slice(1);con
   const f={add:()=>A+B,sub:()=>A-B,mul:()=>A*B,div:()=>A/B}[op];
   process.stdout.write(f().toString())' -- "$1" "$2" "$3"; }
 num()     { awk '{print $1}'; }
-env_of()  { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2-; }
+# `|| true` is load-bearing under `set -euo pipefail`. grep exits 1 when it
+# finds nothing, pipefail propagates that, and the assignment then kills the
+# script -- BEFORE the `[[ -n "$X" ]] || die` meant to report the missing key.
+# A drill died three times printing nothing at all this way, with its own
+# diagnostic sitting unreachable two lines below.
+env_of()  { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2- || true; }
 call()    { cast call "$@" --rpc-url "$RPC" | num; }
 send()    { cast send "$@" --rpc-url "$RPC" --account "$GOV_ACCT" >/dev/null; }
 created() { MSYS_NO_PATHCONV=1 node -e 'process.stdout.write(JSON.parse(process.argv[1]).deployedTo || "")' -- "$1"; }

@@ -74,7 +74,12 @@ warn() { printf '  \033[33m!\033[0m %s\n' "$1"; }
 die()  { printf '\n  \033[31mx %s\033[0m\n\n' "$1" >&2; exit 1; }
 
 num()    { awk '{print $1}'; }
-env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2-; }
+# `|| true` is load-bearing under `set -euo pipefail`. grep exits 1 when it
+# finds nothing, pipefail propagates that, and the assignment then kills the
+# script -- BEFORE the `[[ -n "$X" ]] || die` meant to report the missing key.
+# A drill died three times printing nothing at all this way, with its own
+# diagnostic sitting unreachable two lines below.
+env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2- || true; }
 call()   { cast call "$@" --rpc-url "$RPC" | num; }
 send()   { cast send "$@" --rpc-url "$RPC" --account "$GOV_ACCT" >/dev/null; }
 lc()     { tr '[:upper:]' '[:lower:]'; }

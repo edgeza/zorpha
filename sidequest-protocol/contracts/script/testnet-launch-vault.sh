@@ -60,7 +60,12 @@ die()  { printf '\n  \033[31mx %s\033[0m\n\n' "$1" >&2; exit 1; }
 command -v node >/dev/null || die "node is required (the deploy scripts need it too)"
 lt() { node -e 'process.exit(BigInt(process.argv[1]) < BigInt(process.argv[2]) ? 0 : 1)' -- "$1" "$2"; }
 
-env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2-; }
+# `|| true` is load-bearing under `set -euo pipefail`. grep exits 1 when it
+# finds nothing, pipefail propagates that, and the assignment then kills the
+# script -- BEFORE the `[[ -n "$X" ]] || die` meant to report the missing key.
+# A drill died three times printing nothing at all this way, with its own
+# diagnostic sitting unreachable two lines below.
+env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2- || true; }
 num()    { awk '{print $1}'; }
 
 [[ -f "$WEB_ENV" ]]  || die "no $WEB_ENV -- run the deploy first"
