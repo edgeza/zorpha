@@ -377,15 +377,72 @@ esac
 
 # --- 6. Claim to the treasury -----------------------------------------------
 bold "6/6  claimFees"
+#
+# claimFees is onlyRole(DEFAULT_ADMIN_ROLE), and on the factory vaults that
+# role now belongs to the Timelock rather than governance -- the fix for the
+# escalation in FINDINGS-ROLE-ESCALATION.md, where gov holding DEFAULT_ADMIN
+# could grant itself ADAPTER_SETTER_ROLE and repoint the adapter with no delay.
+#
+# So this step adapts rather than breaking. A vault where the actor still holds
+# admin -- a fresh drill vault, or a pre-relock deployment -- claims
+# immediately. A relocked vault queues the claim and says so. Collecting the
+# fee two days later harms nobody; the alternative was leaving governance able
+# to move depositor funds in one block.
+ADMIN_ROLE=0x0000000000000000000000000000000000000000000000000000000000000000
+ACTOR_IS_ADMIN=$(call "$VAULT" 'hasRole(bytes32,address)(bool)' "$ADMIN_ROLE" "$ACTOR")
 T0=$(call "$ASSET" 'balanceOf(address)(uint256)' "$TREASURY")
-send "$VAULT" 'claimFees()'
-T1=$(call "$ASSET" 'balanceOf(address)(uint256)' "$TREASURY")
-MOVED=$(bi "$T1" sub "$T0")
-info "treasury $T0 -> $T1  (+$MOVED)"
-eq "$MOVED" "$ACCRUED" || die "treasury received $MOVED but $ACCRUED was accrued"
-ok "the full accrued fee reached the treasury"
-eq "$(call "$VAULT" 'performanceFeeAccrued()(uint256)')" 0 || die "performanceFeeAccrued did not reset"
-ok "counter reset to 0"
+
+if [[ "$ACTOR_IS_ADMIN" == "true" ]]; then
+  send "$VAULT" 'claimFees()'
+  T1=$(call "$ASSET" 'balanceOf(address)(uint256)' "$TREASURY")
+  MOVED=$(bi "$T1" sub "$T0")
+  info "treasury $T0 -> $T1  (+$MOVED)"
+  eq "$MOVED" "$ACCRUED" || die "treasury received $MOVED but $ACCRUED was accrued"
+  ok "the full accrued fee reached the treasury"
+  eq "$(call "$VAULT" 'performanceFeeAccrued()(uint256)')" 0 || die "performanceFeeAccrued did not reset"
+  ok "counter reset to 0"
+else
+  TL=$(env_of NEXT_PUBLIC_TIMELOCK_ADDRESS)
+  TL_IS_ADMIN=$(call "$VAULT" 'hasRole(bytes32,address)(bool)' "$ADMIN_ROLE" "$TL")
+  [[ "$TL_IS_ADMIN" == "true" ]] || die "neither $ACTOR nor the Timelock $TL holds
+     DEFAULT_ADMIN on this vault, so claimFees is callable by nobody. That is
+     not the relock working -- that is a vault with no admin at all."
+  ok "admin is the Timelock, so claimFees is a queued action"
+
+  DATA=$(cast calldata 'claimFees()')
+  PRED=0x0000000000000000000000000000000000000000000000000000000000000000
+  # Salt off the vault, so a re-run does not collide with a stale operation and
+  # a second vault gets its own.
+  SALT=$(cast keccak "zorpha-claimfees-$VAULT")
+  DELAY=$(call "$TL" 'getMinDelay()(uint256)')
+  OPID=$(call "$TL" 'hashOperation(address,uint256,bytes,bytes32,bytes32)(bytes32)' \
+          "$VAULT" 0 "$DATA" "$PRED" "$SALT")
+
+  if [[ "$(call "$TL" 'isOperationReady(bytes32)(bool)' "$OPID")" == "true" ]]; then
+    send "$TL" 'execute(address,uint256,bytes,bytes32,bytes32)' \
+        "$VAULT" 0 "$DATA" "$PRED" "$SALT"
+    T1=$(call "$ASSET" 'balanceOf(address)(uint256)' "$TREASURY")
+    MOVED=$(bi "$T1" sub "$T0")
+    info "treasury $T0 -> $T1  (+$MOVED)"
+    eq "$MOVED" "$ACCRUED" || die "treasury received $MOVED but $ACCRUED was accrued"
+    ok "the full accrued fee reached the treasury, through the Timelock"
+    eq "$(call "$VAULT" 'performanceFeeAccrued()(uint256)')" 0 || die "performanceFeeAccrued did not reset"
+    ok "counter reset to 0"
+  elif [[ "$(call "$TL" 'isOperation(bytes32)(bool)' "$OPID")" == "true" ]]; then
+    ETA=$(call "$TL" 'getTimestamp(bytes32)(uint256)' "$OPID")
+    MOVED=0
+    warn "already queued, not yet mature"
+    info "eta $ETA. Re-run this drill after it to complete the claim."
+  else
+    send "$TL" 'schedule(address,uint256,bytes,bytes32,bytes32,uint256)' \
+        "$VAULT" 0 "$DATA" "$PRED" "$SALT" "$DELAY"
+    ETA=$(call "$TL" 'getTimestamp(bytes32)(uint256)' "$OPID")
+    MOVED=0
+    ok "queued claimFees through the Timelock"
+    info "eta $ETA ($(( DELAY / 3600 ))h). Re-run this drill after it to complete."
+    info "$ACCRUED is accrued and still owed to the treasury until then."
+  fi
+fi
 
 bold "Drill passed"
 echo "  Deposited $DEPOSIT, venue earned $GAIN, depositor took home $PROFIT,"
