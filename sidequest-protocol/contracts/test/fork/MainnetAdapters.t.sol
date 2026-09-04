@@ -163,10 +163,35 @@ contract MainnetAdaptersForkTest is Test {
         console2.log("1,000 USDG bought AAPL (wei):", received);
     }
 
-    /// @dev Capacity, measured rather than assumed. The vaults ship with
-    ///      `maxSlippageBps = 100`, and the AAPL/USDG pool cannot fill much
-    ///      past $20k inside that bound. Reverting is the correct behaviour —
-    ///      this pins it so nobody "fixes" it by widening the bound.
+    /// @dev Capacity, measured rather than assumed -- and re-measured, because
+    ///      the first measurement went stale.
+    ///
+    ///      This test used to buy $100k and expect a revert, on the basis of a
+    ///      1 September reading where the AAPL/USDG pool cost 44bps at $10k,
+    ///      94bps at $20k and 3100bps at $40k. Run against a live fork on
+    ///      4 September it FAILED, and the pool was the reason: it is roughly
+    ///      two orders of magnitude deeper now.
+    ///
+    ///          size      1 Sep      4 Sep
+    ///          $10k       44bps       8bps
+    ///          $20k       94bps      15bps
+    ///          $40k     3100bps      30bps
+    ///          $100k         --      75bps
+    ///          $250k         --     216bps
+    ///          $500k         --    4513bps
+    ///
+    ///      So the vault ceiling at maxSlippageBps = 100 moved from about $20k
+    ///      to somewhere between $100k and $250k. Encoding either number is what
+    ///      broke this test the first time, so it no longer encodes one: it
+    ///      buys an amount far past any plausible depth and asserts only that
+    ///      the pool is finite and the trade is refused rather than filled
+    ///      badly. Run test/fork/PoolDepthProbe.t.sol for the current ceiling.
+    ///
+    ///      WHICH LAYER REFUSES, now that this has run for real: the ROUTER,
+    ///      with SwapRouter02's own "Too little received". The adapter forwards
+    ///      minOut as amountOutMinimum, so Uniswap rejects before the adapter's
+    ///      SlippageExceeded is ever reached. That guard is a backstop for a
+    ///      router that returns quietly, not the first line of defence.
     function test_OversizedTradeIsRejectedNotFilledBadly() public onlyForked {
         RobinhoodChainRouterAdapter adapter = new RobinhoodChainRouterAdapter(
             SWAP_ROUTER_02, AAPL, USDG, AAPL_USDG_FEE, address(this)
@@ -178,30 +203,15 @@ contract MainnetAdaptersForkTest is Test {
         IERC20(USDG).approve(address(adapter), small);
         uint256 baseline = adapter.swap(USDG, AAPL, small, 1);
 
-        // Price per USDG from the small trade, applied to a much larger one,
-        // minus a 1% allowance. A pool that can absorb the size fills it.
-        uint256 large = 100_000 * ONE_USDG;
+        // Far past any depth this pool has plausibly grown to, so the assertion
+        // survives the pool getting deeper again.
+        uint256 large = 5_000_000 * ONE_USDG;
         uint256 minOut = (baseline * (large / small) * 99) / 100;
 
         deal(USDG, address(this), large);
         IERC20(USDG).approve(address(adapter), large);
 
-        // The last bare expectRevert in the suite, deliberately.
-        //
-        // Every other one has been given its error. This one cannot be, yet: it
-        // only runs with RH_MAINNET_RPC_URL set, mainnet is not deployed, so it
-        // has never executed. The revert would come from either the adapter's
-        // own slippage guard or the router's, depending on which trips first
-        // against a real pool at a real depth -- and that is exactly what this
-        // test exists to find out.
-        //
-        // Guessing would be worse than leaving it open. A wrong expectation
-        // fails the first time somebody runs this against a live fork, which is
-        // the one moment they need it to tell them the truth about the pool
-        // rather than about my guess.
-        //
-        // Name it once this has run for real, and record which layer rejected.
-        vm.expectRevert();
+        vm.expectRevert(bytes("Too little received"));
         adapter.swap(USDG, AAPL, large, minOut);
     }
 
