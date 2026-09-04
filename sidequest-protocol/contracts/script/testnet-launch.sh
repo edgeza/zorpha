@@ -350,11 +350,50 @@ warn "  cast send $ZOR_TOKEN 'transfer(address,uint256)' $FAUCET $FLOAT \\"
 warn "    --rpc-url $RPC --account <GOVERNANCE_KEYSTORE>"
 
 # ─── What is left ───────────────────────────────────────────────────────────
-bold "Deployed. Three things remain, and all of them fail SILENTLY if skipped."
+# The oracle and vault addresses live in deploy-and-verify.sh, which runs as a
+# CHILD PROCESS -- its variables do not come back. Read them from the env file
+# the child just wrote, which is the same source the web app uses.
+from_env() { grep -E "^$1=" "$WEB_ENV" 2>/dev/null | head -1 | cut -d= -f2-; }
+LIVE_ORACLE=$(from_env NEXT_PUBLIC_ORACLE_ADDRESS)
+LIVE_SPOT=$(from_env NEXT_PUBLIC_SPOT_VAULT_ADDRESS)
+LIVE_ROT=$(from_env NEXT_PUBLIC_ROTATION_VAULT_ADDRESS)
+LIVE_YIELD=$(from_env NEXT_PUBLIC_YIELD_VAULT_ADDRESS)
+
+bold "Deployed. FOUR things remain, and all of them fail SILENTLY if skipped."
 
 cat <<NEXT
 
-  1. Let the launcher create vaults.
+  1. Repoint the price keeper at the oracle this run just deployed.
+
+     This deploy created a NEW MedianOracle. The keeper keeps posting to the
+     previous one, indefinitely -- it has no way to notice its prices feed a
+     contract nobody reads. Meanwhile every vault here reverts on its first NAV
+     read with InsufficientFreshReports, which looks like a broken vault rather
+     than a stale variable in another service.
+
+     On the KEEPER service in Railway (the one running start:keeper, not the
+     indexer), set:
+
+       ORACLE_ADDRESS=$LIVE_ORACLE
+
+     That is its only required variable besides the RPC. Railway redeploys on
+     save; the keeper posts within one POLL_INTERVAL_MS. Confirm it took:
+
+       cast call $LIVE_ORACLE 'latestRoundData()(uint80,int256,uint256,uint256,uint80)' --rpc-url $RPC
+
+  2. Register these vaults in the database.
+
+     The indexer reads its list from the \`vaults\` TABLE. VAULT_ADDRESSES is
+     consulted only under DRY_RUN and nothing registers a vault automatically,
+     so until rows exist these are invisible and the portal keeps listing
+     whatever the previous generation left behind. Copy the newest seed file in
+     zorpha-web/migrations.
+
+       spot      $LIVE_SPOT
+       rotation  $LIVE_ROT
+       yield     $LIVE_YIELD
+
+  3. Let the launcher create vaults.
 
      The factory's admin is your governance account, so only it can do this.
      Until it happens, launchYieldVault reverts for everyone and the Leaders
@@ -371,14 +410,14 @@ cat <<NEXT
      --account, not --private-key: exporting a governance key to a shell is how
      this project lost two of its own. Or paste the same call into Rabby.
 
-  2. Fund the leader faucet.
+  4. Fund the leader faucet.
 
      Printed above with the exact amount. Until governance sends it, the
      recruitment page correctly reports the float is gone and no outside
      leader can obtain a bond -- the state the programme has been in for its
      entire life so far.
 
-  3. Accept treasury ownership.
+  5. Accept treasury ownership.
 
      ProtocolTreasury uses Ownable2Step, so the transfer to the Timelock is
      pending until accepted. Queue acceptOwnership() through the Timelock at
