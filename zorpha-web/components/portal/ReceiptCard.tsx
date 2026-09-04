@@ -40,10 +40,21 @@ export function ReceiptCard({ row }: { row: RebalanceRow }) {
             {/* The receipt carries its own scale. 18 is right only for a spot
                 vault on an 18-decimal asset; a rotation or yield receipt is
                 denominated in 6, and rendering those at 18 showed a NAV of
-                1.000000 as 0.00000 on the public feed. Rows written before
-                migration 007 have no scale and keep the old behaviour. */}
-            {row.nav_per_share
-              ? formatUnits(row.nav_per_share, row.nav_decimals ?? 18, 5)
+                1.000000 as 0.00000 on the public feed.
+
+                No fallback. The `?? 18` that used to sit here was chosen so
+                pre-007 rows would "keep the behaviour they have now rather than
+                flipping to a different wrong number" -- but the behaviour they
+                had was printing 0 for a NAV of 1.0, and it stayed on the feed.
+                Migration 009 backfilled the two rows that could be recovered
+                from chain. A null reaching here now means the scale is
+                genuinely unknown, and there is no number this component can
+                honestly print: a dash says that, and 18 does not.
+
+                This page's claim is that a manager's record is verifiable. It
+                is better to show nothing than to state a NAV we cannot scale. */}
+            {row.nav_per_share && row.nav_decimals != null
+              ? formatUnits(row.nav_per_share, row.nav_decimals, 5)
               : '—'}
           </dd>
         </div>
