@@ -4,6 +4,7 @@ import { TOKEN, FLOAT_AT_LAUNCH_PCT } from '@/lib/tokenomics';
 import { formatCompact } from '@/lib/format';
 import { CountUp } from '@/components/motion/CountUp';
 import { PrismHero } from '@/components/ui/prism-hero';
+import { isMainnet } from '@/lib/chains';
 
 /**
  * Hero.
@@ -49,7 +50,7 @@ export function Hero() {
         className="-mt-20"
         topInset
         word="Zorpha"
-        eyebrow={`Testnet live on ${TOKEN.chain}`}
+        eyebrow={`${isMainnet ? 'Live' : 'Testnet live'} on ${TOKEN.chain}`}
         description={
           <>
             <span className="block font-display text-[1.35rem] leading-snug text-ink-100 sm:text-[1.6rem]">
