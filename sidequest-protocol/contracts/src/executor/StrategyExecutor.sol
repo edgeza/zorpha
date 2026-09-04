@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @notice Minimal interface for a single-weight vault's rebalance entrypoint.
 interface ISpotRebalancer {
@@ -84,7 +85,18 @@ contract StrategyExecutor is AccessControl, EIP712 {
 
     /// @notice Authorized strategy signer. Initialized to deployer; governance
     ///         transfers via `setAuthorizedSigner`.
+    /// @notice Default signer, used by any vault without its own.
     address public authorizedSigner;
+
+    /// @notice Per-vault override of `authorizedSigner`. Zero means "use the
+    ///         default", so a deployment that never calls setVaultSigner keeps
+    ///         exactly the behaviour it had when this was a single address.
+    ///
+    /// @dev    One signer for every vault was a real constraint, not a
+    ///         simplification. It meant a strategy run by a person and one run
+    ///         by an algorithm had to share a key, and that any rotation for one
+    ///         vault rotated it for all of them.
+    mapping(address => address) public vaultSigner;
 
     /// @notice Maximum rebalance-expiry window (7 days).
     uint256 public constant MAX_SIGNAL_EXPIRY = 7 days;
@@ -143,6 +155,7 @@ contract StrategyExecutor is AccessControl, EIP712 {
     event SignalRejected(address indexed vault, string reason);
     event PausedSet(bool paused);
     event AuthorizedSignerSet(address indexed newSigner);
+    event VaultSignerSet(address indexed vault, address indexed signer);
     event TradingWindowSet(address indexed vault, uint16 openMinuteUTC, uint16 closeMinuteUTC, uint8 weekdayMask);
     event TradingWindowCleared(address indexed vault);
     event ClosedUntilSet(address indexed vault, uint64 until);
@@ -205,7 +218,7 @@ contract StrategyExecutor is AccessControl, EIP712 {
             abi.encode(REBALANCE_TYPEHASH, vault, targetWeightBps, nonce, expiry)
         );
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR(), structHash));
-        _verifySignature(digest, signature);
+        _verifySignature(digest, signature, signerFor(vault));
 
         // CEI: mark nonce consumed before the external call.
         nonces[vault] = nonce;
@@ -256,7 +269,7 @@ contract StrategyExecutor is AccessControl, EIP712 {
             abi.encode(BASKET_REBALANCE_TYPEHASH, vault, _hashWeights(weightsBps), nonce, expiry)
         );
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR(), structHash));
-        _verifySignature(digest, signature);
+        _verifySignature(digest, signature, signerFor(vault));
 
         // CEI: consume before the external call, same as the spot path.
         nonces[vault] = nonce;
@@ -383,6 +396,20 @@ contract StrategyExecutor is AccessControl, EIP712 {
         emit AuthorizedSignerSet(signer);
     }
 
+    /// @notice Give one vault its own signer, or clear it back to the default.
+    /// @param  signer Zero restores `authorizedSigner` for this vault.
+    function setVaultSigner(address vault, address signer) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (vault == address(0)) revert ZeroVault();
+        vaultSigner[vault] = signer;
+        emit VaultSignerSet(vault, signer);
+    }
+
+    /// @notice Whose signature this vault's instructions must carry.
+    function signerFor(address vault) public view returns (address) {
+        address s = vaultSigner[vault];
+        return s == address(0) ? authorizedSigner : s;
+    }
+
     /// @notice Restrict a vault's rebalances to its reference market's hours.
     /// @param  weekdayMask bit d set => day d allowed, 0 = Sunday. Mon-Fri is 0x3E.
     function setTradingWindow(
@@ -455,29 +482,36 @@ contract StrategyExecutor is AccessControl, EIP712 {
         return block.timestamp > 1 days ? block.timestamp - 1 days : 0;
     }
 
-    function _verifySignature(bytes32 digest, bytes calldata signature) internal view {
-        if (signature.length != 65) revert InvalidSignature();
-
-        bytes32 r;
-        bytes32 s;
-        uint8   v;
-
-        assembly {
-            r := calldataload(signature.offset)
-            s := calldataload(add(signature.offset, 32))
-            v := byte(0, calldataload(add(signature.offset, 64)))
-        }
-
-        if (v < 27) v += 27;
-        if (v != 27 && v != 28) revert InvalidSignature();
-
-        // Enforce low-s (EIP-2) to block signature malleability.
-        if (uint256(s) > 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0) {
+    /// @dev Accepts a signature from an EOA *or* from a contract that
+    ///      implements EIP-1271.
+    ///
+    ///      This used to be a bare ecrecover against a single global address,
+    ///      which forced `authorizedSigner` to be an EOA -- a plain private key,
+    ///      held by one party, rotatable only by a governance transaction. A
+    ///      protocol whose vaults may be operated by a person, by an algorithm,
+    ///      or by both, cannot express that with one key without the two sharing
+    ///      it, which is the arrangement every other part of this codebase
+    ///      exists to avoid.
+    ///
+    ///      With EIP-1271 the signer can be a Safe. Its owners can then be a
+    ///      hardware wallet and a service key together, under whatever threshold
+    ///      governance wants, and an operator can be added or removed inside the
+    ///      Safe without an executor transaction at all.
+    ///
+    ///      MALLEABILITY IS STILL HANDLED. The hand-rolled checks below used to
+    ///      enforce a 65-byte length and low-s explicitly. SignatureChecker
+    ///      routes EOAs through OpenZeppelin's ECDSA, whose tryRecover rejects a
+    ///      high-s value and a zero recovery, so both properties survive. The
+    ///      length check does NOT survive, and must not: an EIP-1271 signature
+    ///      is whatever the signing contract says it is, and a Safe's is longer
+    ///      than 65 bytes. Replay is closed by the per-vault nonce regardless.
+    function _verifySignature(bytes32 digest, bytes calldata signature, address expected)
+        internal
+        view
+    {
+        if (expected == address(0)) revert InvalidSignature();
+        if (!SignatureChecker.isValidSignatureNow(expected, digest, signature)) {
             revert InvalidSignature();
         }
-
-        address signer = ecrecover(digest, v, r, s);
-        if (signer == address(0)) revert InvalidSignature();
-        if (signer != authorizedSigner) revert InvalidSignature();
     }
 }

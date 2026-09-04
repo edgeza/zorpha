@@ -139,7 +139,9 @@ BASKET_TYPEHASH=$(try "$EXEC" 'BASKET_REBALANCE_TYPEHASH()(bytes32)')
        ./script/testnet-migrate-executor.sh <governance-keystore> $SIGNER"
 ok "executor has the basket path"
 
-ONCHAIN_SIGNER=$(call "$EXEC" 'authorizedSigner()(address)')
+# signerFor, not authorizedSigner: a vault may now carry its own signer, and
+# reading the global default would check a key this vault does not use.
+ONCHAIN_SIGNER=$(call "$EXEC" 'signerFor(address)(address)' "$VAULT")
 eq "${ONCHAIN_SIGNER,,}" "${SIGNER,,}" \
   || die "executor trusts $ONCHAIN_SIGNER, not $SIGNER"
 ok "executor trusts this signer"

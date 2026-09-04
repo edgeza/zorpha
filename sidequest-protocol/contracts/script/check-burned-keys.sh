@@ -220,6 +220,20 @@ for entry in "${BURNED[@]}"; do
       bad "Executor authorizedSigner is this address -- it can sign rebalances"
       HITS=$((HITS + 1))
     fi
+
+    # Per-vault overrides too. A burned key set as one vault signer is exactly
+    # as dangerous as one set as the default, and reads as clean if only the
+    # default is checked -- the same shape as the finding that authorizedSigner
+    # is state rather than a role and survives a handover untouched.
+    for VK in NEXT_PUBLIC_SPOT_VAULT_ADDRESS NEXT_PUBLIC_ROTATION_VAULT_ADDRESS NEXT_PUBLIC_YIELD_VAULT_ADDRESS; do
+      VA=$(env_of "$VK")
+      [[ -n "$VA" ]] || continue
+      VS=$(try "$EXEC" 'vaultSigner(address)(address)' "$VA")
+      if [[ -n "$VS" ]] && [[ "${VS,,}" == "${ADDR,,}" ]]; then
+        bad "Executor vaultSigner for $VA is this address -- it can sign that vault"
+        HITS=$((HITS + 1))
+      fi
+    done
   fi
 
   BAL=$(cast balance "$ADDR" --rpc-url "$RPC")

@@ -209,7 +209,10 @@ if eq "${SIGNER,,}" "${KEEPER,,}"; then
   info "setAuthorizedSigner from governance, then re-run with two keystores."
 fi
 
-ONCHAIN_SIGNER=$(call "$EXEC" 'authorizedSigner()(address)')
+# Resolved for the NOOP, which is what steps 1-7 sign against. Step 8 checks
+# the real vault separately, because a per-vault override can make those two
+# different addresses.
+ONCHAIN_SIGNER=$(call "$EXEC" 'signerFor(address)(address)' "$NOOP")
 eq "${ONCHAIN_SIGNER,,}" "${SIGNER,,}" \
   || die "executor trusts $ONCHAIN_SIGNER, not $SIGNER.
      Rotate it: setAuthorizedSigner from governance."
