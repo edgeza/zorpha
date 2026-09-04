@@ -52,12 +52,31 @@ interface ISpotSwapAdapter {
 ///         because the USDG/WETH leg is itself thin. The extra hop makes the
 ///         execution worse everywhere it was tested.
 ///
-///         Capacity is the real constraint. Measured on the AAPL/USDG 0.05%
-///         pool: $10k moves at 0.44%, $20k at 0.94%, and $40k at 31%. A vault
-///         with `maxSlippageBps = 100` therefore executes up to roughly $20k per
-///         rebalance and reverts above it. That is the correct behaviour and it
-///         is a ceiling on vault size, not a bug: sizing a vault past what the
-///         pool can absorb produces a vault that cannot rebalance.
+///         Capacity is the real constraint, and it MOVES. Measured on the
+///         AAPL/USDG 0.05% pool:
+///
+///                       1 Sep 2026   4 Sep 2026
+///             $10k          0.44%        0.08%
+///             $20k          0.94%        0.15%
+///             $40k         31%           0.30%
+///             $100k           --         0.75%
+///             $250k           --         2.16%
+///             $500k           --        45.13%
+///
+///         Two orders of magnitude deeper in three days. A vault with
+///         `maxSlippageBps = 100` executed roughly $20k per rebalance on the
+///         first reading and somewhere between $100k and $250k on the second.
+///
+///         That is a ceiling on vault size rather than a bug -- sizing a vault
+///         past what the pool absorbs produces a vault that cannot rebalance --
+///         but it is not a constant, and a number written here goes stale.
+///         test/fork/PoolDepthProbe.t.sol measures it against the live pool;
+///         run it before sizing anything.
+///
+///         The refusal comes from the ROUTER, not from this adapter: minOut is
+///         forwarded as amountOutMinimum, so SwapRouter02 reverts "Too little
+///         received" before `SlippageExceeded` below is reached. That check is a
+///         backstop against a router that returns quietly, not the first line.
 ///
 ///         Testnet has no DEX at all, so `StubSwapAdapter` (below) stands in
 ///         there. The vault's adapter is swappable without redeploying it.
