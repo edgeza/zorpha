@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { LegalPage, LegalSection } from '@/components/marketing/LegalPage';
 import { TOKEN } from '@/lib/tokenomics';
 import { countBy } from '@/lib/audit';
+import { activeChain, isMainnet } from '@/lib/chains';
 
 export const metadata: Metadata = {
   alternates: { canonical: '/legal/disclaimer' },
@@ -119,18 +120,45 @@ export default function DisclaimerPage() {
             tokenised securities varies by jurisdiction and can change, including retroactively.
           </li>
           <li>
-            <strong className="text-ink-200">Testnet status.</strong> Everything is currently
-            deployed to testnet. Testnet assets have no value, and testnet state can be reset or
-            discarded without notice.
+            <strong className="text-ink-200">Deployment status.</strong>{' '}
+            {isMainnet ? (
+              <>
+                Contracts are deployed to {activeChain.name}. They are immutable and not
+                upgradeable: a defect cannot be patched in place, only replaced by a new
+                deployment that users must choose to move to.
+              </>
+            ) : (
+              <>
+                Everything is currently deployed to testnet. Testnet assets have no value, and
+                testnet state can be reset or discarded without notice.
+              </>
+            )}
           </li>
         </ul>
       </LegalSection>
 
       <LegalSection heading="Impersonation">
         <p>
-          {TOKEN.name} is not deployed to any mainnet. Any token presented as {TOKEN.ticker} on a
-          mainnet today is not ours. Always verify contract addresses against{' '}
-          <span className="font-mono">{TOKEN.domain}</span> before interacting with anything.
+          {/* Chain-aware, because the pre-launch wording becomes actively harmful
+              the moment it stops being true. "Any token presented as ZOR on a
+              mainnet today is not ours" is correct until launch day and then
+              tells our own users that the real token is a fake -- in the section
+              they visit specifically to check that. It is also a sentence a
+              scammer could screenshot against us. */}
+          {isMainnet ? (
+            <>
+              {TOKEN.name} is deployed to {activeChain.name}. Any token presented as{' '}
+              {TOKEN.ticker} on any other network, or at any address other than the one published
+              on {TOKEN.domain}, is not ours. Always verify the contract address against{' '}
+              <span className="font-mono">{TOKEN.domain}</span> before interacting with anything.
+            </>
+          ) : (
+            <>
+              {TOKEN.name} is not deployed to any mainnet. Any token presented as {TOKEN.ticker} on
+              a mainnet today is not ours. Always verify contract addresses against{' '}
+              <span className="font-mono">{TOKEN.domain}</span> before interacting with anything.
+            </>
+          )}
         </p>
       </LegalSection>
 

@@ -43,3 +43,13 @@ export const activeChain =
   Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? '46630') === 4663
     ? robinhoodMainnet
     : robinhoodTestnet;
+
+/**
+ * Whether this build is pointed at mainnet.
+ *
+ * Exported as a named fact rather than left as an inline chain-id comparison,
+ * because things that must NOT exist on mainnet are easy to forget and hard to
+ * notice: they render as an unfinished feature rather than an error. The bond
+ * faucet is the first of them.
+ */
+export const isMainnet = activeChain.id === robinhoodMainnet.id;

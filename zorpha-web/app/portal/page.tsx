@@ -4,6 +4,7 @@ import { TokenPanel } from '@/components/portal/TokenPanel';
 import { BuybackPanel } from '@/components/portal/BuybackPanel';
 import { ReceiptCard } from '@/components/portal/ReceiptCard';
 import { EmptyState, Stat } from '@/components/ui/Primitives';
+import { isMainnet } from '@/lib/chains';
 
 export const revalidate = 30;
 
@@ -51,7 +52,17 @@ export default async function PortalDashboard() {
           value={totalRebalances.toLocaleString('en-US')}
           sub={totalRebalances === 0 ? 'None signed yet' : undefined}
         />
-        <Stat label="Network" value="Testnet" tone="warn" size="md" sub="Mainnet is not deployed" />
+        {/* Derived, not asserted. This tile said "Testnet / Mainnet is not
+            deployed" as a literal, which is true today and becomes a false
+            statement on the launch day it most needs to be right -- printed on
+            the portal landing page, in a warning tone. */}
+        <Stat
+          label="Network"
+          value={isMainnet ? 'Mainnet' : 'Testnet'}
+          tone={isMainnet ? 'verified' : 'warn'}
+          size="md"
+          sub={isMainnet ? undefined : 'Mainnet is not deployed'}
+        />
       </section>
 
       {totalRebalances === 0 && (
