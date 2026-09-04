@@ -158,7 +158,7 @@ fi
 if [[ -z "$ZOR" ]]; then
   bold "1/2  Token layer"
   forge script script/DeployZorphaToken.s.sol:DeployZorphaToken \
-    --rpc-url "$RPC" --account "$ACCOUNT" --broadcast --slow
+    --rpc-url "$RPC" --account "$ACCOUNT" --sender "$DEPLOYER" --broadcast --slow
 
   ZOR=$(node -e '
     const j=require("./broadcast/DeployZorphaToken.s.sol/4663/run-latest.json");
@@ -206,7 +206,7 @@ export TIMELOCK="$TIMELOCK"
 export TREASURY="$TREASURY"
 
 forge script script/DeployMinimal.s.sol:DeployMinimal \
-  --rpc-url "$RPC" --account "$ACCOUNT" --broadcast --slow
+  --rpc-url "$RPC" --account "$ACCOUNT" --sender "$DEPLOYER" --broadcast --slow
 
 FACTORY=$(node -e '
   const j=require("./broadcast/DeployMinimal.s.sol/4663/run-latest.json");
