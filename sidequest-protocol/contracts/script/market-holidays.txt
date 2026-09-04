@@ -1,0 +1,38 @@
+# Market holidays for the reference market of the equity vaults.
+#
+# DATA, NOT CODE, ON PURPOSE.
+#
+# Trading hours come from a timezone database, because DST is a rule a machine
+# can derive. Market holidays are not: they are a decision by an exchange, they
+# differ per market, and they move -- Good Friday follows Easter, Independence
+# Day shifts when it lands on a weekend, and exchanges add one-off closures for
+# national days of mourning with days of notice.
+#
+# So this is a file an operator maintains and reviews, not a rule buried in a
+# script where being wrong looks like being absent.
+#
+# VERIFY THESE AGAINST THE EXCHANGE BEFORE RELYING ON THEM. They are a starting
+# point, not an authority: https://www.nyse.com/markets/hours-calendars
+#
+# Format:  YYYY-MM-DD  name
+# Blank lines and lines starting with # are ignored.
+#
+# HALF DAYS ARE NOT LISTED, AND CANNOT BE. StrategyExecutor.closedUntil refuses
+# rebalances BEFORE a timestamp; it cannot close a market early. An exchange
+# closing at 13:00 ET has to be handled by narrowing the weekly window for that
+# day with setTradingWindow, or accepted as an hour of trading against a thinner
+# book. Listing them here would imply a protection that does not exist.
+
+2026-11-26  Thanksgiving Day
+2026-12-25  Christmas Day
+
+2027-01-01  New Year Day
+2027-01-18  Martin Luther King Jr Day
+2027-02-15  Washington Birthday
+2027-03-26  Good Friday
+2027-05-31  Memorial Day
+2027-06-18  Juneteenth (observed)
+2027-07-05  Independence Day (observed)
+2027-09-06  Labor Day
+2027-11-25  Thanksgiving Day
+2027-12-24  Christmas Day (observed)
