@@ -76,6 +76,29 @@ node -e 'process.exit(BigInt(process.argv[1]) >= BigInt(process.argv[2]) ? 0 : 1
   || die "balance $(cast to-unit "$BAL" ether) ETH is below the $(cast to-unit "$NEED" ether) ETH both deploys need at $(gwei "$GP") gwei.
      Top up, or wait for gas to fall -- it has ranged 0.38 to 2.23 gwei today."
 HEAD=$(node -e 'process.stdout.write((Number(BigInt(process.argv[1]))/Number(BigInt(process.argv[2]))).toFixed(1))' "$BAL" "$NEED")
+
+# WAIT_FOR_GAS=1 turns the affordability check from a refusal into a wait.
+#
+# This chain is an Arbitrum Orbit rollup, so its base fee decays after a
+# congestion spike rather than staying high. Observed on 4 September: 5.38 gwei
+# falling to 3.12 within ninety seconds, against 0.38 for most of the day. The
+# right response to an unaffordable moment is usually to wait a few minutes, and
+# an operator polling by hand tends to either give up or overpay.
+if [[ -n "${WAIT_FOR_GAS:-}" ]]; then
+  AFFORD=$(node -e 'process.stdout.write((BigInt(process.argv[1]) / (7347540n+13709610n)).toString())' "$BAL")
+  info "waiting for gas at or below $(gwei "$AFFORD") gwei, which is what this balance affords"
+  while :; do
+    GP=$(cast gas-price --rpc-url "$RPC")
+    if node -e 'process.exit(BigInt(process.argv[1]) <= BigInt(process.argv[2]) ? 0 : 1)' "$GP" "$AFFORD"; then
+      ok "gas is $(gwei "$GP") gwei"
+      break
+    fi
+    info "$(date -u +%H:%M:%S)  $(gwei "$GP") gwei -- still above $(gwei "$AFFORD"), waiting"
+    sleep 30
+  done
+  NEED=$(node -e 'const g=7347540n+13709610n;process.stdout.write((g*BigInt(process.argv[1])).toString())' "$GP")
+  HEAD=$(node -e 'process.stdout.write((Number(BigInt(process.argv[1]))/Number(BigInt(process.argv[2]))).toFixed(1))' "$BAL" "$NEED")
+fi
 if node -e 'process.exit(Number(process.argv[1]) < 2 ? 0 : 1)' "$HEAD"; then
   warn "only ${HEAD}x headroom at $(gwei "$GP") gwei. A spike between the two deploys would"
   info "strand the token without its launchpad. Consider waiting for cheaper gas."
