@@ -13,6 +13,7 @@ import {
 } from '@/lib/tokenomics';
 import { formatCompact, formatMonths } from '@/lib/format';
 import { countBy, TEST_STATUS } from '@/lib/audit';
+import { activeChain, isMainnet } from '@/lib/chains';
 
 export const metadata: Metadata = {
   alternates: { canonical: '/token' },
@@ -273,10 +274,20 @@ export default function TokenPage() {
                 Every one of the {countBy('fixed')} findings from the internal review is closed,
                 and the full suite is green at{' '}
                 {TEST_STATUS.suiteTests - TEST_STATUS.suiteFailing} of {TEST_STATUS.suiteTests}.
-                The external audit and the mainnet deployment are the two gates still ahead. Until
-                the deployment page says otherwise, every address on this site is a testnet
-                address, and any token calling itself {TOKEN.ticker} on a mainnet today is not
-                ours.
+                {isMainnet ? (
+                  <>
+                    The external audit is the gate still ahead. Every address on this site is a{' '}
+                    {activeChain.name} address; any token calling itself {TOKEN.ticker} on another
+                    network, or at an address not published here, is not ours.
+                  </>
+                ) : (
+                  <>
+                    The external audit and the mainnet deployment are the two gates still ahead.
+                    Until the deployment page says otherwise, every address on this site is a
+                    testnet address, and any token calling itself {TOKEN.ticker} on a mainnet today
+                    is not ours.
+                  </>
+                )}
               </p>
               <p>
                 <Link href="/whitepaper#risk" className="link-quiet">

@@ -76,6 +76,29 @@ node -e 'process.exit(BigInt(process.argv[1]) >= BigInt(process.argv[2]) ? 0 : 1
   || die "balance $(cast to-unit "$BAL" ether) ETH is below the $(cast to-unit "$NEED" ether) ETH both deploys need at $(gwei "$GP") gwei.
      Top up, or wait for gas to fall -- it has ranged 0.38 to 2.23 gwei today."
 HEAD=$(node -e 'process.stdout.write((Number(BigInt(process.argv[1]))/Number(BigInt(process.argv[2]))).toFixed(1))' "$BAL" "$NEED")
+
+# WAIT_FOR_GAS=1 turns the affordability check from a refusal into a wait.
+#
+# This chain is an Arbitrum Orbit rollup, so its base fee decays after a
+# congestion spike rather than staying high. Observed on 4 September: 5.38 gwei
+# falling to 3.12 within ninety seconds, against 0.38 for most of the day. The
+# right response to an unaffordable moment is usually to wait a few minutes, and
+# an operator polling by hand tends to either give up or overpay.
+if [[ -n "${WAIT_FOR_GAS:-}" ]]; then
+  AFFORD=$(node -e 'process.stdout.write((BigInt(process.argv[1]) / (7347540n+13709610n)).toString())' "$BAL")
+  info "waiting for gas at or below $(gwei "$AFFORD") gwei, which is what this balance affords"
+  while :; do
+    GP=$(cast gas-price --rpc-url "$RPC")
+    if node -e 'process.exit(BigInt(process.argv[1]) <= BigInt(process.argv[2]) ? 0 : 1)' "$GP" "$AFFORD"; then
+      ok "gas is $(gwei "$GP") gwei"
+      break
+    fi
+    info "$(date -u +%H:%M:%S)  $(gwei "$GP") gwei -- still above $(gwei "$AFFORD"), waiting"
+    sleep 30
+  done
+  NEED=$(node -e 'const g=7347540n+13709610n;process.stdout.write((g*BigInt(process.argv[1])).toString())' "$GP")
+  HEAD=$(node -e 'process.stdout.write((Number(BigInt(process.argv[1]))/Number(BigInt(process.argv[2]))).toFixed(1))' "$BAL" "$NEED")
+fi
 if node -e 'process.exit(Number(process.argv[1]) < 2 ? 0 : 1)' "$HEAD"; then
   warn "only ${HEAD}x headroom at $(gwei "$GP") gwei. A spike between the two deploys would"
   info "strand the token without its launchpad. Consider waiting for cheaper gas."
@@ -96,17 +119,55 @@ read -r -p "  Type LAUNCH to proceed: " CONFIRM
 [[ "$CONFIRM" == "LAUNCH" ]] || die "not confirmed, nothing was sent"
 
 # --- 1. The token layer ---------------------------------------------------
-bold "1/2  Token layer"
-forge script script/DeployZorphaToken.s.sol:DeployZorphaToken \
-  --rpc-url "$RPC" --account "$ACCOUNT" --broadcast --slow
+#
+# RESUMABLE, and this is not a nicety.
+#
+# If step 2 runs out of gas the token is already deployed, immutably. The
+# obvious recovery -- top up and re-run -- would, without this check, deploy a
+# SECOND ZOR: a duplicate address with the whole supply minted again, no way to
+# retire the first, and two tokens with equal claim to the name. The previous
+# version of this script PROMISED a resume in its error message and did not
+# implement one, which is worse than not offering it at all.
+#
+# The broadcast file alone is not proof: it records what was SENT, not what
+# landed. The address is confirmed to hold code and report a supply before
+# step 1 is skipped.
+BC=broadcast/DeployZorphaToken.s.sol/4663/run-latest.json
+ZOR=""
+if [[ -f "$BC" ]]; then
+  PRIOR=$(node -e '
+    const j=require(process.argv[1]);
+    const t=(j.transactions||[]).find(x=>x.contractName==="Zorpha");
+    process.stdout.write(t?t.contractAddress:"");
+  ' "./$BC" 2>/dev/null || true)
+  if [[ -n "$PRIOR" ]]; then
+    PCODE=$(cast code "$PRIOR" --rpc-url "$RPC" 2>/dev/null || echo 0x)
+    if [[ ${#PCODE} -gt 2 ]]; then
+      PSUP=$(cast call "$PRIOR" 'totalSupply()(uint256)' --rpc-url "$RPC" 2>/dev/null | num || echo 0)
+      [[ "$PSUP" != "0" ]] || die "a contract exists at $PRIOR from a previous run but reports no
+     supply. Investigate before deploying anything else -- a second token is not
+     the answer to a first one that went wrong."
+      ZOR="$PRIOR"
+      bold "1/2  Token layer -- ALREADY DEPLOYED"
+      ok "ZOR exists at $ZOR, supply $PSUP"
+      info "skipping step 1; deploying again would mint a second, duplicate supply"
+    fi
+  fi
+fi
 
-ZOR=$(node -e '
-  const j=require("./broadcast/DeployZorphaToken.s.sol/4663/run-latest.json");
-  const t=(j.transactions||[]).find(x=>x.contractName==="Zorpha");
-  process.stdout.write(t?t.contractAddress:"");
-')
-[[ -n "$ZOR" ]] || die "could not read the ZOR address from the broadcast"
-ok "ZOR deployed at $ZOR"
+if [[ -z "$ZOR" ]]; then
+  bold "1/2  Token layer"
+  forge script script/DeployZorphaToken.s.sol:DeployZorphaToken \
+    --rpc-url "$RPC" --account "$ACCOUNT" --sender "$DEPLOYER" --broadcast --slow
+
+  ZOR=$(node -e '
+    const j=require("./broadcast/DeployZorphaToken.s.sol/4663/run-latest.json");
+    const t=(j.transactions||[]).find(x=>x.contractName==="Zorpha");
+    process.stdout.write(t?t.contractAddress:"");
+  ')
+  [[ -n "$ZOR" ]] || die "could not read the ZOR address from the broadcast"
+  ok "ZOR deployed at $ZOR"
+fi
 
 TIMELOCK=$(node -e '
   const j=require("./broadcast/DeployZorphaToken.s.sol/4663/run-latest.json");
@@ -145,7 +206,7 @@ export TIMELOCK="$TIMELOCK"
 export TREASURY="$TREASURY"
 
 forge script script/DeployMinimal.s.sol:DeployMinimal \
-  --rpc-url "$RPC" --account "$ACCOUNT" --broadcast --slow
+  --rpc-url "$RPC" --account "$ACCOUNT" --sender "$DEPLOYER" --broadcast --slow
 
 FACTORY=$(node -e '
   const j=require("./broadcast/DeployMinimal.s.sol/4663/run-latest.json");

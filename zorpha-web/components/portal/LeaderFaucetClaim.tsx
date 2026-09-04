@@ -3,6 +3,7 @@
 import { useAccount, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { erc20Abi, formatUnits } from 'viem';
 import { contracts, leaderFaucetAbi, isDeployed, explorerUrl } from '@/lib/contracts';
+import { isMainnet } from '@/lib/chains';
 import { Callout, Mono } from '@/components/ui/Primitives';
 
 /**
@@ -61,6 +62,19 @@ export function LeaderFaucetClaim() {
 
   const { writeContract, data: txHash, isPending, error } = useWriteContract();
   const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+
+  // Nothing at all on mainnet.
+  //
+  // A faucet handing out 10,000 $ZOR bonds on mainnet would be absurd, so its
+  // absence there is the design rather than a gap. Falling through to the
+  // "not deployed yet" notice below would tell a mainnet visitor that a
+  // feature is missing when it is deliberately not there -- the page would
+  // read as unfinished on the one network where it matters most.
+  //
+  // Returning null rather than a "testnet only" note is deliberate too: a
+  // mainnet visitor has no use for the information that a testnet convenience
+  // exists elsewhere.
+  if (isMainnet) return null;
 
   if (!deployed) {
     return (
