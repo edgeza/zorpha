@@ -298,12 +298,46 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         emit Rebalanced(targetBps, assetLeg, cashLeg, nav, rebalanceCount, commit);
     }
 
+    /// @dev The slippage bound is checked against the balance this vault
+    ///      ACTUALLY gained, not against the number the adapter returned.
+    ///
+    ///      It used to be the return value:
+    ///
+    ///          uint256 out = swapAdapter.swap(...);
+    ///          require(out >= minOut, "slippage");
+    ///
+    ///      which asks the counterparty to report on its own performance and
+    ///      then believes the answer. An adapter that returns `minOut` while
+    ///      transferring less passes that check, and the vault books a trade it
+    ///      did not receive. `minOut` exists precisely to bound what this vault
+    ///      is willing to lose on a swap, so verifying it against the swapper's
+    ///      self-report is circular.
+    ///
+    ///      Not only reachable through a malicious adapter. A fee-on-transfer
+    ///      tokenOut, or a router whose reported output is gross of a transfer
+    ///      fee, produces the same gap with every party behaving honestly. The
+    ///      adapter is set by DEFAULT_ADMIN, which is the timelock, so this is
+    ///      defence in depth rather than a hole an attacker can reach today --
+    ///      but the balance delta is the only figure that means anything here,
+    ///      and it costs two SLOADs.
+    ///
+    ///      The allowance is also cleared. An adapter that consumes less than
+    ///      `amountIn` would otherwise leave this vault standing approval to a
+    ///      contract governance may later replace or find compromised.
     function _swap(address tokenIn, address tokenOut, uint256 amountIn, uint256 minOut) internal {
         if (amountIn == 0) return;
         require(address(swapAdapter) != address(0), "SpotVaultMinimal: adapter unset");
+
+        uint256 before = IERC20(tokenOut).balanceOf(address(this));
         IERC20(tokenIn).forceApprove(address(swapAdapter), amountIn);
-        uint256 out = swapAdapter.swap(tokenIn, tokenOut, amountIn, minOut);
-        require(out >= minOut, "slippage");
+
+        // The return value is deliberately not the thing being checked; see above.
+        // slither-disable-next-line unused-return
+        swapAdapter.swap(tokenIn, tokenOut, amountIn, minOut);
+
+        IERC20(tokenIn).forceApprove(address(swapAdapter), 0);
+        uint256 received = IERC20(tokenOut).balanceOf(address(this)) - before;
+        require(received >= minOut, "slippage");
     }
 
     function _withdraw(address caller, address receiver, address owner, uint256 assets, uint256 shares)
