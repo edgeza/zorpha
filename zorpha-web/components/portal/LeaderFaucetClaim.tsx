@@ -52,6 +52,9 @@ export function LeaderFaucetClaim() {
       { abi: erc20Abi, address: contracts.zor, functionName: 'balanceOf', args: [address ?? '0x0000000000000000000000000000000000000000'] },
       { abi: erc20Abi, address: contracts.zor, functionName: 'decimals' },
       { abi: erc20Abi, address: contracts.zor, functionName: 'symbol' },
+      // Which deployment this faucet belongs to.
+      { abi: leaderFaucetAbi, address: faucet, functionName: 'zor' },
+      { abi: leaderFaucetAbi, address: faucet, functionName: 'launcher' },
     ],
     query: { enabled: deployed },
   });
@@ -81,6 +84,43 @@ export function LeaderFaucetClaim() {
   const bond = ticket?.[0];
   const fmt = (v?: bigint) =>
     v === undefined ? '—' : Number(formatUnits(v, zorDecimals)).toLocaleString('en-US');
+
+  const faucetZor = data?.[6]?.status === 'success' ? data[6].result : undefined;
+  const faucetLauncher = data?.[7]?.status === 'success' ? data[7].result : undefined;
+
+  // A faucet left over from an earlier deployment answers every other call on
+  // this panel happily. It reports a bond, a seed and claims remaining, and the
+  // claim itself succeeds -- while paying out a $ZOR the current launcher will
+  // not accept. The balance above never moves, because it is read from the
+  // CURRENT token, and the launch the bond was for reverts.
+  //
+  // That is the exact shape this component was written to refuse. It already
+  // names undeployed, unfunded, exhausted and already-claimed; a faucet wired
+  // to a superseded deployment belongs on that list, and it survived a real
+  // testnet relaunch precisely because it was not.
+  const sameAddr = (a?: string, b?: string) =>
+    !!a && !!b && a.toLowerCase() === b.toLowerCase();
+  const wrong: string[] = [];
+  if (faucetZor !== undefined && !sameAddr(faucetZor, contracts.zor)) wrong.push('$ZOR token');
+  if (faucetLauncher !== undefined && !sameAddr(faucetLauncher, contracts.vaultLauncher))
+    wrong.push('vault launcher');
+
+  if (wrong.length > 0) {
+    return (
+      <Callout tone="warn" title="The bond faucet belongs to an older deployment">
+        <p>
+          It is holding the {wrong.join(' and the ')} from a previous release, so a claim here
+          would pay a bond this network&rsquo;s launcher will not accept: the claim succeeds, your
+          balance does not move, and the launch reverts. Nothing on this page can fix that, so it
+          is refusing rather than half-working.
+        </p>
+        <p>
+          Governance needs to redeploy the faucet against the current contracts, or issue a bond
+          directly. Faucet <Mono>{faucet}</Mono>.
+        </p>
+      </Callout>
+    );
+  }
 
   const alreadyHasBond = bond !== undefined && zorBalance !== undefined && zorBalance >= bond;
   const exhausted = remaining !== undefined && remaining === 0n;

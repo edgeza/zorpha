@@ -436,6 +436,31 @@ export const vaultLauncherAbi = [
  * as its cap, so the UI never promises a claim that would revert.
  */
 export const leaderFaucetAbi = [
+  // The three identities the faucet was built against. A faucet left over from
+  // a previous deployment answers every other call happily while handing out a
+  // superseded ZOR and a superseded tUSDG, so a claim succeeds and the launch
+  // it was for reverts. Reading these is what lets the UI say so.
+  {
+    type: 'function',
+    name: 'zor',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+  },
+  {
+    type: 'function',
+    name: 'usdg',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+  },
+  {
+    type: 'function',
+    name: 'launcher',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+  },
   {
     type: 'function',
     name: 'ticket',
