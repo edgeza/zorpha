@@ -119,17 +119,55 @@ read -r -p "  Type LAUNCH to proceed: " CONFIRM
 [[ "$CONFIRM" == "LAUNCH" ]] || die "not confirmed, nothing was sent"
 
 # --- 1. The token layer ---------------------------------------------------
-bold "1/2  Token layer"
-forge script script/DeployZorphaToken.s.sol:DeployZorphaToken \
-  --rpc-url "$RPC" --account "$ACCOUNT" --broadcast --slow
+#
+# RESUMABLE, and this is not a nicety.
+#
+# If step 2 runs out of gas the token is already deployed, immutably. The
+# obvious recovery -- top up and re-run -- would, without this check, deploy a
+# SECOND ZOR: a duplicate address with the whole supply minted again, no way to
+# retire the first, and two tokens with equal claim to the name. The previous
+# version of this script PROMISED a resume in its error message and did not
+# implement one, which is worse than not offering it at all.
+#
+# The broadcast file alone is not proof: it records what was SENT, not what
+# landed. The address is confirmed to hold code and report a supply before
+# step 1 is skipped.
+BC=broadcast/DeployZorphaToken.s.sol/4663/run-latest.json
+ZOR=""
+if [[ -f "$BC" ]]; then
+  PRIOR=$(node -e '
+    const j=require(process.argv[1]);
+    const t=(j.transactions||[]).find(x=>x.contractName==="Zorpha");
+    process.stdout.write(t?t.contractAddress:"");
+  ' "./$BC" 2>/dev/null || true)
+  if [[ -n "$PRIOR" ]]; then
+    PCODE=$(cast code "$PRIOR" --rpc-url "$RPC" 2>/dev/null || echo 0x)
+    if [[ ${#PCODE} -gt 2 ]]; then
+      PSUP=$(cast call "$PRIOR" 'totalSupply()(uint256)' --rpc-url "$RPC" 2>/dev/null | num || echo 0)
+      [[ "$PSUP" != "0" ]] || die "a contract exists at $PRIOR from a previous run but reports no
+     supply. Investigate before deploying anything else -- a second token is not
+     the answer to a first one that went wrong."
+      ZOR="$PRIOR"
+      bold "1/2  Token layer -- ALREADY DEPLOYED"
+      ok "ZOR exists at $ZOR, supply $PSUP"
+      info "skipping step 1; deploying again would mint a second, duplicate supply"
+    fi
+  fi
+fi
 
-ZOR=$(node -e '
-  const j=require("./broadcast/DeployZorphaToken.s.sol/4663/run-latest.json");
-  const t=(j.transactions||[]).find(x=>x.contractName==="Zorpha");
-  process.stdout.write(t?t.contractAddress:"");
-')
-[[ -n "$ZOR" ]] || die "could not read the ZOR address from the broadcast"
-ok "ZOR deployed at $ZOR"
+if [[ -z "$ZOR" ]]; then
+  bold "1/2  Token layer"
+  forge script script/DeployZorphaToken.s.sol:DeployZorphaToken \
+    --rpc-url "$RPC" --account "$ACCOUNT" --broadcast --slow
+
+  ZOR=$(node -e '
+    const j=require("./broadcast/DeployZorphaToken.s.sol/4663/run-latest.json");
+    const t=(j.transactions||[]).find(x=>x.contractName==="Zorpha");
+    process.stdout.write(t?t.contractAddress:"");
+  ')
+  [[ -n "$ZOR" ]] || die "could not read the ZOR address from the broadcast"
+  ok "ZOR deployed at $ZOR"
+fi
 
 TIMELOCK=$(node -e '
   const j=require("./broadcast/DeployZorphaToken.s.sol/4663/run-latest.json");
