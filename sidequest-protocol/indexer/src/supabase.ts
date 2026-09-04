@@ -68,6 +68,10 @@ export type RebalanceRow = {
   block_timestamp: string;
   target_bps?: number | null;
   target_weights?: unknown | null;
+  /** Rotation only. uint256 balances as decimal STRINGS -- see migration 006.
+   *  Needed to recompute basketCommitment; without it a rotation receipt
+   *  carries a hash nobody can check. */
+  token_legs?: unknown | null;
   asset_leg?: string | null;
   cash_leg?: string | null;
   nav_per_share?: string | null;
@@ -105,8 +109,8 @@ export async function getKnownVaults(): Promise<VaultRow[]> {
       if (vault_type === null) {
         throw new Error(
           `DRY_RUN: could not type ${address}. Exactly one of cashAsset(), ` +
-            'baseAsset() or firstLossEscrow() must answer. Either this is not a ' +
-            'Zorpha vault, or the RPC is dropping calls.',
+            'basketLength() or adapter() must answer. Either this is not a Zorpha ' +
+            'vault, or the RPC is dropping calls.',
         );
       }
       rows.push({

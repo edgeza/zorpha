@@ -60,10 +60,18 @@ contract LeadershipMainnetForkTest is Test {
         deal(USDG, alice, 100_000 * ONE);
     }
 
+    /// @dev vm.skip, not an early return.
+    ///
+    ///      Returning early made every test in this file report PASS while
+    ///      executing nothing. Nine green ticks, ~5,500 gas each, for the only
+    ///      tests that touch real Steakhouse vaults and the real router -- the
+    ///      integration surface most likely to break without warning, reporting
+    ///      that it was fine. A suite that cannot run should say so out loud;
+    ///      vm.skip marks these SKIPPED, which reads as the absence of evidence
+    ///      it actually is.
     modifier onlyForked() {
         if (!forked) {
-            console2.log("SKIP: set RH_MAINNET_RPC_URL to run the fork tests");
-            return;
+            vm.skip(true);
         }
         _;
     }

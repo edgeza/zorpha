@@ -380,6 +380,39 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         return type(uint256).max;
     }
 
+    // NOT overridden, and that is a decision backed by mainnet.
+    //
+    // The inherited maxWithdraw/maxRedeem derive from the holder's share
+    // balance and totalAssets(), so they describe what a position is WORTH and
+    // not whether the venue can pay it. That is a real ERC-4626 imprecision: in
+    // an illiquid venue a depositor is told a number their withdraw reverts on.
+    //
+    // The obvious fix -- bound them by what the adapter reports as liquid --
+    // was implemented, went green against MockERC4626, and is WRONG. The real
+    // Steakhouse USDG vault on Robinhood Chain mainnet reports:
+    //
+    //     maxDeposit(anyone)   0
+    //     maxWithdraw(anyone)  0
+    //     maxRedeem(anyone)    0
+    //     totalAssets          434,407,278,580,972      (~434m USDG)
+    //
+    // while deposits and withdrawals through it demonstrably succeed -- the
+    // fork tests in test/fork/MainnetAdapters.t.sol do both against the live
+    // contract. Propagating those views capped maxRedeem at ZERO on the real
+    // venue and froze every exit; test_FullVaultStackAgainstSteakhouse caught
+    // it, and only because that suite had just been made to actually run.
+    //
+    // Rounding failed it independently: converting a liquidity figure into
+    // shares floors, so maxRedeem came back a few wei under a holder's full
+    // balance and redeeming everything reverted even with ample liquidity.
+    //
+    // So the imprecision is accepted deliberately. Overstating maxWithdraw
+    // fails a transaction that should not have been offered; understating it
+    // traps depositors in a vault that could have paid them. Between a view
+    // that is optimistic and a view that lies in the direction of a freeze,
+    // this vault takes the optimistic one -- and _withdraw still fails a
+    // shortfall rather than underpaying anybody.
+
     /// @notice "Rebalance" the yield slot by re-pushing funds into / pulling
     ///         funds from the adapter. V1 with StubYieldAdapter this is a no-op
     ///         for accounting but still emits a receipt — the manager's record
