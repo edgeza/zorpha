@@ -106,10 +106,25 @@ VAULT=$(node -e '
     for (const x of t.additionalContracts || [])
       if (x.address && !seen.has(x.address)) { seen.add(x.address); console.log(x.address); }
 ' "./$VAULTS" | while read -r a; do
-  esc=$(cast call "$a" 'firstLossEscrow()(address)' --rpc-url "$RPC" 2>/dev/null | num || true)
-  [[ "$esc" == "0x0000000000000000000000000000000000000000" ]] && { echo "$a"; break; }
+  # Selected by adapter(), which only the yield vault has.
+  #
+  # This used to select on firstLossEscrow() == 0, on the premise that only the
+  # yield vault had one. RWRotationVault later gained a firstLossEscrow field,
+  # so on a fresh deployment the rotation vault answers it with the zero
+  # address and matches FIRST -- it is deployed before the yield vault. The
+  # drill then called adapter() on a basket and died on a bare revert with no
+  # reason data, several hundred lines from the line that chose wrong.
+  #
+  #     zqtAAPL   no firstLossEscrow function
+  #     zqROT     firstLossEscrow = 0x0        <- matched here
+  #     zqtUSDG   firstLossEscrow = 0x0        <- never reached
+  #
+  # Exactly the drift that broke detectVaultType in the indexer, which had the
+  # same premise about the same field. Fixed there by moving to probes that are
+  # actually exclusive; same fix here.
+  cast call "$a" 'adapter()(address)' --rpc-url "$RPC" >/dev/null 2>&1 && { echo "$a"; break; }
 done)
-[[ -n "$VAULT" ]] || die "could not find the factory yield vault in $VAULTS"
+[[ -n "$VAULT" ]] || die "could not find the factory yield vault in $VAULTS -- no deployed contract answers adapter()"
 
 ASSET=$(call "$VAULT" 'asset()(address)')
 
