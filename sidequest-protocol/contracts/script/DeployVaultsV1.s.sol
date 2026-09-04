@@ -423,7 +423,35 @@ contract DeployVaultsV1 is Script {
 
         r.executor.setAuthorizedSigner(managerSigner);
 
-        _handOver(address(r.executor), gov, deployer);
+        // The executor decides WHETHER a rebalance happens: setAuthorizedSigner,
+        // setDailyLimit, setTradingWindow, clearTradingWindow and setClosedUntil
+        // are all DEFAULT_ADMIN. The vaults are handed to the timelock precisely
+        // so gov cannot self-grant its way around a delay -- see _handOverVault,
+        // which was written after simulating that escalation against the live
+        // deployment. The executor kept the plain _handOver, so the escalation it
+        // documents stayed open on the one contract gating every rebalance
+        // against those very vaults: two transactions from gov and the signer,
+        // the rate limit and the market hours are all whatever gov wants.
+        //
+        // Closing it costs nothing operational. The one-block emergency here is
+        // setPaused, which is GUARDIAN_ROLE, and both GUARDIAN_ROLE and
+        // KEEPER_ROLE are granted to gov above and survive untouched.
+        //
+        // Mainnet gets the timelock. Testnet keeps gov, because the setup and
+        // drill scripts reconfigure this contract on every run and a 48h queue
+        // for setDailyLimit would make them unrunnable. The timelock path is not
+        // left unproven by that: the yield drill exercises it through claimFees.
+        if (block.chainid == 4663) {
+            _handOverVault(address(r.executor), timelock, gov, deployer);
+        } else {
+            _handOver(address(r.executor), gov, deployer);
+            console2.log("");
+            console2.log("  !! executor DEFAULT_ADMIN left with GOVERNANCE:", gov);
+            console2.log("     It can self-grant any role here -- rotate authorizedSigner,");
+            console2.log("     lift a trading window, raise a rate limit -- with no delay.");
+            console2.log("     Handed to the timelock on 4663.");
+            console2.log("");
+        }
         _handOver(r.swapAdapter, gov, deployer);
         if (r.yieldIsReal) _handOver(r.yieldAdapter, gov, deployer);
 
