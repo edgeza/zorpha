@@ -74,6 +74,9 @@ GOV_ACCT="${1:-}"
 PW=()
 [[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
   [[ -r "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: cannot read $ZORPHA_PASSWORD_FILE" >&2; exit 1; }
+  [[ -s "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: $ZORPHA_PASSWORD_FILE is empty. A shell that captures a
+       passphrase without echoing it will happily write a zero-byte file, and
+       cast then reports an unhelpful decryption failure instead." >&2; exit 1; }
   PW=(--password-file "$ZORPHA_PASSWORD_FILE")
 }
 
@@ -219,23 +222,47 @@ fi
 # more honest fixture anyway: the subject under test is the vault refusal, and
 # borrowing the production updater set only imports their schedules.
 PROD_ORACLE="$ORACLE"
+# The cache is validated, not merely read.
+#
+# Keyed by chain id alone it outlived the deployment that produced it, and a
+# MedianOracle's maxStaleness is IMMUTABLE, so a cached oracle carrying the
+# wrong window cannot be corrected in place -- it has to be replaced. Checking
+# the one property this run depends on retires a stale entry quietly, instead
+# of failing four steps later inside the factory.
 ORACLE_CACHE=".stale-oracle-$CHAIN_ID"
+ORACLE=""
 if [[ -f "$ORACLE_CACHE" && -n "$(cat "$ORACLE_CACHE")" ]]; then
-  ORACLE=$(cat "$ORACLE_CACHE")
-  ok "reusing the oracle this drill deployed $ORACLE"
-else
-  # Bounds and window copied from production so the drill vault behaves the
-  # same in every respect except who may report to it.
-  OW=$(call "$PROD_ORACLE" 'maxStaleness()(uint256)')
+  CACHED=$(cat "$ORACLE_CACHE")
+  CACHED_W=$(cast call "$CACHED" 'maxStaleness()(uint256)' --rpc-url "$RPC" 2>/dev/null | num || true)
+  if [[ "$CACHED_W" == "$STALENESS" ]]; then
+    ORACLE="$CACHED"
+    ok "reusing the oracle this drill deployed $ORACLE"
+  else
+    info "cached oracle $CACHED has a ${CACHED_W:-missing}s window, not ${STALENESS}s -- redeploying"
+  fi
+fi
+
+if [[ -z "$ORACLE" ]]; then
+  # BOUNDS are copied from production so the drill vault prices the same way.
+  # The WINDOW deliberately is not.
+  #
+  # It used to be, and the two halves of this drill then contradicted each
+  # other. Production runs 3600s on purpose -- chain 4663 feeds publish on an
+  # 86,400s heartbeat, so an hour-old answer is the feed working -- while this
+  # drill asks its vault for 90s precisely so that "the price has gone stale"
+  # is reachable in a minute and a half rather than an hour. The factory
+  # refuses a vault window tighter than its oracle (VaultWindowTighterThanOracle),
+  # so copying 3600 here made the drill unlaunchable. Compressing the
+  # timescale IS the drill; the oracle has to be compressed with it.
   MINA=$(call "$PROD_ORACLE" 'minAnswer()(int256)')
   MAXA=$(call "$PROD_ORACLE" 'maxAnswer()(int256)')
   OUT=$(forge create src/oracle/MedianOracle.sol:MedianOracle \
         --rpc-url "$RPC" --account "$GOV_ACCT" "${PW[@]}" --broadcast --json \
-        --constructor-args 8 "$OW" "$MINA" "$MAXA" 1 "$ACTOR")
+        --constructor-args 8 "$STALENESS" "$MINA" "$MAXA" 1 "$ACTOR")
   ORACLE=$(created "$OUT")
   [[ -n "$ORACLE" ]] || die "could not deploy the drill oracle"
   printf '%s' "$ORACLE" > "$ORACLE_CACHE"
-  ok "deployed $ORACLE, window ${OW}s, quorum 1"
+  ok "deployed $ORACLE, window ${STALENESS}s, quorum 1"
 fi
 
 UR=$(call "$ORACLE" 'UPDATER_ROLE()(bytes32)')
@@ -290,11 +317,31 @@ ok "its window is $STALENESS seconds, as asked"
 # the oracle's behaviour and report it as the vault's.
 ORACLE_WINDOW=$(call "$ORACLE" 'maxStaleness()(uint256)')
 info "oracle window $ORACLE_WINDOW s, vault window $STALENESS s"
-[[ $STALENESS -lt $ORACLE_WINDOW ]] || die "the vault window ($STALENESS s) is not
-     shorter than the oracle window ($ORACLE_WINDOW s), so the oracle refuses first
-     and this drill would be testing MedianOracle rather than the vault.
-     Lower STALENESS_SECS below $ORACLE_WINDOW."
-ok "the vault window is the shorter one, so its check is the one under test"
+# The two windows are EQUAL, and that is now the tightest legal setting.
+#
+# OracleWindow.requireNotTighterThan refuses a vault window below its oracle,
+# and is right to: MedianOracle.latestRoundData reports the OLDEST
+# contributing timestamp, so a vault stricter than its oracle is bricked by
+# construction rather than merely conservative -- measured on this chain at
+# 157s posted, 541s reported.
+#
+# The consequence for this drill is that the vault maxOracleStaleness can
+# never be the check that fires behind a MedianOracle: at equal windows the
+# oracle drops the report and reverts InsufficientFreshReports first. So what
+# steps 4-7 test is the end-to-end guarantee -- a stale price stops the
+# protocol -- and the layer enforcing it is the oracle. This drill used to
+# claim it was testing the vault check, and that claim is no longer true for
+# any vault the factory will deploy against one of our own oracles.
+#
+# maxOracleStaleness is not dead code. It is load-bearing exactly where
+# OracleWindow says it can enforce nothing -- a real Chainlink feed, which has
+# no maxStaleness() getter, so the staticcall returns false and the vault
+# window is the only staleness protection left. There is no on-chain fixture
+# for that here; test/OracleWindowCoverage.t.sol covers it.
+[[ "$STALENESS" == "$ORACLE_WINDOW" ]] || die "vault window $STALENESS s and oracle window $ORACLE_WINDOW s
+     are not equal. The drill deploys its oracle AT the vault window precisely
+     so they match; a mismatch means the cached oracle was reused wrongly."
+ok "windows equal at ${STALENESS}s -- the oracle is the layer that refuses"
 
 # Fee set to zero on purpose: a performance fee would make the recovery
 # assertions depend on fee accrual timing, and the subject here is the price
@@ -403,9 +450,16 @@ LEFT=$(call "$VAULT" 'totalSupply()(uint256)')
 ok "and the depositor exits cleanly, so the pause was fully reversible"
 
 bold "Stale oracle drill passed"
-info "With both legs held, a price older than the vault's window halts"
-info "grossValue, previewRedeem, deposit and rebalanceTo -- each refusing with"
-info "StaleOracle rather than transacting on a number that stopped being true."
+info "With both legs held, a price older than the window halts grossValue,"
+info "previewRedeem, deposit and rebalanceTo -- each refusing rather than"
+info "transacting on a number that stopped being true."
+info ""
+info "The refusal came from the ORACLE (InsufficientFreshReports), not from"
+info "the vault StaleOracle check. That is structural, not incidental: the"
+info "factory forbids a vault window tighter than its oracle, so behind a"
+info "MedianOracle the oracle always goes dark first. The vault own window is"
+info "the only protection left for a feed with no maxStaleness() getter."
+info ""
 info "A fresh report restores all of it and the depositor exits whole."
 info ""
 info "Vault $VAULT is left empty."

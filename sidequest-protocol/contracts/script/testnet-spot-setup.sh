@@ -69,12 +69,28 @@ env_of() { grep -E "^$1=" "$WEB_ENV" | head -1 | cut -d= -f2- || true; }
 num()    { awk '{print $1}'; }
 call()   { cast call "$@" --rpc-url "$RPC" | num; }
 try()    { cast call "$@" --rpc-url "$RPC" 2>/dev/null | num || true; }
-send()   { cast send "$@" --rpc-url "$RPC" --account "$ACCOUNT" >/dev/null; }
+send()   { cast send "$@" --rpc-url "$RPC" --account "$ACCOUNT" "${PW[@]}" >/dev/null; }
+
+# Every other script in this directory took ZORPHA_PASSWORD_FILE and this one
+# did not -- which is precisely backwards, because this is the script that has
+# to run FIRST. Running the suite meant typing the passphrase once here by hand
+# and then not at all for the eight drills that followed.
+#
+# Opt-in and empty by default, so nothing changes unless it is set:
+#     ZORPHA_PASSWORD_FILE=/path/to/pw ./script/testnet-spot-setup.sh <gov>
+PW=()
+[[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
+  [[ -r "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: cannot read $ZORPHA_PASSWORD_FILE" >&2; exit 1; }
+  [[ -s "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: $ZORPHA_PASSWORD_FILE is empty. A shell that captures a
+       passphrase without echoing it will happily write a zero-byte file, and
+       cast then reports an unhelpful decryption failure instead." >&2; exit 1; }
+  PW=(--password-file "$ZORPHA_PASSWORD_FILE")
+}
 
 [[ -f "$WEB_ENV" ]] || die "no $WEB_ENV"
 [[ -f "$VAULTS" ]]  || die "no $VAULTS"
 
-ACTOR=$(cast wallet address --account "$ACCOUNT")
+ACTOR=$(cast wallet address --account "$ACCOUNT" "${PW[@]}")
 
 # The spot vault is the CREATE2 child with a cashAsset, and the swap adapter is
 # the StubSwapAdapter in the same broadcast. Both read off the artifact rather
@@ -237,16 +253,28 @@ bold "6/6  Rate-limit target"
 # address is a clean window and clean nonces for about 100k gas, which is a
 # better trade than a drill that can only be run once a day.
 info "deploying a fresh NoopRebalancer (clean nonce and rate-limit window)"
-OUT=$(forge create src/testnet/TestnetFixtures.sol:NoopRebalancer       --rpc-url "$RPC" --account "$ACCOUNT" --broadcast --json)
+OUT=$(forge create src/testnet/TestnetFixtures.sol:NoopRebalancer       --rpc-url "$RPC" --account "$ACCOUNT" "${PW[@]}" --broadcast --json)
 NOOP=$(MSYS_NO_PATHCONV=1 node -e 'process.stdout.write(JSON.parse(process.argv[1]).deployedTo || "")' -- "$OUT")
 [[ -n "$NOOP" ]] || die "could not read the deployed address"
-printf '%s' "$NOOP" > ".noop-rebalancer-$CHAIN_ID"
 ok "deployed $NOOP"
 
 EXEC=$(env_of NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS)
 RL_LIMIT="${RATE_LIMIT:-4}"
 send "$EXEC" 'setDailyLimit(address,uint256)' "$NOOP" "$RL_LIMIT"
 ok "dailyLimit $RL_LIMIT"
+
+# Cached only now, and keyed by EXECUTOR rather than by chain id alone.
+#
+# Both halves of that matter, and both were learned the hard way. Keyed by
+# chain id, the file outlived the deployment that produced it: a redeploy left
+# the previous generation's noop on disk, and because that address is a real
+# deployed contract -- just one the NEW executor has never granted a limit --
+# the drill sailed past its "does the cache exist" guard and failed four checks
+# later on dailyLimit == 0, telling the operator to set a rate limit on an
+# address from a deployment that no longer serves anything. Writing it after
+# setDailyLimit rather than before is the other half: the file's existence now
+# means "a noop this executor rate-limits", not "a noop was deployed once".
+printf '%s' "$NOOP" > ".noop-rebalancer-$CHAIN_ID-${EXEC,,}"
 
 bold "Ready"
 echo "  The oracle has a price, the adapter has both legs, and the vault holds"
