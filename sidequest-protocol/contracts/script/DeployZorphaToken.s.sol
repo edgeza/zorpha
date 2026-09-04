@@ -194,7 +194,7 @@ contract DeployZorphaToken is Script {
         uint256 liquidityAmount,
         uint256 insuranceAmount,
         uint256 govAmount
-    ) internal pure {
+    ) internal view {
         console2.log("=== Zorpha token layer deployed ===");
         console2.log("ZOR              ", address(d.zor));
         console2.log("Timelock         ", address(d.timelock));
@@ -210,8 +210,16 @@ contract DeployZorphaToken is Script {
         console2.log("insurance        ", insuranceAmount);
         console2.log("governance held  ", govAmount);
         console2.log("");
-        console2.log("ACTION REQUIRED: ProtocolTreasury ownership is a two-step");
-        console2.log("transfer. The Timelock must queue acceptOwnership().");
+        console2.log("ACTION REQUIRED, AND IT IS A LIVE EXPOSURE:");
+        console2.log("  ProtocolTreasury is Ownable2Step, so transferOwnership");
+        console2.log("  set pendingOwner and NOTHING ELSE. Until the Timelock");
+        console2.log("  executes acceptOwnership(), owner() is still:");
+        console2.log("   ", d.treasury.owner());
+        console2.log("  That address can call rescue() and take every token the");
+        console2.log("  treasury holds, which is where all vault fees land. The");
+        console2.log("  deploy asserts the handover was STARTED, not finished --");
+        console2.log("  it cannot finish one, because only the Timelock can.");
+        console2.log("  Close this before fees accumulate, not after.");
         console2.log("ACTION REQUIRED: Safe must call ZorphaVesting.fund() with");
         console2.log("the real contributor + backer schedules (runbook step 4),");
         console2.log("and ZorphaBuyback.setRouter() once a ZOR route is live.");

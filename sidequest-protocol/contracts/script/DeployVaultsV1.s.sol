@@ -253,17 +253,51 @@ contract DeployVaultsV1 is Script {
         r.spotVault.grantRole(r.spotVault.KEEPER_ROLE(), address(r.executor));
         IAccessControl(r.swapAdapter).grantRole(keccak256("VAULT_ROLE"), address(r.spotVault));
 
-        // ─── Vault 2: RWA rotation basket (optional second leg).
-        if (stockToken2 != address(0)) {
-            address[] memory tokens = new address[](2);
-            tokens[0] = stockToken1;
-            tokens[1] = stockToken2;
-            address[] memory oracles = new address[](2);
-            oracles[0] = stockFeed1 == address(0) ? defaultOracle : stockFeed1;
-            oracles[1] = stockFeed2 == address(0) ? defaultOracle : stockFeed2;
-            uint16[] memory weights = new uint16[](2);
-            weights[0] = 5000;
-            weights[1] = 5000;
+        // ─── Vault 2: RWA rotation basket, CASH-DENOMINATED.
+        //
+        // tokens[0] is the base asset, deliberately. RWRotationVault takes
+        // asset() from tokens[0], so whatever sits there is the unit depositors
+        // pay in and are redeemed in. Leading with the equity made a fund you
+        // could only enter by already holding tAAPL, and the contract's own
+        // note calls the tokens[0] == baseAsset restriction load-bearing:
+        //
+        //   - totalAssets() is in asset() units while highWaterMark and
+        //     performanceFeeAccrued are in BASE units. They coincide only when
+        //     tokens[0] IS the base asset.
+        //   - firstLossEscrow is only settable on a cash basket, because the
+        //     escrow must hold the token the depositor is actually paid in --
+        //     otherwise absorb() has to sell through a venue mid-redemption,
+        //     with slippage, inside the one path that must not fail.
+        //
+        // So an equity-led basket cannot carry manager-loses-first at all. That
+        // is the whole product, not a detail.
+        //
+        // The cash leg still needs an oracle to satisfy the constructor, and
+        // never consults it: tokenToBase short-circuits the base asset to
+        // identity, so a USDG/USD feed drifting inside its own deviation band
+        // cannot reprice the unit of account.
+        {
+            uint256 n = stockToken2 != address(0) ? 3 : 2;
+            address[] memory tokens = new address[](n);
+            address[] memory oracles = new address[](n);
+            uint16[] memory weights = new uint16[](n);
+
+            tokens[0] = usdc;
+            oracles[0] = defaultOracle;
+            // Launches flat. Weights are a target the keeper moves toward, so
+            // starting fully in cash means the vault takes no market view its
+            // governance did not choose -- the manager decides when to deploy.
+            weights[0] = 10000;
+
+            tokens[1] = stockToken1;
+            oracles[1] = stockFeed1 == address(0) ? defaultOracle : stockFeed1;
+            weights[1] = 0;
+
+            if (n == 3) {
+                tokens[2] = stockToken2;
+                oracles[2] = stockFeed2 == address(0) ? defaultOracle : stockFeed2;
+                weights[2] = 0;
+            }
 
             r.rotationVault = RWRotationVault(
                 r.factory.deployRotationVault(
@@ -424,6 +458,19 @@ contract DeployVaultsV1 is Script {
         );
         require(r.executor.dailyLimit(address(r.spotVault)) > 0, "spot vault has no rate limit");
         require(r.executor.dailyLimit(address(r.yieldVault)) > 0, "yield vault has no rate limit");
+
+        // The basket must be cash-denominated, and nothing in the vault
+        // enforces it -- RWRotationVault happily takes an equity as tokens[0]
+        // and reports a coherent NAV in equity units. What it cannot then do is
+        // carry a first-loss escrow, because absorb() would have to sell the
+        // buffer through a venue inside the redemption path. An earlier deploy
+        // shipped exactly that and nothing complained.
+        if (address(r.rotationVault) != address(0)) {
+            require(
+                r.rotationVault.asset() == usdc,
+                "rotation vault is not cash-denominated: tokens[0] must be the base asset, or it can never take a first-loss escrow"
+            );
+        }
 
         console2.log("=== Zorpha vault layer deployed ===");
         console2.log("Oracle         ", address(r.oracle));

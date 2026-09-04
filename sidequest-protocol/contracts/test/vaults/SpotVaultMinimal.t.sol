@@ -693,7 +693,12 @@ contract SpotVaultFeeTest is Test {
     /// `_reconcileFeeClaimWhenEmpty` caps the claim at its backing while the
     /// vault is empty, which is the only window where the harm is possible --
     /// with shareholders present the gap is priced into the share they buy.
-    function test_UnclaimedFee_DilutesTheNextDepositor() public {
+    /// Named for what it asserts. It was called ...DilutesTheNextDepositor,
+    /// which is what the vault did BEFORE the claim was reconciled on entry --
+    /// the name outlived the behaviour. Reading the suite, the fee path looked
+    /// like it dilutes on the spot vault and not on the other two, when all
+    /// three cap the claim at its backing and leave the next depositor whole.
+    function test_UnclaimedFee_DoesNotDiluteTheNextDepositor() public {
         uint256 aliceShares = _depositFrom(alice);
         _doubleTheNav();                       // fee accrues in BTC terms, at 25k
         uint256 claim = vault.performanceFeeAccrued();
