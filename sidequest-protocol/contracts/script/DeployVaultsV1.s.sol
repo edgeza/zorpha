@@ -370,6 +370,29 @@ contract DeployVaultsV1 is Script {
             r.executor.setDailyLimit(address(r.rotationVault), dailyLimit);
         }
 
+        // The rebalance signer, set explicitly. StrategyExecutor's constructor
+        // does `authorizedSigner = msg.sender`, so it defaults to the DEPLOYER
+        // and the deploy never touched it -- the live testnet executor trusts
+        // 0x54995f55, the deploy key, to sign every vault's rebalances.
+        //
+        // `authorizedSigner` is plain state, not a role, so `_handOver`
+        // cannot renounce it and `_assertNoDeployerRoles` cannot see it. The
+        // deploy's headline claim is that the deployer ends holding nothing;
+        // that claim covers AccessControl roles and token balances, and this
+        // is neither. Same blind spot as ProtocolTreasury's Ownable2Step
+        // ownership, which is the other thing the deployer keeps.
+        //
+        // Defaults to the keeper rather than the deployer so an operator who
+        // sets nothing still ends up somewhere defensible, and the assertion
+        // below refuses the deployer outright either way.
+        address managerSigner = vm.envOr("MANAGER_SIGNER", keeper);
+        require(
+            managerSigner != deployer,
+            "MANAGER_SIGNER is the deployer -- its roles are renounced at handover but "
+            "authorizedSigner is not a role, so it would keep signing rebalances forever"
+        );
+        r.executor.setAuthorizedSigner(managerSigner);
+
         _handOver(address(r.executor), gov, deployer);
         _handOver(r.swapAdapter, gov, deployer);
         if (r.yieldIsReal) _handOver(r.yieldAdapter, gov, deployer);
@@ -458,6 +481,15 @@ contract DeployVaultsV1 is Script {
         );
         require(r.executor.dailyLimit(address(r.spotVault)) > 0, "spot vault has no rate limit");
         require(r.executor.dailyLimit(address(r.yieldVault)) > 0, "yield vault has no rate limit");
+
+        // Authority that is NOT a role, and therefore invisible to
+        // _assertNoDeployerRoles. Every item here survived a handover that
+        // reported the deployer had been stripped of everything.
+        require(
+            r.executor.authorizedSigner() != deployer,
+            "deployer can still sign rebalances: authorizedSigner is state, not a role, "
+            "so renouncing every role left it untouched"
+        );
 
         // The basket must be cash-denominated, and nothing in the vault
         // enforces it -- RWRotationVault happily takes an equity as tokens[0]

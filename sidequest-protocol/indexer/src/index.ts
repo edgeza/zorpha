@@ -323,6 +323,35 @@ async function runCycle(): Promise<void> {
   const vaults = await getKnownVaults();
   health.vaultsTracked = vaults.length;
 
+  // VAULT_ADDRESSES does NOT select what gets indexed outside DRY_RUN. The
+  // vault list is the `vaults` TABLE; the env var is only read by the dry-run
+  // path. Setting it in production and expecting the new deployment to appear
+  // is a reasonable thing to expect and it does nothing at all -- the indexer
+  // carries on serving whatever the table happens to hold, silently, which on
+  // this deployment meant three superseded vaults from the previous release.
+  //
+  // upsertVault exists and is never called, so there is no code path that
+  // registers a vault. Registration is a hand-written SQL insert, and that is
+  // exactly the step that gets forgotten after a redeploy.
+  //
+  // Reconciling here does not fix the design, but it does stop the divergence
+  // being invisible: what the operator CONFIGURED is compared with what the
+  // database will actually be indexed from, and any gap is named.
+  if (!config.dryRun && config.vaultAddresses.length > 0) {
+    const registered = new Set(vaults.map((v) => v.address.toLowerCase()));
+    const missing = config.vaultAddresses.filter((a) => !registered.has(a.toLowerCase()));
+    if (missing.length > 0) {
+      log('warn', 'VAULT_ADDRESSES lists vaults that are not in the vaults table', {
+        missing,
+        hint:
+          'These will NOT be indexed. VAULT_ADDRESSES only selects vaults under ' +
+          'DRY_RUN=1; in production the list comes from the table. Insert them ' +
+          'there (see zorpha-web/migrations) or they stay invisible.',
+        indexingInstead: vaults.map((v) => v.address),
+      });
+    }
+  }
+
   if (vaults.length === 0 && config.vaultAddresses.length === 0) {
     log('info', 'no vaults registered yet, nothing to index', { head: head.toString() });
   }
