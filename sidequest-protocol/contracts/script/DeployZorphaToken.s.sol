@@ -61,6 +61,33 @@ contract DeployZorphaToken is Script {
         ZorphaVesting vesting;
     }
 
+    /// @notice Everything run() reads from the environment, in one place.
+    ///
+    /// @dev    Exists so the deployment can be executed somewhere other than a
+    ///         live chain. Foundry cannot run a broadcasting script from inside
+    ///         a test -- vm.startBroadcast makes later calls fail with
+    ///         ReentrancySentryOOG -- so a mainnet-fork rehearsal is impossible
+    ///         while the logic and the broadcast are the same function.
+    ///
+    ///         That rehearsal matters more here than anywhere else in the repo.
+    ///         This script mints the entire supply and distributes it in one
+    ///         transaction, and almost nothing it creates can be corrected
+    ///         afterwards: MerkleDistributor fixes merkleRoot and claimDeadline
+    ///         as immutables, ProtocolTreasury fixes both destinations,
+    ///         ZorphaVesting fixes its admin, and the token address itself is
+    ///         referenced by every pool, listing and integration that follows.
+    ///         There is no second attempt that is not a migration.
+    struct Config {
+        address deployer;
+        address gov;
+        address usdg;
+        address liquidityRecipient;
+        bytes32 airdropRoot;
+        uint256 claimDeadline;
+        uint256 timelockDelay;
+        uint256 buybackThreshold;
+    }
+
     function run() external returns (Deployed memory d) {
         // PRIVATE_KEY is optional. When it is absent the run authenticates with
         // `--account <keystore>` (plus `--sender`), and forge resolves both the
@@ -107,6 +134,36 @@ contract DeployZorphaToken is Script {
         } else {
             vm.startBroadcast();
         }
+
+        d = deploy(
+            Config({
+                deployer: deployer,
+                gov: gov,
+                usdg: usdc,
+                liquidityRecipient: liquidityRecipient,
+                airdropRoot: airdropRoot,
+                claimDeadline: claimDeadline,
+                timelockDelay: timelockDelay,
+                buybackThreshold: buybackThreshold
+            })
+        );
+
+        vm.stopBroadcast();
+    }
+
+    /// @notice The deployment itself, free of env reading and broadcasting, so a
+    ///         fork rehearsal can execute THIS code rather than a copy of it.
+    ///         The launch-blocking assertions stay inside it deliberately: they
+    ///         are the most valuable thing a rehearsal can run.
+    function deploy(Config memory c) public returns (Deployed memory d) {
+        address deployer = c.deployer;
+        address gov = c.gov;
+        address usdc = c.usdg;
+        address liquidityRecipient = c.liquidityRecipient;
+        bytes32 airdropRoot = c.airdropRoot;
+        uint256 claimDeadline = c.claimDeadline;
+        uint256 timelockDelay = c.timelockDelay;
+        uint256 buybackThreshold = c.buybackThreshold;
 
         // ─── 1. Token. Full supply to the deployer, spent entirely below. ────
         d.zor = new Zorpha(deployer);
@@ -157,15 +214,13 @@ contract DeployZorphaToken is Script {
             block.chainid,
             liquidityRecipient,
             liquidityRecipient.code.length,
-            msg.sender
+            deployer
         );
 
         d.zor.transfer(address(d.distributor), airdropAmount);
         d.zor.transfer(liquidityRecipient, liquidityAmount);
         d.zor.transfer(address(d.insurance), insuranceAmount);
         d.zor.transfer(gov, govAmount);
-
-        vm.stopBroadcast();
 
         // ─── 7. Launch-blocking assertions. ─────────────────────────────────
         require(
