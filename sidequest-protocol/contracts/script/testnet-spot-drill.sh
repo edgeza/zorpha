@@ -518,7 +518,34 @@ V_TVL=$(cast call "$VAULT" 'grossValue()(uint256)' --rpc-url "$RPC" 2>/dev/null 
 VN=$(bi "$V_NONCE" add 1)
 info "vault nonce $V_NONCE, rebalanceCount $V_COUNT, grossValue $V_TVL"
 
-if [[ "$V_TVL" == "0" ]]; then
+# The real vault now carries a trading window, so this step is time-dependent in
+# a way the noop steps above are not. A closed market is the protection working;
+# failing the drill for it would train whoever runs it to ignore a red result on
+# a Saturday, which is exactly when a real failure would be missed.
+W_STATE=$(cast call "$EXEC" 'tradingWindow(address)(uint16,uint16,uint8,bool)' "$VAULT" --rpc-url "$RPC" | tr '
+' ' ')
+read -r W_OPEN W_CLOSE W_MASK W_ON <<<"$W_STATE"
+MARKET_SHUT=0
+if [[ "$W_ON" == "true" ]]; then
+  T_NOW=$(cast block latest --field timestamp --rpc-url "$RPC")
+  T_DOW=$(( (T_NOW / 86400 + 4) % 7 ))
+  T_MIN=$(( (T_NOW % 86400) / 60 ))
+  if (( ((W_MASK >> T_DOW) & 1) == 0 )); then MARKET_SHUT=1
+  elif (( W_OPEN < W_CLOSE )); then
+    (( T_MIN >= W_OPEN && T_MIN < W_CLOSE )) || MARKET_SHUT=1
+  else
+    (( T_MIN >= W_OPEN || T_MIN < W_CLOSE )) || MARKET_SHUT=1
+  fi
+fi
+
+if [[ "$MARKET_SHUT" == "1" ]]; then
+  skip "the market is shut, so this vault refuses rebalances right now"
+  info "window $W_OPEN-$W_CLOSE UTC, mask $W_MASK; it is day $T_DOW minute $T_MIN."
+  info "Steps 1-7 ran against the noop target, which has no window, so everything"
+  info "above is unaffected. Re-run inside the session to exercise this step, or"
+  info "see ./script/testnet-trading-window-drill.sh, which owns its own executor"
+  info "and tests the window itself rather than working around it."
+elif [[ "$V_TVL" == "0" ]]; then
   skip "skipped: the vault is empty, so rebalanceTo takes its tvl == 0 early"
   info "return -- it records the weight, trades nothing, and emits no receipt."
   info "Run ./script/testnet-spot-setup.sh to fund and price it."
