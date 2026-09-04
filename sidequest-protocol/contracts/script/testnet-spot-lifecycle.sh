@@ -185,7 +185,7 @@ fi
 [[ -n "$(try "$EXEC" 'BASKET_REBALANCE_TYPEHASH()(bytes32)')" ]] || die "the executor at $EXEC predates the basket path. Migrate first: ./script/testnet-migrate-executor.sh <governance-keystore> $SIGNER"
 ok "executor has both rebalance paths"
 
-ONCHAIN_SIGNER=$(call "$EXEC" 'authorizedSigner()(address)')
+ONCHAIN_SIGNER=$(call "$EXEC" 'signerFor(address)(address)' "$VAULT")
 eq "${ONCHAIN_SIGNER,,}" "${SIGNER,,}" || die "executor trusts $ONCHAIN_SIGNER, not $SIGNER"
 ok "executor trusts this signer"
 

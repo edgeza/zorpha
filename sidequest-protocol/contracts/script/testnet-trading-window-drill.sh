@@ -90,7 +90,7 @@ send "$EXEC" 'grantRole(bytes32,address)' "$KR" "$ACTOR"
 send "$EXEC" 'setDailyLimit(address,uint256)' "$NOOP" 50
 ok "actor holds KEEPER_ROLE; rate limit 50, so it cannot interfere"
 
-SIGNER=$(call "$EXEC" 'authorizedSigner()(address)')
+SIGNER=$(call "$EXEC" 'signerFor(address)(address)' "$NOOP")
 [[ "${SIGNER,,}" == "${ACTOR,,}" ]] || die "the fresh executor trusts $SIGNER, not $ACTOR"
 
 DOMAIN=$(call "$EXEC" 'DOMAIN_SEPARATOR()(bytes32)')
