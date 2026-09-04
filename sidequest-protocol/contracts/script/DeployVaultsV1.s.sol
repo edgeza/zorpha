@@ -370,6 +370,59 @@ contract DeployVaultsV1 is Script {
             r.executor.setDailyLimit(address(r.rotationVault), dailyLimit);
         }
 
+        // Market hours, if the operator computed them.
+        //
+        // Every vault shipped with enforced=false, which is 24/7, on a protocol
+        // whose spot vault holds a tokenised US equity priced by an oracle that
+        // stops moving at the closing bell. A rebalance at 03:00 on a Sunday
+        // trades against Friday's close, and _checkTradingWindow exists to
+        // refuse exactly that -- but only once somebody sets a window.
+        //
+        // The numbers come from the operator rather than from here because they
+        // are a function of the CALENDAR, and this script cannot ask one.
+        // US equities are 13:30-20:00 UTC in summer and 14:30-21:00 in winter;
+        // hard-coding either would be wrong for half the year, and hard-coding
+        // the DST rule that chooses between them is what the executor's own
+        // comment refuses to do on chain. script/testnet-trading-hours.sh takes
+        // the answer from a maintained tz database and prints these values.
+        //
+        // Refused on mainnet if unset. Warned about on testnet, where a drill
+        // that must run at 22:00 is a fair reason to leave the market open.
+        uint256 openMinute = vm.envOr("TRADING_OPEN_MINUTE", uint256(0));
+        uint256 closeMinute = vm.envOr("TRADING_CLOSE_MINUTE", uint256(0));
+        uint256 weekdayMask = vm.envOr("TRADING_WEEKDAY_MASK", uint256(0x3E));
+
+        if (openMinute == closeMinute) {
+            require(
+                block.chainid != 4663,
+                "TRADING_OPEN_MINUTE / TRADING_CLOSE_MINUTE unset -- the vaults would "
+                "accept rebalances at any hour on any day, against an equity price "
+                "frozen at the last close. Run script/testnet-trading-hours.sh for "
+                "today's values."
+            );
+            console2.log("");
+            console2.log("  !! no trading window set: every vault is 24/7.");
+            console2.log("     The spot vault will accept a rebalance on a Sunday against");
+            console2.log("     Friday's close. Run script/testnet-trading-hours.sh to fix.");
+            console2.log("     This deploy would be REFUSED on 4663.");
+            console2.log("");
+        } else {
+            r.executor.setTradingWindow(
+                address(r.spotVault), uint16(openMinute), uint16(closeMinute), uint8(weekdayMask)
+            );
+            if (address(r.rotationVault) != address(0)) {
+                r.executor.setTradingWindow(
+                    address(r.rotationVault), uint16(openMinute), uint16(closeMinute), uint8(weekdayMask)
+                );
+            }
+            // The yield vault is deliberately left open: its asset is a
+            // stablecoin, its venue is a money market that does not close, and
+            // its only keeper action takes no arguments, so there is no
+            // discretion to constrain and no stale equity price to constrain it
+            // against.
+            console2.log("  trading window set (UTC minutes):", openMinute, closeMinute);
+        }
+
         // The rebalance signer, set explicitly. StrategyExecutor's constructor
         // does `authorizedSigner = msg.sender`, so it defaults to the DEPLOYER
         // and the deploy never touched it -- the live testnet executor trusts
