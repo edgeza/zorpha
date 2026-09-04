@@ -73,6 +73,9 @@ export const spotVaultAbi = [
 export const rotationVaultAbi = [
   ...vaultCommonAbi,
   view('basketLength', [{ type: 'uint256' }]),
+  // The unit NAV and the high-water mark are denominated in. NOT asset():
+  // asset() is tokens[0], which on an equity-led basket is the equity.
+  view('baseDecimals', [{ type: 'uint8' }]),
   view('maxOracleStaleness', [{ type: 'uint256' }]),
   view('grossValue', [{ type: 'uint256' }]),
   view('netValueInBase', [{ type: 'uint256' }]),

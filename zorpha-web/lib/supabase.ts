@@ -69,6 +69,9 @@ export type RebalanceRow = {
   asset_leg: string | null;
   cash_leg: string | null;
   nav_per_share: string | null;
+  /** Scale of nav_per_share. Null on rows indexed before migration 007,
+   *  where 18 is the historical fallback. */
+  nav_decimals?: number | null;
   nonce: number;
   commitment: string | null;
 };

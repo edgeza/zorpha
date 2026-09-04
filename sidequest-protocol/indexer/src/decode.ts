@@ -70,6 +70,7 @@ export function toRebalanceRow(
   vault: Pick<VaultRow, 'address' | 'vault_type' | 'manager_address'>,
   entry: DecodedLog,
   blockTimestamp: string,
+  navDecimals?: number,
 ): RebalanceRow {
   const args = entry.args ?? {};
   const type: VaultType = vault.vault_type;
@@ -120,6 +121,10 @@ export function toRebalanceRow(
           : asBig(args.adapterBalance),
 
     nav_per_share: asBig(args.navPerShare ?? args.navInBase),
+    // The SCALE of the number above, stored beside it. Without it a renderer
+    // has to guess, and guessing 18 put every rotation and yield receipt out by
+    // 10^12 -- a NAV of 1.000000 displayed as 0.00000 on the public feed.
+    nav_decimals: navDecimals ?? null,
     nonce: typeof args.nonce === 'bigint' ? Number(args.nonce) : 0,
     commitment: (args.commitment as string | undefined) ?? null,
   };

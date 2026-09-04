@@ -75,6 +75,10 @@ export type RebalanceRow = {
   asset_leg?: string | null;
   cash_leg?: string | null;
   nav_per_share?: string | null;
+  /** Unit nav_per_share is in: asset() for spot and yield, baseAsset() for
+   *  rotation. Stored per receipt so a row can be read without joining a
+   *  mutable table beside it -- see migration 007. */
+  nav_decimals?: number | null;
   nonce: number;
   commitment?: string | null;
 };

@@ -443,7 +443,9 @@ export function YieldRebalance(
         <div>
           <dt className="stat-label">NAV / share</dt>
           <dd className="mt-0.5 font-mono tabular-nums">
-            {navPerShare === undefined ? '—' : Number(formatUnits(navPerShare, 18)).toFixed(6)}
+            {/* Asset units, not 18. A yield vault on 6-decimal USDG rendered a
+                NAV of 1.000000 as 0.000000 under a hardcoded 18. */}
+            {navPerShare === undefined ? '—' : Number(formatUnits(navPerShare, assetDecimals)).toFixed(6)}
           </dd>
         </div>
         <div>

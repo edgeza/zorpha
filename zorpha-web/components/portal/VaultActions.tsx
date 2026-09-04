@@ -183,7 +183,7 @@ export function VaultActions({
             balance{' '}
             {mode === 'deposit'
               ? formatUnits(assetBalance as bigint | undefined, assetDecimals ?? 18, 2)
-              : formatUnits(shareBalance as bigint | undefined, 18, 4)}
+              : formatUnits(shareBalance as bigint | undefined, shareDecimals ?? 18, 4)}
           </span>
         </div>
         <div className="mt-2 flex gap-2">
