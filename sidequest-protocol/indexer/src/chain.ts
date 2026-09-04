@@ -274,11 +274,33 @@ export async function withAdaptiveRange<T>(
  * Type a vault by which accessor answers, for `DRY_RUN` where there is no
  * `vaults` table to read.
  *
- * `cashAsset` exists only on the spot vault, `baseAsset` only on the rotation
- * vault, `firstLossEscrow` only on the yield vault. Exactly one must answer:
- * treating "neither of the first two replied" as yield would let a dropped RPC
- * call silently mistype a vault, and then decode its receipts with the wrong
- * event ABI -- which does not throw, it just matches nothing.
+ * The probes must be MUTUALLY EXCLUSIVE, and the previous set stopped being so.
+ * It used cashAsset / baseAsset / firstLossEscrow, on the premise that
+ * firstLossEscrow existed only on the yield vault. RWRotationVault later gained
+ * a firstLossEscrow field, so a rotation vault answered two probes, "exactly
+ * one" could never hold, and DRY_RUN died on every deployment that included
+ * one:
+ *
+ *     spot      cashAsset=YES  baseAsset=no   firstLossEscrow=no
+ *     rotation  cashAsset=no   baseAsset=YES  firstLossEscrow=YES   <-- two
+ *     yield     cashAsset=no   baseAsset=no   firstLossEscrow=YES
+ *
+ * DRY_RUN exists so the indexing path can be exercised without a service-role
+ * key -- the one component that otherwise nobody can try. It was broken by a
+ * field added to a contract in a different package, which is exactly the kind
+ * of drift nothing was watching for.
+ *
+ * The set below is exclusive again, verified against the live testnet
+ * deployment:
+ *
+ *     spot      cashAsset=YES  basketLength=no   adapter=no
+ *     rotation  cashAsset=no   basketLength=YES  adapter=no
+ *     yield     cashAsset=no   basketLength=no   adapter=YES
+ *
+ * `matched !== 1` is kept deliberately. Falling back to "neither of the others
+ * replied, so it must be the third" would let one dropped RPC call mistype a
+ * vault, and its receipts would then be decoded with the wrong event ABI --
+ * which does not throw. It matches nothing, and the feed goes quietly empty.
  */
 export async function detectVaultType(
   address: `0x${string}`,
@@ -306,16 +328,16 @@ export async function detectVaultType(
     }
   };
 
-  const [cash, base, escrow] = await Promise.all([
+  const [cash, basket, adapter] = await Promise.all([
     probe('cashAsset', 'address'),
-    probe('baseAsset', 'address'),
-    probe('firstLossEscrow', 'address'),
+    probe('basketLength', 'uint256'),
+    probe('adapter', 'address'),
   ]);
 
-  const matched = [cash, base, escrow].filter(Boolean).length;
+  const matched = [cash, basket, adapter].filter(Boolean).length;
   if (matched !== 1) return null;
   if (cash) return 'spot';
-  if (base) return 'rotation';
+  if (basket) return 'rotation';
   return 'yield';
 }
 

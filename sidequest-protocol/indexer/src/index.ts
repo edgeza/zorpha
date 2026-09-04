@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { planWindows, toRebalanceRow, type DecodedLog } from './decode.js';
 import { config } from './config.js';
 import {
   assertChainId,
@@ -94,25 +95,6 @@ function startHealthServer(): void {
   server.unref();
 }
 
-/**
- * Outer windows for a scan. Each becomes one cursor advance, so a long backfill
- * checkpoints as it goes rather than only at the very end.
- *
- * Capped at 20 windows per cycle: without a cap, a first run against a chain
- * already at block 111,000,000 would try to scan the entire history in one
- * cycle and never reach the live tail. Successive cycles pick up where this one
- * stopped.
- */
-function planWindows(from: bigint, to: bigint, size: bigint): [bigint, bigint][] {
-  const windows: [bigint, bigint][] = [];
-  let cursor = from;
-  while (cursor <= to && windows.length < 20) {
-    const end = cursor + size - 1n > to ? to : cursor + size - 1n;
-    windows.push([cursor, end]);
-    cursor = end + 1n;
-  }
-  return windows;
-}
 
 // ─── Vault indexing ─────────────────────────────────────────────────────────
 
@@ -151,57 +133,9 @@ async function indexVault(vault: VaultRow, safeHead: bigint): Promise<number> {
     const bumps: { manager: string; ts: string }[] = [];
 
     for (const raw of logs) {
-      const entry = raw as {
-        args?: Record<string, unknown>;
-        blockNumber: bigint;
-        transactionHash: string;
-        logIndex: number;
-      };
-      const args = entry.args ?? {};
-      const blockNumber = entry.blockNumber;
-      const ts = await getBlockTimestamp(blockNumber);
-
-      const asBig = (v: unknown): string | null =>
-        typeof v === 'bigint' ? v.toString() : null;
-
-      rows.push({
-        vault_address: vault.address,
-        vault_type: vault.vault_type,
-        // The vault's configured manager, which is what KEEPER_ROLE actually
-        // enforces. Deliberately NOT tx.from: submission is permissionless, so
-        // the sender is frequently a keeper and attributing the trade to them
-        // would misstate authorship on a protocol built around attribution.
-        manager: vault.manager_address,
-        submitter: null,
-        block_number: Number(blockNumber),
-        tx_hash: entry.transactionHash,
-        log_index: entry.logIndex,
-        block_timestamp: ts,
-        target_bps:
-          vault.vault_type === 'spot' && typeof args.targetBps === 'number'
-            ? args.targetBps
-            : null,
-        target_weights:
-          vault.vault_type === 'rotation' && Array.isArray(args.targetBps)
-            ? (args.targetBps as readonly number[]).map(Number)
-            : null,
-        asset_leg:
-          vault.vault_type === 'spot'
-            ? asBig(args.assetLeg)
-            : vault.vault_type === 'yield'
-              ? asBig(args.totalAssetsInAdapter)
-              : null,
-        cash_leg:
-          vault.vault_type === 'spot'
-            ? asBig(args.cashLeg)
-            : vault.vault_type === 'rotation'
-              ? asBig(args.baseLeg)
-              : asBig(args.adapterBalance),
-        nav_per_share: asBig(args.navPerShare ?? args.navInBase),
-        nonce: typeof args.nonce === 'bigint' ? Number(args.nonce) : 0,
-        commitment: (args.commitment as string | undefined) ?? null,
-      });
-
+      const entry = raw as DecodedLog;
+      const ts = await getBlockTimestamp(entry.blockNumber);
+      rows.push(toRebalanceRow(vault, entry, ts));
       bumps.push({ manager: vault.manager_address, ts });
     }
 
