@@ -154,6 +154,36 @@ contract DeployVaultsV1 is Script {
         if (quorum == 0) quorum = oracleUpdaters.length;
         require(quorum > 0 && quorum <= oracleUpdaters.length, "ORACLE_QUORUM exceeds updater set");
 
+        // Mainnet needs a median that is actually a median, and an updater set
+        // it can still shrink.
+        //
+        // QUORUM >= 2. At quorum 1 any single updater sets the price alone and
+        // the median is decorative -- the same shape as a signature gate the
+        // submitting key can satisfy by itself.
+        //
+        // UPDATERS > QUORUM, i.e. at least three. This is not padding: MedianOracle
+        // refuses removeUpdater while `updaters.length == minQuorum`, and minQuorum
+        // is IMMUTABLE. Deploy with exactly two updaters at quorum 2 and a
+        // compromised updater key can never be evicted -- not by governance, not
+        // by anyone -- without redeploying the oracle and repointing every vault
+        // that reads it. Provisioning the spare is what keeps key rotation an
+        // operational task rather than a migration.
+        //
+        // The cost is stated rather than hidden: latestRoundData reports the
+        // OLDEST contributing timestamp, so at quorum 2 BOTH contributors must
+        // have posted within maxStaleness or every read reverts
+        // InsufficientFreshReports. Measured on 46630 at 157s and 541s, reported
+        // as 541s. Two independent posters, at least hourly, forever.
+        if (block.chainid == 4663) {
+            require(quorum >= 2, "ORACLE_QUORUM is 1 on mainnet: a single updater would set the price alone");
+            require(
+                oracleUpdaters.length > quorum,
+                "ORACLE_UPDATERS must exceed ORACLE_QUORUM: MedianOracle refuses removeUpdater at "
+                "updaters == quorum and minQuorum is immutable, so a compromised updater could "
+                "never be evicted without redeploying the oracle"
+            );
+        }
+
         // The deployer must not be an oracle updater, and the default above
         // makes it one -- which produces a DEAD oracle.
         //
@@ -348,7 +378,19 @@ contract DeployVaultsV1 is Script {
 
         // ─── Handover. Every privileged role moves to governance or the
         //     timelock, and the deployer renounces its own.
-        _handOver(address(r.oracle), gov, deployer);
+        // The oracle admin can addUpdater, and an updater sets the price. On a
+        // quorum-2 oracle that is two transactions from moving the mark on every
+        // vault, with no delay, from one EOA. Same argument as the executor, and
+        // the same split: mainnet gets the timelock, testnet keeps gov because
+        // the drills seat and rotate updaters on every run.
+        //
+        // The cost on mainnet is that adding an updater takes 48h, which is the
+        // other half of why the deploy insists on a spare above.
+        if (block.chainid == 4663) {
+            _handOverVault(address(r.oracle), timelock, gov, deployer);
+        } else {
+            _handOver(address(r.oracle), gov, deployer);
+        }
         _handOver(address(r.factory), gov, deployer);
         // Seat the executor's own roles BEFORE handing it over, or nothing
         // can ever be granted again without a governance transaction.
