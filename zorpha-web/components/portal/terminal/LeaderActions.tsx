@@ -28,10 +28,14 @@ const ZERO = '0x0000000000000000000000000000000000000000' as const;
 export function LeaderActions({
   launchId,
   vaultTotalSupply,
+  shareDecimals,
   currentTarget,
 }: {
   launchId: bigint;
   vaultTotalSupply: bigint | undefined;
+  /** The VAULT's decimals, not 18. ERC-4626 adds an offset, so the live
+   *  vaults report 24, 24 and 12 and a hardcoded 18 was out by 10^6. */
+  shareDecimals: number;
   currentTarget: Address | undefined;
 }) {
   const launcher = contracts.vaultLauncher as Address;
@@ -196,7 +200,7 @@ export function LeaderActions({
             <dd className="mt-0.5 font-mono tabular-nums">
               {vaultTotalSupply === undefined
                 ? '—'
-                : Number(formatUnits(vaultTotalSupply, 18)).toLocaleString('en-US', {
+                : Number(formatUnits(vaultTotalSupply, shareDecimals)).toLocaleString('en-US', {
                     maximumFractionDigits: 4,
                   })}
             </dd>

@@ -181,6 +181,9 @@ export function ManagerTerminal() {
           { ...base, functionName: 'hasRole', args: [ROLE.keeper, address ?? ZERO] },
           { ...base, functionName: 'hasRole', args: [ROLE.riskCouncil, address ?? ZERO] },
           { ...base, functionName: 'hasRole', args: [ROLE.adapterSetter, address ?? ZERO] },
+          // SHARE decimals, which are not 18 and not the asset's. ERC4626 adds a
+          // decimals offset, so the live vaults report 24, 24 and 12.
+          { ...base, functionName: 'decimals' },
         ]
       : [],
     query: { enabled: Boolean(base), refetchInterval: 15_000 },
@@ -230,12 +233,35 @@ export function ManagerTerminal() {
   const assetSymbol = typeof m(1) === 'string' ? (m(1) as string) : '';
   const vaultAssetBalance = num(m(2)) ?? 0n;
 
+  // ─── Units ──────────────────────────────────────────────────────────────
+  //
+  // Three different scales are in play and only one of them is the asset's.
+  // Every field below used to be formatted with a hardcoded 18.
+  //
+  //   SHARE decimals: ERC-4626 applies a decimals offset, so the live vaults
+  //   report 24, 24 and 12 -- never 18. Formatting totalSupply at 18 overstated
+  //   the spot and rotation share count by 10^6 and understated the yield
+  //   vault's by the same factor.
+  //
+  //   NAV decimals: navPerShare and highWaterMark are denominated in the
+  //   vault's ACCOUNTING unit, which is asset() on spot and yield but
+  //   baseAsset() on a rotation basket -- asset() there is tokens[0], the
+  //   equity. On the live rotation vault the accounting unit is 6 decimals, so
+  //   an 18 rendered a NAV of 1.000000 as 0.000000 and a manager reading the
+  //   terminal saw a vault that had lost everything.
+  //
+  // Fallbacks are the previous behaviour rather than a guess, so a failed read
+  // degrades to what shipped instead of to a confidently wrong number.
+  const rawShareDecimals = g(15);
+  const shareDecimals = typeof rawShareDecimals === 'number' ? rawShareDecimals : 18;
+
+
   // The kind-specific reads, all against the same vault ABI.
   const kindFns: readonly string[] =
     selected?.kind === 'spot'
       ? ['targetWeightBps', 'rebalanceThresholdBps', 'maxSlippageBps', 'grossValue', 'maxOracleStaleness', 'oracle']
       : selected?.kind === 'rotation'
-        ? ['basketLength', 'maxOracleStaleness', 'grossValue', 'oracles']
+        ? ['basketLength', 'maxOracleStaleness', 'grossValue', 'oracles', 'baseDecimals']
         : selected?.kind === 'yield'
           ? ['rawAssets', 'heldAssets', 'adapter', 'firstLossEscrow']
           : [];
@@ -255,6 +281,11 @@ export function ManagerTerminal() {
   });
 
   const e = (i: number) => (extra?.[i]?.status === 'success' ? extra[i].result : undefined);
+
+  // Placed here, not with shareDecimals: it reads the rotation vault's
+  // baseDecimals out of the kind-specific results, which are declared above.
+  const rotBaseDecimals = selected?.kind === 'rotation' ? e(4) : undefined;
+  const navDecimals = typeof rotBaseDecimals === 'number' ? rotBaseDecimals : assetDecimals;
 
   const spotTarget = selected?.kind === 'spot' ? Number(e(0) ?? 0) : 0;
   const spotThreshold = selected?.kind === 'spot' ? Number(e(1) ?? 0) : 0;
@@ -473,7 +504,7 @@ export function ManagerTerminal() {
             <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
               <Stat
                 label="NAV / share"
-                value={navPerShare === undefined ? '—' : Number(formatUnits(navPerShare, 18)).toFixed(6)}
+                value={navPerShare === undefined ? '—' : Number(formatUnits(navPerShare, navDecimals)).toFixed(6)}
               />
               <Stat
                 label="Total assets"
@@ -485,7 +516,7 @@ export function ManagerTerminal() {
               />
               <Stat
                 label="Shares"
-                value={totalSupply === undefined ? '—' : Number(formatUnits(totalSupply, 18)).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                value={totalSupply === undefined ? '—' : Number(formatUnits(totalSupply, shareDecimals)).toLocaleString('en-US', { maximumFractionDigits: 2 })}
               />
               <Stat label="Rebalances" value={rebalanceCount?.toString() ?? '—'} />
               <Stat
@@ -503,7 +534,7 @@ export function ManagerTerminal() {
               />
               <Stat
                 label="High-water mark"
-                value={highWaterMark === undefined ? '—' : Number(formatUnits(highWaterMark, 18)).toFixed(6)}
+                value={highWaterMark === undefined ? '—' : Number(formatUnits(highWaterMark, navDecimals)).toFixed(6)}
               />
               <Stat
                 label="Deposits"
@@ -692,6 +723,7 @@ export function ManagerTerminal() {
 
           {selectedLaunch && (
             <LeaderActions
+              shareDecimals={shareDecimals}
               launchId={selectedLaunch.launchId}
               vaultTotalSupply={totalSupply}
               currentTarget={yieldAdapter}

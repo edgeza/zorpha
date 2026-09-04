@@ -152,3 +152,27 @@ test('identity fields survive so the unique (tx_hash, log_index) key holds', () 
   assert.equal(row.block_number, 112_522_645);
   assert.equal(row.block_timestamp, TS);
 });
+
+// ─── NAV scale ──────────────────────────────────────────────────────────────
+
+test('a receipt records the scale of its own NAV', () => {
+  const row = toRebalanceRow(ROT, log({ navInBase: 1_000_000n }), TS, 6);
+  assert.equal(row.nav_per_share, '1000000');
+  assert.equal(row.nav_decimals, 6, 'without this the renderer guesses 18 and is out by 10^12');
+});
+
+test('an unresolvable scale is null, not a guess', () => {
+  // nav_decimals is nullable and the renderer falls back to its old behaviour.
+  // Recording a scale we are not sure of onto a receipt meant to be verified
+  // is worse than recording none.
+  const row = toRebalanceRow(SPOT, log({ navPerShare: 1n }), TS);
+  assert.equal(row.nav_decimals, null);
+});
+
+test('the scale is independent of the vault type', () => {
+  // It comes from the vault's accounting unit, not from a lookup table keyed on
+  // kind -- a leader-launched vault uses whatever venue asset the leader chose.
+  assert.equal(toRebalanceRow(YIELD, log({ navPerShare: 1n }), TS, 6).nav_decimals, 6);
+  assert.equal(toRebalanceRow(SPOT, log({ navPerShare: 1n }), TS, 18).nav_decimals, 18);
+  assert.equal(toRebalanceRow(ROT, log({ navInBase: 1n }), TS, 8).nav_decimals, 8);
+});

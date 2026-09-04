@@ -37,7 +37,14 @@ export function ReceiptCard({ row }: { row: RebalanceRow }) {
         <div>
           <dt className="stat-label">NAV / share</dt>
           <dd className="mt-1 font-mono text-sm text-ink-100">
-            {row.nav_per_share ? formatUnits(row.nav_per_share, 18, 5) : '—'}
+            {/* The receipt carries its own scale. 18 is right only for a spot
+                vault on an 18-decimal asset; a rotation or yield receipt is
+                denominated in 6, and rendering those at 18 showed a NAV of
+                1.000000 as 0.00000 on the public feed. Rows written before
+                migration 007 have no scale and keep the old behaviour. */}
+            {row.nav_per_share
+              ? formatUnits(row.nav_per_share, row.nav_decimals ?? 18, 5)
+              : '—'}
           </dd>
         </div>
         <div>

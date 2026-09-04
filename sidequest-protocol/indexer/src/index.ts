@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { planWindows, toRebalanceRow, type DecodedLog } from './decode.js';
+import { navDecimalsFor } from './chain.js';
 import { config } from './config.js';
 import {
   assertChainId,
@@ -112,6 +113,15 @@ async function indexVault(vault: VaultRow, safeHead: bigint): Promise<number> {
   // Walk the range in adaptive windows: on a "too many logs" error the window
   // halves and retries rather than propagating, which would leave the cursor
   // parked and re-issue the identical failing request every poll.
+  // Resolved once per vault per cycle rather than per log: it is immutable for
+  // the life of the vault, and a receipt-rate read would be one RPC round trip
+  // per rebalance for a number that never moves.
+  const navDecimals = await navDecimalsFor(
+    vault.address as `0x${string}`,
+    vault.vault_type,
+    vault.asset as `0x${string}`,
+  );
+
   const windows = planWindows(from, safeHead, config.blockChunkSize);
 
   for (const [chunkFrom, chunkTo] of windows) {
@@ -135,7 +145,7 @@ async function indexVault(vault: VaultRow, safeHead: bigint): Promise<number> {
     for (const raw of logs) {
       const entry = raw as DecodedLog;
       const ts = await getBlockTimestamp(entry.blockNumber);
-      rows.push(toRebalanceRow(vault, entry, ts));
+      rows.push(toRebalanceRow(vault, entry, ts, navDecimals));
       bumps.push({ manager: vault.manager_address, ts });
     }
 

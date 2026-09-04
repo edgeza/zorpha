@@ -341,3 +341,54 @@ export async function detectVaultType(
   return 'yield';
 }
 
+
+/**
+ * Decimals of the unit a vault denominates its NAV and high-water mark in.
+ *
+ * NOT simply asset().decimals(). On a rotation basket asset() is tokens[0] --
+ * which on an equity-led basket is the equity -- while navPerShare and
+ * highWaterMark are measured in baseAsset(). The two differ by 10^12 on the
+ * live deployment, which is the whole reason receipts and the manager terminal
+ * were rendering a NAV of 1.000000 as 0.00000.
+ *
+ *   spot      asset() decimals
+ *   rotation  baseDecimals()
+ *   yield     asset() decimals
+ *
+ * Undefined rather than a guess when the reads fail: nav_decimals is nullable
+ * and the renderer falls back to its previous behaviour, which is better than
+ * recording a scale we are not sure of onto a receipt meant to be verifiable.
+ */
+export async function navDecimalsFor(
+  vaultAddress: `0x${string}`,
+  vaultType: 'spot' | 'rotation' | 'yield',
+  assetAddress: `0x${string}`,
+): Promise<number | undefined> {
+  const client = getPublicClient();
+  const u8 = [{ type: 'uint8' }] as const;
+
+  try {
+    if (vaultType === 'rotation') {
+      return Number(
+        await client.readContract({
+          address: vaultAddress,
+          abi: [
+            { name: 'baseDecimals', type: 'function', stateMutability: 'view', inputs: [], outputs: u8 },
+          ] as const,
+          functionName: 'baseDecimals',
+        }),
+      );
+    }
+    return Number(
+      await client.readContract({
+        address: assetAddress,
+        abi: [
+          { name: 'decimals', type: 'function', stateMutability: 'view', inputs: [], outputs: u8 },
+        ] as const,
+        functionName: 'decimals',
+      }),
+    );
+  } catch {
+    return undefined;
+  }
+}
