@@ -297,8 +297,60 @@ if [[ -f "$WEB_ENV" ]]; then
   ok "wrote the launcher address into zorpha-web/.env.local"
 fi
 
+
+# ─── The faucet, deployed WITH the launcher, not separately ─────────────────
+#
+# LeaderFaucet reads bondAmount() and minSeedEscrow() live from the launcher and
+# pays a bond out of its own ZOR float. Both of those bind it to one deployment:
+# a faucet left over from a previous release hands out a superseded ZOR that the
+# current launcher will not accept, so the claim SUCCEEDS, the claimant's
+# balance does not move, and the launch reverts.
+#
+# That is exactly what happened. The faucet was deployed by hand once, the
+# token and launcher were redeployed under it, and nothing noticed for a full
+# release -- the recruitment page kept offering a claim that could not lead
+# anywhere. The portal now detects and refuses it, but detecting a broken thing
+# is second best to not being able to build one.
+#
+# So it is deployed here, from the launcher that was just created. It cannot be
+# stale, because it cannot outlive the launcher it was made for.
+export VAULT_LAUNCHER="$LAUNCHER"
+forge script script/DeployLeaderFaucet.s.sol:DeployLeaderFaucet \
+  --rpc-url "$RPC" "${SIGNER[@]}" --sender "$DEPLOYER" --broadcast >/dev/null
+
+FAUCET=$(addr_of LeaderFaucet "broadcast/DeployLeaderFaucet.s.sol/$CHAIN_ID/run-latest.json")
+[[ -n "$FAUCET" ]] || die "could not read the faucet address"
+ok "LeaderFaucet  $FAUCET"
+
+if [[ -f "$WEB_ENV" ]]; then
+  node -e '
+    const fs=require("fs");
+    const [file,addr]=process.argv.slice(1);
+    let s=fs.readFileSync(file,"utf8");
+    s = /^NEXT_PUBLIC_LEADER_FAUCET_ADDRESS=/m.test(s)
+      ? s.replace(/^NEXT_PUBLIC_LEADER_FAUCET_ADDRESS=.*$/m, "NEXT_PUBLIC_LEADER_FAUCET_ADDRESS="+addr)
+      : s + "\nNEXT_PUBLIC_LEADER_FAUCET_ADDRESS=" + addr + "\n";
+    fs.writeFileSync(file,s);
+  ' "$WEB_ENV" "$FAUCET"
+  ok "wrote the faucet address into zorpha-web/.env.local"
+fi
+
+# It holds nothing yet, and an unfunded faucet is the same dead end by another
+# route: claimsRemaining() is bounded by the real balance, so it correctly
+# reports zero and the page says the float is gone.
+# Read the cap back off the faucet rather than assuming the default:
+# FAUCET_MAX_CLAIMS is configurable, and a float sized for 25 when the cap is 50
+# leaves the last 25 claimants a revert they cannot diagnose.
+BOND=$(cast call "$LAUNCHER" 'bondAmount()(uint256)' --rpc-url "$RPC" | cut -d' ' -f1)
+CLAIMS=$(cast call "$FAUCET" 'maxClaims()(uint256)' --rpc-url "$RPC" | cut -d' ' -f1)
+FLOAT=$(node -e 'process.stdout.write((BigInt(process.argv[1])*BigInt(process.argv[2])).toString())' "$BOND" "$CLAIMS")
+warn "the faucet is EMPTY. Governance must send it $FLOAT ZOR ($CLAIMS bonds)"
+warn "or no outside leader can obtain one:"
+warn "  cast send $ZOR_TOKEN 'transfer(address,uint256)' $FAUCET $FLOAT \\"
+warn "    --rpc-url $RPC --account <GOVERNANCE_KEYSTORE>"
+
 # ─── What is left ───────────────────────────────────────────────────────────
-bold "Deployed. Two things remain, and both fail SILENTLY if skipped."
+bold "Deployed. Three things remain, and all of them fail SILENTLY if skipped."
 
 cat <<NEXT
 
@@ -319,7 +371,14 @@ cat <<NEXT
      --account, not --private-key: exporting a governance key to a shell is how
      this project lost two of its own. Or paste the same call into Rabby.
 
-  2. Accept treasury ownership.
+  2. Fund the leader faucet.
+
+     Printed above with the exact amount. Until governance sends it, the
+     recruitment page correctly reports the float is gone and no outside
+     leader can obtain a bond -- the state the programme has been in for its
+     entire life so far.
+
+  3. Accept treasury ownership.
 
      ProtocolTreasury uses Ownable2Step, so the transfer to the Timelock is
      pending until accepted. Queue acceptOwnership() through the Timelock at
