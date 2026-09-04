@@ -82,6 +82,9 @@ ACCOUNT="${1:-}"
 PW=()
 [[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
   [[ -r "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: cannot read $ZORPHA_PASSWORD_FILE" >&2; exit 1; }
+  [[ -s "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: $ZORPHA_PASSWORD_FILE is empty. A shell that captures a
+       passphrase without echoing it will happily write a zero-byte file, and
+       cast then reports an unhelpful decryption failure instead." >&2; exit 1; }
   PW=(--password-file "$ZORPHA_PASSWORD_FILE")
 }
 
@@ -135,12 +138,29 @@ ASSET=$(node -e '
 ' "./$FIXTURES")
 [[ -n "$ASSET" ]] || die "could not find TestUSDG in $FIXTURES"
 
+# The cached venue is validated against the asset THIS run will use, not just
+# probed for code.
+#
+# LossyYieldTarget takes its asset in the CONSTRUCTOR, so a venue cached from
+# an earlier deployment permanently wraps that deployment TestUSDG. The code
+# check passed happily -- the contract is real and still deployed -- while the
+# launcher pulled the venue old asset, for which this drill had approved
+# nothing, and the run died several steps later on
+# ERC20InsufficientAllowance(launcher, 0, seed) with nothing naming the cache.
+LOSSY=""
 if [[ -f "$CACHE" ]] && [[ -n "$(cat "$CACHE")" ]]; then
-  LOSSY=$(cat "$CACHE")
-  CODE=$(cast code "$LOSSY" --rpc-url "$RPC")
-  [[ ${#CODE} -gt 2 ]] || die "cached $LOSSY has no code; delete $CACHE and re-run"
-  ok "reusing $LOSSY"
-else
+  CACHED=$(cat "$CACHE")
+  CODE=$(cast code "$CACHED" --rpc-url "$RPC")
+  CACHED_ASSET=$(cast call "$CACHED" 'asset()(address)' --rpc-url "$RPC" 2>/dev/null | num || true)
+  if [[ ${#CODE} -gt 2 ]] && [[ "${CACHED_ASSET,,}" == "${ASSET,,}" ]]; then
+    LOSSY="$CACHED"
+    ok "reusing $LOSSY"
+  else
+    info "cached venue $CACHED wraps ${CACHED_ASSET:-nothing}, not $ASSET -- redeploying"
+  fi
+fi
+
+if [[ -z "$LOSSY" ]]; then
   info "deploying LossyYieldTarget..."
   # --constructor-args LAST, always. It is variadic, so anything after it is
   # read as another constructor argument -- including flags. With it in the

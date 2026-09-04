@@ -391,6 +391,36 @@ contract DeployVaultsV1 is Script {
             "MANAGER_SIGNER is the deployer -- its roles are renounced at handover but "
             "authorizedSigner is not a role, so it would keep signing rebalances forever"
         );
+        // The assertion above closes the signer==deployer hole. It leaves the
+        // adjacent one open, and the DEFAULT walks straight into it.
+        //
+        // executeRebalance has two independent gates: onlyRole(KEEPER_ROLE) on
+        // the sender, and an EIP-712 signature from authorizedSigner. They are
+        // meant to be two different keys -- a hot roled submitter that cannot
+        // author, and a cold signer that authors but holds no role and needs no
+        // gas. When one key satisfies both, the second gate stops being a
+        // second gate: whoever takes the keeper key can author instructions as
+        // well as submit them. The rate limit and the trading window still
+        // bound the damage; "two keys must agree" no longer holds.
+        //
+        // Refused on mainnet, warned about on testnet, because a testnet
+        // operator legitimately has one keystore and the drills are still worth
+        // running -- the spot drill now reports this at preflight rather than
+        // failing its wrong-key step and reading like a protocol break.
+        if (managerSigner == keeper) {
+            require(
+                block.chainid != 4663,
+                "MANAGER_SIGNER is the keeper -- executeRebalance's signature gate and its "
+                "KEEPER_ROLE gate would be satisfied by a single key. Set MANAGER_SIGNER to a "
+                "separate signing key before deploying to mainnet."
+            );
+            console2.log("");
+            console2.log("  !! MANAGER_SIGNER defaulted to the KEEPER:", managerSigner);
+            console2.log("     One key now satisfies both of executeRebalance's gates.");
+            console2.log("     Tolerated on testnet; this deploy would be REFUSED on 4663.");
+            console2.log("");
+        }
+
         r.executor.setAuthorizedSigner(managerSigner);
 
         _handOver(address(r.executor), gov, deployer);

@@ -94,6 +94,9 @@ KEEPER_ACCT="${2:-}"
 PW=()
 [[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
   [[ -r "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: cannot read $ZORPHA_PASSWORD_FILE" >&2; exit 1; }
+  [[ -s "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: $ZORPHA_PASSWORD_FILE is empty. A shell that captures a
+       passphrase without echoing it will happily write a zero-byte file, and
+       cast then reports an unhelpful decryption failure instead." >&2; exit 1; }
   PW=(--password-file "$ZORPHA_PASSWORD_FILE")
 }
 
@@ -149,8 +152,16 @@ done)
 # The rate-limit target, deployed fresh by the setup script so its nonce and
 # 24h window are clean. Steps 1-7 run against this; only step 8 touches the
 # real vault.
-NOOP_CACHE=".noop-rebalancer-$CHAIN_ID"
-[[ -f "$NOOP_CACHE" ]] || die "no $NOOP_CACHE.
+# Keyed by executor, so a redeploy misses the cache instead of inheriting the
+# previous generation's noop. See the note at the write site in the setup
+# script: the setup this file depends on is per-DEPLOYMENT, not per-chain --
+# it also registers the oracle updater, seeds a price, funds the swap adapter
+# and deposits into the vault, none of which a new deployment has.
+NOOP_CACHE=".noop-rebalancer-$CHAIN_ID-${EXEC,,}"
+[[ -f "$NOOP_CACHE" ]] || die "no rebalance target cached for executor $EXEC.
+     This is what a fresh deployment looks like: the setup is per-deployment,
+     not per-chain, so a new executor starts with no oracle updater, no seeded
+     price, no adapter liquidity and no vault position either.
      Run ./script/testnet-spot-setup.sh <governance-keystore> first."
 NOOP=$(cat "$NOOP_CACHE")
 
@@ -162,6 +173,41 @@ info "keeper    $KEEPER   (submits; needs KEEPER_ROLE and gas)"
 
 # ─── Preflight ──────────────────────────────────────────────────────────────
 bold "Preflight"
+
+# Before anything else: are these actually two different keys?
+#
+# executeRebalance has two independent gates -- onlyRole(KEEPER_ROLE) on the
+# sender, and an EIP-712 signature from authorizedSigner. The whole point is
+# that the submitting key is hot and roled but cannot author an instruction,
+# while the signing key authors but holds no role and needs no gas. One key
+# satisfying both gates does not make the contract wrong; it makes the second
+# gate decorative, and step 5 -- "a signature from the wrong key must revert"
+# -- untestable, because there is no wrong key to sign with.
+#
+# This is checked here rather than left to fail at step 5 so the drill reports
+# a configuration finding as a configuration finding, instead of five steps
+# later as what reads like a protocol break.
+# An `if`, not `eq ... && die`: a bare AND-list is exempt from `set -e` only
+# while something follows it, so the same line moved to the end of a script
+# would exit 1 having printed nothing.
+SIGNER_IS_KEEPER=0
+if eq "${SIGNER,,}" "${KEEPER,,}"; then
+  SIGNER_IS_KEEPER=1
+  skip "signer and keeper are the SAME address, $SIGNER"
+  info "Submission authority and signing authority are not separated, so one"
+  info "compromised key can both author and execute a rebalance. The rate"
+  info "limit and the trading window still bound it; two-keys-must-agree does"
+  info "not hold. Step 5 tests exactly that property and will be SKIPPED,"
+  info "because with one key there is no wrong key to sign with."
+  info ""
+  info "DeployVaultsV1 reads MANAGER_SIGNER and DEFAULTS IT TO THE KEEPER. Its"
+  info "assertion refuses the deployer -- authorizedSigner is not a role and"
+  info "survives handover -- but permits the keeper, so a deploy that sets"
+  info "nothing lands here. That default is now refused outright on 4663."
+  info ""
+  info "To test it: set MANAGER_SIGNER to a separate key at deploy, or"
+  info "setAuthorizedSigner from governance, then re-run with two keystores."
+fi
 
 ONCHAIN_SIGNER=$(call "$EXEC" 'authorizedSigner()(address)')
 eq "${ONCHAIN_SIGNER,,}" "${SIGNER,,}" \
@@ -179,8 +225,11 @@ eq "$(call "$EXEC" 'paused()(bool)')" false || die "the executor is paused"
 ok "executor is not paused"
 
 LIMIT=$(call "$EXEC" 'dailyLimit(address)(uint256)' "$NOOP")
-[[ "$LIMIT" != "0" ]] || die "dailyLimit for this vault is 0, which DISABLES the
-     rate limit (the executor reads 'if (limit > 0)'). Set one:
+[[ "$LIMIT" != "0" ]] || die "dailyLimit for the cached target $NOOP is 0 on
+     executor $EXEC, which DISABLES the rate limit (the executor reads
+     'if (limit > 0)'), so the drill would pass without testing anything.
+     The cache is written only after setup sets this, so seeing it at 0 means
+     the limit was cleared afterwards. Restore it:
        cast send $EXEC 'setDailyLimit(address,uint256)' $NOOP 4 --account <gov>"
 ok "rate limit is $LIMIT per rolling 24h"
 
@@ -324,6 +373,37 @@ if ! would_succeed "$NOOP" "$WEIGHT" "$PROBE_NONCE" "$PROBE_EXPIRY" "$PROBE_SIG"
        ./script/testnet-spot-setup.sh <governance-keystore>"
 fi
 ok "the window has room for $LIMIT submissions plus one rejection"
+
+# The probe above proves ONE submission would land. That is not the same as
+# room for the LIMIT this drill spends plus the one it needs rejected, and the
+# gap is not theoretical: with 2 of 4 already used the probe passed happily and
+# step 7 then failed at "submission 3 of 4 was rejected BEFORE the limit",
+# which reads like a rate-limit bug rather than a dirty target.
+#
+# Counted rather than simulated. `recentRebalanceTimestamps` is pruned only on
+# write, so entries older than the cutoff may still be sitting there; counting
+# only those inside the window is what the contract itself does on the next
+# call. There is no length getter, so this walks indices until the auto-getter
+# reverts past the end.
+CUTOFF=$(bi "$(cast block latest --field timestamp --rpc-url "$RPC")" sub 86400)
+USED=0
+IDX=0
+while :; do
+  T=$(cast call "$EXEC" 'recentRebalanceTimestamps(address,uint256)(uint256)' "$NOOP" "$IDX" --rpc-url "$RPC" 2>/dev/null | num || true)
+  [[ -n "$T" ]] || break
+  if [[ "$T" -gt "$CUTOFF" ]]; then USED=$((USED + 1)); fi
+  IDX=$((IDX + 1))
+done
+
+[[ "$USED" == "0" ]] || die "this target has already used $USED of its $LIMIT submissions
+     inside the current 24h window, so the drill cannot spend $LIMIT and still
+     have one left to be rejected. It would fail partway through step 7 and
+     look like a rate-limit fault.
+
+     The window is per-address and lasts 24 hours, which is why setup deploys a
+     FRESH target on every run. Get one:
+       ./script/testnet-spot-setup.sh <governance-keystore>"
+ok "the window is clean: 0 of $LIMIT used in the last 24h"
 # ─── 1. A correctly signed rebalance ────────────────────────────────────────
 bold "1/8  A correctly signed instruction is accepted"
 
@@ -373,13 +453,18 @@ ok "expiry cap enforced: $(reason)"
 # The keeper signs its own instruction. It has KEEPER_ROLE, so it may submit --
 # but it is not the authorized signer, so it may not decide.
 bold "5/8  A signature from the wrong key must revert"
-DIGEST=$(digest_for "$NOOP" "$WEIGHT" "$N2" "$GOOD_EXPIRY")
-SIG_WRONG=$(cast wallet sign --no-hash --account "$KEEPER_ACCT" "${PW[@]}" "$DIGEST")
-if submit "$NOOP" "$WEIGHT" "$N2" "$GOOD_EXPIRY" "$SIG_WRONG"; then
-  die "the KEEPER signed its own rebalance and it EXECUTED. Submission
-     authority and signing authority are not separated."
+if [[ "$SIGNER_IS_KEEPER" == "1" ]]; then
+  skip "no wrong key exists on this deployment -- see the preflight finding"
+  info "The nonce is untouched, so step 6 still has $N2 to work with."
+else
+  DIGEST=$(digest_for "$NOOP" "$WEIGHT" "$N2" "$GOOD_EXPIRY")
+  SIG_WRONG=$(cast wallet sign --no-hash --account "$KEEPER_ACCT" "${PW[@]}" "$DIGEST")
+  if submit "$NOOP" "$WEIGHT" "$N2" "$GOOD_EXPIRY" "$SIG_WRONG"; then
+    die "the KEEPER signed its own rebalance and it EXECUTED. Submission
+       authority and signing authority are not separated."
+  fi
+  ok "wrong signer reverted: $(reason)"
 fi
-ok "wrong signer reverted: $(reason)"
 
 # ─── 6. Impossible weight ───────────────────────────────────────────────────
 bold "6/8  A weight above 100% must revert"
@@ -464,11 +549,27 @@ else
   fi
 fi
 
-bold "Drill passed"
-echo "  A signed instruction is accepted once, and only once, only from the"
-echo "  authorized signer, only before its deadline, only within the weight"
-echo "  bound, and only $LIMIT times a rolling day. The keeper can submit and"
-echo "  cannot decide."
+# The claim is written from what actually ran. With step 5 skipped, "only from
+# the authorized signer" is untested, and a summary that asserts it anyway is
+# the same failure the amber skip exists to prevent.
+if [[ "$SIGNER_IS_KEEPER" == "1" ]]; then
+  bold "Drill passed, with one step skipped"
+  echo "  A signed instruction is accepted once, and only once, only before its"
+  echo "  deadline, only within the weight bound, and only $LIMIT times a rolling"
+  echo "  day."
+  echo
+  echo "  NOT shown: that it comes only from the authorized signer. The signer"
+  echo "  and the keeper are one address on this deployment, so the property"
+  echo "  does not hold here and step 5 could not test it. \"The keeper can"
+  echo "  submit and cannot decide\" is unproven -- on this deployment it is"
+  echo "  false, because the keeper is the signer."
+else
+  bold "Drill passed"
+  echo "  A signed instruction is accepted once, and only once, only from the"
+  echo "  authorized signer, only before its deadline, only within the weight"
+  echo "  bound, and only $LIMIT times a rolling day. The keeper can submit and"
+  echo "  cannot decide."
+fi
 echo
 echo "  Not tested: trade economics. StubSwapAdapter has none. That needs"
 echo "  SWAP_ROUTER pointed at a real venue -- a testnet gap as much as a"

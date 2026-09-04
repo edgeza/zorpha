@@ -85,6 +85,9 @@ GOV_ACCT="${1:-}"
 PW=()
 [[ -n "${ZORPHA_PASSWORD_FILE:-}" ]] && {
   [[ -r "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: cannot read $ZORPHA_PASSWORD_FILE" >&2; exit 1; }
+  [[ -s "$ZORPHA_PASSWORD_FILE" ]] || { echo "ERROR: $ZORPHA_PASSWORD_FILE is empty. A shell that captures a
+       passphrase without echoing it will happily write a zero-byte file, and
+       cast then reports an unhelpful decryption failure instead." >&2; exit 1; }
   PW=(--password-file "$ZORPHA_PASSWORD_FILE")
 }
 
