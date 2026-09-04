@@ -1,0 +1,12 @@
+# Deferred airdrop tree: the governance Safe is the sole claimant.
+#
+# The whole TGE tranche (8% of supply = 80,000,000 ZOR) is claimable by
+# governance immediately, and distributed later through a SECOND
+# MerkleDistributor built from the real recipient list.
+#
+# This defers a decision rather than fudging one. merkleRoot and claimDeadline
+# are immutable on a distributor, but the distributor itself is an ordinary
+# contract with no privileged link to the token -- a replacement costs one
+# deploy and is funded from what governance already holds.
+address,amount
+0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4,80000000
