@@ -249,10 +249,14 @@ eq "$CLAIMABLE" 0 || die "claimable is non-zero with no schedule funded"
 if eq "$N" 0; then
   ok "nothing vests before a schedule exists"
   echo
-  echo "  The cliff and linear-release checks need a funded schedule. That is a"
-  echo "  governance action with real people's addresses and amounts"
+  echo "  The LIVE contract has no schedule, and funding one is a governance"
+  echo "  action with real people's addresses and amounts"
   echo "  (docs/DEPLOY-ENV.md section 4.2), not something a drill should invent."
-  echo "  Fund one, then re-run this to exercise the cliff."
+  echo
+  echo "  The cliff, the linear release and revocation are covered instead by"
+  echo "  ./script/testnet-vesting-drill.sh, which funds its own contract on a"
+  echo "  backdated timescale. This step stays as a statement about the live"
+  echo "  deployment: nothing is vesting here yet."
 else
   ok "$N schedule(s) funded; cliff behaviour for $ACTOR: claimable $CLAIMABLE"
 fi
