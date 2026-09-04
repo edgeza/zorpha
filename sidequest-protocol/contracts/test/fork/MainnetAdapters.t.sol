@@ -48,10 +48,18 @@ contract MainnetAdaptersForkTest is Test {
         forked = true;
     }
 
+    /// @dev vm.skip, not an early return.
+    ///
+    ///      Returning early made every test in this file report PASS while
+    ///      executing nothing. Nine green ticks, ~5,500 gas each, for the only
+    ///      tests that touch real Steakhouse vaults and the real router -- the
+    ///      integration surface most likely to break without warning, reporting
+    ///      that it was fine. A suite that cannot run should say so out loud;
+    ///      vm.skip marks these SKIPPED, which reads as the absence of evidence
+    ///      it actually is.
     modifier onlyForked() {
         if (!forked) {
-            console2.log("SKIP: set RH_MAINNET_RPC_URL to run the fork tests");
-            return;
+            vm.skip(true);
         }
         _;
     }
@@ -195,5 +203,62 @@ contract MainnetAdaptersForkTest is Test {
         // Name it once this has run for real, and record which layer rejected.
         vm.expectRevert();
         adapter.swap(USDG, AAPL, large, minOut);
+    }
+
+    /// @notice The curated venue's own ERC-4626 limit views are not reliable,
+    ///         and nothing downstream may be built on them.
+    ///
+    ///         Steakhouse USDG reports maxDeposit, maxWithdraw and maxRedeem as
+    ///         ZERO for every address, while holding ~434m USDG and while the
+    ///         tests above deposit into it and redeem out of it successfully.
+    ///         ERC-4626 says maxDeposit MUST return the maximum that would not
+    ///         revert; this returns zero and then accepts the deposit.
+    ///
+    ///         This is pinned because the obvious improvement to YieldVault --
+    ///         bounding maxWithdraw/maxRedeem by what the venue says is liquid,
+    ///         which ERC-4626 also requires -- passes against a well-behaved
+    ///         MockERC4626 and freezes every exit here. It was written, it was
+    ///         green in unit tests, and this suite is what rejected it. The
+    ///         note on YieldVault.maxWithdraw records the decision.
+    function test_TheVenueUnderReportsItsOwnLimits() public onlyForked {
+        assertGt(IERC4626(STEAK_USDG).totalAssets(), 0, "venue is empty");
+
+        assertEq(
+            IERC4626(STEAK_USDG).maxDeposit(alice), 0,
+            "venue now reports deposit capacity -- re-check whether the "
+            "YieldVault limit views can finally be derived from it"
+        );
+    }
+
+    /// @notice Zorpha must not inherit that zero.
+    ///
+    ///         A depositor holding a live position has to be told they can get
+    ///         out. If this ever returns 0 against a venue that is plainly
+    ///         solvent, somebody has wired the venue's limit views through and
+    ///         trapped every depositor in the vault.
+    function test_ZorphaDoesNotInheritTheVenuesFrozenExit() public onlyForked {
+        ERC4626YieldAdapter adapter =
+            new ERC4626YieldAdapter(USDG, STEAK_USDG, address(this));
+        YieldVault vault = new YieldVault(
+            USDG, address(0), "Zorpha USDG Yield", "zqUSD", 1000, treasury, address(this)
+        );
+        adapter.grantRole(adapter.VAULT_ROLE(), address(vault));
+        vault.grantRole(vault.ADAPTER_SETTER_ROLE(), address(this));
+        vault.setAdapter(address(adapter));
+
+        uint256 amount = 25_000 * ONE_USDG;
+        deal(USDG, alice, amount);
+        vm.startPrank(alice);
+        IERC20(USDG).approve(address(vault), amount);
+        uint256 shares = vault.deposit(amount, alice);
+        vm.stopPrank();
+
+        assertGt(vault.maxWithdraw(alice), 0, "exits are frozen: maxWithdraw is 0");
+        assertGt(vault.maxRedeem(alice), 0, "exits are frozen: maxRedeem is 0");
+
+        // And the number is not merely non-zero, it is actually redeemable.
+        vm.prank(alice);
+        vault.redeem(shares, alice, alice);
+        assertApproxEqRel(IERC20(USDG).balanceOf(alice), amount, 1e15, "could not exit");
     }
 }

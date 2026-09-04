@@ -156,7 +156,16 @@ forge build
 echo "==> [2/7] forge test — token layer (must be green)"
 forge test --match-path 'test/Zorpha.t.sol'
 
-echo "==> [3/7] forge test — full suite"
+# The fork tests skip themselves when RH_MAINNET_RPC_URL is unset, and for
+# most of this projects life that is what they did -- nine tests reporting
+# green having executed nothing, covering the only integration with real
+# Steakhouse vaults and the real router. Defaulted here so a DEPLOY always
+# exercises them, whatever the operator has in their shell. It adds about a
+# minute, against the one suite that has already rejected a change every unit
+# test accepted.
+export RH_MAINNET_RPC_URL="${RH_MAINNET_RPC_URL:-https://rpc.mainnet.chain.robinhood.com/rpc}"
+
+echo "==> [3/7] forge test — full suite (fork tests included)"
 if forge test; then
   FULL_SUITE_GREEN=true
   echo "    full suite green"
