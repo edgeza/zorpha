@@ -50,6 +50,7 @@ import {VaultLauncher} from "../src/leadership/VaultLauncher.sol";
 ///         between "deployed" and "works" is a step that gets skipped, so this
 ///         script does it in-band and asserts it.
 contract DeployMinimal is Script {
+    /// @notice Env-driven entrypoint. Reads config, broadcasts, delegates.
     function run() external returns (VaultFactory factory, VaultLauncher launcher) {
         uint256 deployerKey = vm.envOr("PRIVATE_KEY", uint256(0));
         address deployer = deployerKey != 0 ? vm.addr(deployerKey) : msg.sender;
@@ -72,6 +73,33 @@ contract DeployMinimal is Script {
         if (deployerKey != 0) vm.startBroadcast(deployerKey);
         else vm.startBroadcast();
 
+        (factory, launcher) = deploy(deployer, gov, treasury, timelock, zor, targets);
+
+        vm.stopBroadcast();
+
+        _assertHandover(factory, launcher, deployer, gov, timelock);
+        _report(factory, launcher, targets.length);
+    }
+
+    /// @notice The deployment itself, separated from env reading and
+    ///         broadcasting so it can be executed somewhere other than a live
+    ///         chain.
+    ///
+    /// @dev    Not cosmetic. A dry run against a mainnet FORK is the only way to
+    ///         find out whether this script works before it is the transaction
+    ///         that matters, and Foundry cannot run a broadcasting `run()` from
+    ///         inside a test -- vm.startBroadcast makes the first renounceRole
+    ///         fail with ReentrancySentryOOG. Splitting the logic out is what
+    ///         makes test/fork/MinimalDeploy.t.sol able to exercise THIS code
+    ///         rather than a copy of it that can drift away from it.
+    function deploy(
+        address deployer,
+        address gov,
+        address treasury,
+        address timelock,
+        address zor,
+        address[] memory targets
+    ) public returns (VaultFactory factory, VaultLauncher launcher) {
         factory = new VaultFactory(deployer);
 
         // Vault admin is the TIMELOCK, never governance directly and never the
@@ -97,10 +125,17 @@ contract DeployMinimal is Script {
         factory.renounceRole(factory.DEPLOYER_ROLE(), deployer);
         factory.renounceRole(0x00, deployer);
 
-        vm.stopBroadcast();
+    }
 
-        // The assertions are the deliverable. A handover that half-applied would
-        // leave exactly the state this script exists to avoid.
+    /// The assertions are the deliverable. A handover that half-applied would
+    /// leave exactly the state this script exists to avoid.
+    function _assertHandover(
+        VaultFactory factory,
+        VaultLauncher launcher,
+        address deployer,
+        address gov,
+        address timelock
+    ) internal view {
         require(
             IAccessControl(address(factory)).hasRole(factory.DEPLOYER_ROLE(), address(launcher)),
             "launcher cannot deploy vaults: the launchpad would be inert"
@@ -110,10 +145,13 @@ contract DeployMinimal is Script {
         require(!IAccessControl(address(launcher)).hasRole(0x00, deployer), "deployer kept launcher admin");
         require(IAccessControl(address(launcher)).hasRole(0x00, gov), "governance is not launcher admin");
 
+    }
+
+    function _report(VaultFactory factory, VaultLauncher launcher, uint256 venueCount) internal pure {
         console2.log("=== Zorpha minimal (launchpad, no oracle) ===");
         console2.log("VaultFactory     ", address(factory));
         console2.log("VaultLauncher    ", address(launcher));
-        console2.log("Approved venues  ", targets.length);
+        console2.log("Approved venues  ", venueCount);
         console2.log("");
         console2.log("No oracle, no updaters, no swap adapter, no executor.");
         console2.log("Nothing here needs a price feed, so nothing here has a");
