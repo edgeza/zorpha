@@ -118,7 +118,34 @@ ok "claim window open until $(date -u -d "@$DEADLINE" '+%Y-%m-%d %H:%M UTC' 2>/d
 
 bold "2/4  Airdrop: claim"
 if eq "$(call "$DIST" 'isClaimed(uint256)(bool)' "$INDEX")" true; then
-  info "index $INDEX already claimed on a previous run; skipping to the double-claim check"
+  # Verified, not assumed.
+  #
+  # "already claimed on a previous run" was a guess. isClaimed only says the
+  # index is spent -- it does not say WHO spent it or for how much, and those
+  # are the two things that distinguish an earlier run of this drill from
+  # someone else having taken this address allocation. The Claimed event
+  # carries both, so read it.
+  CLAIM_TOPIC=$(cast keccak 'Claimed(uint256,address,uint256)')
+  INDEX_TOPIC=$(cast to-uint256 "$INDEX")
+  LOG=$(cast rpc eth_getLogs "{\"address\":\"$DIST\",\"topics\":[\"$CLAIM_TOPIC\",\"$INDEX_TOPIC\"],\"fromBlock\":\"0x0\",\"toBlock\":\"latest\"}" --rpc-url "$RPC")
+  read -r GOT_ACCT GOT_AMT <<<"$(MSYS_NO_PATHCONV=1 node -e '
+    const logs = JSON.parse(process.argv[1]);
+    if (!logs.length) { process.stdout.write("none 0"); process.exit(0); }
+    const l = logs[logs.length - 1];
+    process.stdout.write("0x" + l.topics[2].slice(26) + " " + BigInt(l.data).toString());
+  ' -- "$LOG")"
+
+  [[ "$GOT_ACCT" != "none" ]] || die "isClaimed($INDEX) is true but there is no Claimed
+     event for it. The bitmap and the event disagree, which no ordinary claim
+     can produce."
+  eq "${GOT_ACCT,,}" "${ACTOR,,}" || die "index $INDEX was claimed by $GOT_ACCT, NOT by
+     $ACTOR. This address allocation has been taken by someone else -- that is a
+     stolen airdrop, not a previous run of this drill."
+  eq "$GOT_AMT" "$AMOUNT" || die "index $INDEX was claimed for $GOT_AMT, but the proof
+     file allocates $AMOUNT. The tree the distributor verifies against is not the
+     tree the portal is serving."
+  ok "already claimed, and by this address for exactly its allocation"
+  info "$(cast to-unit "$GOT_AMT" ether) ZOR to $GOT_ACCT -- an earlier run of this drill"
 else
   B0=$(call "$ZOR" 'balanceOf(address)(uint256)' "$ACTOR")
   cast send "$DIST" 'claim(uint256,address,uint256,bytes32[])' "$INDEX" "$ACTOR" "$AMOUNT" "$PROOF" \
@@ -132,21 +159,85 @@ else
 fi
 
 bold "3/4  Airdrop: the two reverts that matter"
-# Same proof again. Must fail.
+# Matched on the SELECTOR each time, not on whether cast happened to print a name.
+#
+# Both checks used to report "reverted" and pass on any failure whatsoever. These
+# are the two security properties of an airdrop -- it cannot be drained twice and
+# it cannot be claimed by someone outside the tree -- and a claim failing for an
+# unrelated reason (a closed window, a paused token, a bad nonce) satisfied them
+# both. InvalidProof() takes no arguments, so its revert data is four bytes and
+# cast has nothing to decode it against; AlreadyClaimed(uint256) did not match the
+# zero-argument pattern the old grep looked for. Neither was ever going to print.
+ERRFILE=$(mktemp)
+trap 'rm -f "$ERRFILE"' EXIT
+SIG_ALREADY=$(cast sig 'AlreadyClaimed(uint256)')
+SIG_BADPROOF=$(cast sig 'InvalidProof()')
+
+reverted_with() {   # reverted_with <selector> <name>
+  grep -qi "${1#0x}" "$ERRFILE" && return 0
+  grep -q "$2" "$ERRFILE" && return 0
+  return 1
+}
+
+# Same proof again. Must fail, and must fail because it is already claimed.
 if cast send "$DIST" 'claim(uint256,address,uint256,bytes32[])' "$INDEX" "$ACTOR" "$AMOUNT" "$PROOF" \
-     --rpc-url "$RPC" --account "$ACCOUNT" "${PW[@]}" >/dev/null 2>/tmp/zorpha-claim-err; then
+     --rpc-url "$RPC" --account "$ACCOUNT" "${PW[@]}" >/dev/null 2>"$ERRFILE"; then
   die "a SECOND claim succeeded. The airdrop can be drained."
 fi
-ok "second claim reverted: $(grep -oE '[A-Z][A-Za-z]+\(\)' /tmp/zorpha-claim-err | head -1 || echo reverted)"
+reverted_with "$SIG_ALREADY" AlreadyClaimed \
+  || die "the second claim was refused, but not with AlreadyClaimed ($SIG_ALREADY).
+     Something else stopped it, so the double-claim guard is still unproven:
+     $(head -2 "$ERRFILE" | tr '\n' ' ' | cut -c1-160)"
+ok "second claim reverted with AlreadyClaimed"
 
-# A valid proof presented for the wrong account. Must fail.
-STRANGER=0x000000000000000000000000000000000000BEEF
-if cast send "$DIST" 'claim(uint256,address,uint256,bytes32[])' "$INDEX" "$STRANGER" "$AMOUNT" "$PROOF" \
-     --rpc-url "$RPC" --account "$ACCOUNT" "${PW[@]}" >/dev/null 2>/tmp/zorpha-claim-err; then
-  die "a claim for an address NOT in the tree succeeded"
+# A valid proof presented for the wrong account. Must fail ON THE PROOF.
+#
+# This is the check that was doing nothing, and the reason is the order inside
+# claim():
+#
+#     if (isClaimed(index)) revert AlreadyClaimed(index);
+#     ...verify the leaf...  revert InvalidProof();
+#
+# The claimed check comes FIRST. The old version of this step reused $INDEX --
+# the drill own index, which step 2 has just spent -- so every run reverted
+# AlreadyClaimed before the proof was looked at, and the assertion of the day was
+# "something reverted", which AlreadyClaimed satisfies. The eligibility guard has
+# never been exercised on chain by this drill. It only became visible when the
+# check was tightened to name the error it expects.
+#
+# So the substitution has to be made against an UNCLAIMED index, which reaches
+# the proof check and fails there because the leaf commits to the account.
+ALL_INDEXES=$(MSYS_NO_PATHCONV=1 node -e 'const j=require(process.argv[1]);process.stdout.write(Object.values(j).map(p=>p.index).join(" "))' -- "$PROOFS")
+ALT_INDEX=""
+for i in $ALL_INDEXES; do
+  if [[ "$(call "$DIST" 'isClaimed(uint256)(bool)' "$i")" == "false" ]]; then ALT_INDEX="$i"; break; fi
+done
+
+if [[ -z "$ALT_INDEX" ]]; then
+  printf '  \033[33m~\033[0m %s\n' "every index in the tree is claimed, so there is none left to"
+  info "present for the wrong account without AlreadyClaimed firing first."
+  info "Eligibility is NOT tested on this run. Re-deploy the distributor to"
+  info "restore the check rather than reading this as a pass."
+else
+  read -r ALT_AMOUNT ALT_PROOF < <(MSYS_NO_PATHCONV=1 node -e '
+    const j = require(process.argv[1]);
+    const p = Object.values(j).find(x => x.index === Number(process.argv[2]));
+    console.log([p.amount, "[" + p.proof.join(",") + "]"].join(" "));
+  ' -- "$PROOFS" "$ALT_INDEX")
+
+  STRANGER=0x000000000000000000000000000000000000BEEF
+  info "presenting index $ALT_INDEX (unclaimed) for $STRANGER, who is not its leaf"
+  if cast send "$DIST" 'claim(uint256,address,uint256,bytes32[])' "$ALT_INDEX" "$STRANGER" "$ALT_AMOUNT" "$ALT_PROOF" \
+       --rpc-url "$RPC" --account "$ACCOUNT" "${PW[@]}" >/dev/null 2>"$ERRFILE"; then
+    die "a claim for an address NOT in the tree succeeded"
+  fi
+  reverted_with "$SIG_BADPROOF" InvalidProof \
+    || die "the ineligible claim was refused, but not with InvalidProof ($SIG_BADPROOF).
+     If it stopped at AlreadyClaimed the index was spent between the check above
+     and this send, and eligibility is again untested:
+     $(head -2 "$ERRFILE" | tr '\n' ' ' | cut -c1-160)"
+  ok "ineligible address reverted with InvalidProof, at the leaf check"
 fi
-ok "ineligible address reverted: $(grep -oE '[A-Z][A-Za-z]+\(\)' /tmp/zorpha-claim-err | head -1 || echo reverted)"
-rm -f /tmp/zorpha-claim-err
 
 # --- Vesting ---------------------------------------------------------------
 bold "4/4  Vesting"
