@@ -46,7 +46,8 @@ export const ON_CHAIN_CUSTODY: {
   {
     label: 'Airdrop, unclaimed',
     tokens: 80_000_000,
-    note: 'Held by the Merkle distributor until claimed by eligible wallets.',
+    note:
+      'Held by the Merkle distributor. The deployed tree names the governance Safe as its sole claimant; per-wallet Season 1 criteria are not published yet.',
     address: '0x1045AeCaCad091eC791815Be8c28DA12Ed94D4E3',
   },
   {
@@ -99,7 +100,7 @@ export const ALLOCATIONS: Allocation[] = [
     shape: 'seasonal',
     color: 'var(--zor-500)',
     rationale:
-      'The largest single bucket, and deliberately so. 8% of supply unlocks at launch as the Season 1 airdrop to early depositors and vault managers. The remaining 30% is released season by season against published criteria, each season approved by governance rather than dripped automatically. Emissions that nobody votes for are just inflation with extra steps.',
+      'The largest single bucket, and deliberately so. 8% of supply is already funded on-chain for the Season 1 airdrop, held by governance until the season criteria are published and voted. The remaining 30% is released season by season against published criteria, each season approved by governance rather than dripped automatically. Emissions that nobody votes for are just inflation with extra steps.',
   },
   {
     key: 'treasury',

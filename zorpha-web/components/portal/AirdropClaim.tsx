@@ -145,9 +145,9 @@ export function AirdropClaim() {
 
           {lookup.status === 'not-eligible' ? (
             <p className="text-sm leading-relaxed text-ink-400">
-              This wallet is not in the Season 1 snapshot. Eligibility was fixed at a published
-              block, it cannot be earned retroactively, and there is no form to fill in. Later
-              seasons are decided by governance.
+              No wallet has a Season 1 allocation yet. The tranche is funded on-chain and held by
+              governance until the snapshot criteria are published and voted; this page will resolve
+              real allocations once they are. There is no form to fill in and no way to register.
             </p>
           ) : null}
 
