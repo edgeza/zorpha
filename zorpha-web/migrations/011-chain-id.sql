@@ -10,14 +10,30 @@
 -- WHY 46630 IS THE RIGHT BACKFILL VALUE
 --
 -- Every row to date is testnet. The indexer has only ever run against 46630,
--- and its START_BLOCK is 112522500. The guard below asserts that rather than
--- trusting it: if any rebalance predates the indexer's start block, the
--- blanket backfill would be mislabelling history that cannot be recovered
--- afterwards, so the migration aborts instead.
+-- and `assertChainId()` (indexer/src/chain.ts:154) refuses to start when the
+-- RPC's chain id disagrees with CHAIN_ID, so it cannot have written another
+-- chain's rows. Only indexer/src/supabase.ts:164 writes this table -- nothing
+-- else inserts rebalances -- so there is no second author to account for.
 --
--- Note the direction. Testnet block heights (~112M) are HIGHER than mainnet's
--- head (~55M), so "below mainnet head" would flag every legitimate row. The
--- assertion is that rows are at or above the indexer's start block.
+-- The guard below asserts that rather than trusting it, using block height as
+-- the discriminator. The gap is enormous rather than marginal:
+--
+--   mainnet 4663 head,  measured 2026-09-05    55,201,684
+--   lowest row in this table                  112,370,875
+--   testnet 46630 head, measured 2026-09-05   113,517,929
+--
+-- Mainnet has never produced a block above 55.2M, so a row at 112M cannot have
+-- happened there. The threshold is 60,000,000: clear of mainnet's head with
+-- about two weeks of margin for it to advance before this file is applied, and
+-- still 52M below the lowest real row.
+--
+-- AN EARLIER VERSION OF THIS GUARD USED START_BLOCK AND WAS WRONG. It asserted
+-- `block_number >= 112522500` and aborted on real data. Railway's START_BLOCK
+-- is 112,522,500 but the local indexer/.env is 111,911,103, and rows indexed by
+-- the local config sit legitimately between the two. START_BLOCK is a
+-- configuration value that has already changed three times (0 -> 111911103 ->
+-- 112522500); it says nothing about which chain a row came from. Mainnet's head
+-- does. The abort was the guard working, not the data being wrong.
 
 begin;
 
@@ -29,13 +45,14 @@ declare
 begin
   select count(*), min(block_number) into stray, lowest
   from public.rebalances
-  where block_number < 112522500;
+  where block_number <= 60000000;
 
   if stray > 0 then
     raise exception
-      'ABORT: % rebalance row(s) below the indexer start block (lowest %). '
-      'These may not be testnet rows, and backfilling them to 46630 would '
-      'mislabel history irreversibly. Investigate before re-running.',
+      'ABORT: % rebalance row(s) at or below block 60,000,000 (lowest %). '
+      'Mainnet 4663 head was 55,201,684 on 2026-09-05, so a row that low may '
+      'be a MAINNET row, and backfilling it to 46630 would mislabel history '
+      'irreversibly. Investigate before re-running.',
       stray, lowest;
   end if;
 end $$;
