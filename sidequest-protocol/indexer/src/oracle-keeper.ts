@@ -41,6 +41,12 @@ import {
   type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import {
+  checkKeeper,
+  MAINNET_CHAIN_ID as MAINNET,
+  TESTNET_CHAIN_ID as TESTNET,
+  type ChainReader,
+} from './keeper-preflight.js';
 
 const log = (level: string, message: string, extra: Record<string, unknown> = {}) =>
   console.log(
@@ -127,8 +133,6 @@ const PRIVATE_KEY = privateKeyFrom('ORACLE_KEEPER_PRIVATE_KEY');
  * Required rather than defaulted for the same reason as the indexer: a default
  * chain is how a process ends up reporting prices to the wrong network.
  */
-const MAINNET = 4663;
-const TESTNET = 46630;
 
 const rawChainId = process.env.CHAIN_ID;
 if (!rawChainId) {
@@ -212,110 +216,57 @@ async function newestReportAge(now: bigint): Promise<number> {
   return newest === 0n ? Number.MAX_SAFE_INTEGER : Number(now - newest);
 }
 
+/**
+ * The live chain, narrowed to the four questions startup asks.
+ *
+ * The checks themselves live in keeper-preflight.ts, which knows nothing about
+ * viem, the environment, or this process. That is what makes them testable: a
+ * fake implementing this interface exercises every diagnosis below without a
+ * chain, a key, or a running keeper.
+ */
+const liveChain: ChainReader = {
+  getChainId: () => publicClient.getChainId(),
+  getBytecode: (address) => publicClient.getBytecode({ address }),
+  getBalance: (address) => publicClient.getBalance({ address }),
+  readOracle: <T,>(functionName: string, args: readonly unknown[] = []) =>
+    read<T>(functionName, args),
+};
+
+/**
+ * Run the startup checks and turn the verdict into log lines and an exit code.
+ *
+ * Everything that decides IF the keeper may run is in `checkKeeper`. All this
+ * does is report the answer, which is the part that has to touch the process.
+ */
 async function preflight() {
-  /**
-   * The chain comes first, before anything read FROM it is interpreted.
-   *
-   * This check used to run after the bytecode check below, inside the same
-   * Promise.all as the oracle's own parameters. That ordering blamed the wrong
-   * variable: point RPC_URL at the other Robinhood Chain deployment and the
-   * oracle address has no code there, so the process exited with
-   * "ORACLE_ADDRESS is not a contract on this chain" and a hint to check the
-   * address -- which is correct about the symptom and wrong about the cause.
-   * The address was fine. The RPC was not.
-   *
-   * Every other check in this function reads something from the chain and
-   * decides what it means. None of them can mean anything until it is settled
-   * WHICH chain answered.
-   */
-  const id = await publicClient.getChainId();
-  if (id !== CHAIN_ID) {
-    log('error', 'chain id mismatch, refusing to keep an oracle on the wrong chain', {
-      expected: CHAIN_ID,
-      actual: id,
-      rpcUrl: RPC_URL,
-      hint:
-        id === MAINNET
-          ? `RPC_URL serves mainnet ${MAINNET}, which has no oracle to keep. Point it at testnet ${TESTNET}.`
-          : `RPC_URL serves ${id}, not the CHAIN_ID this keeper was configured with. The two Robinhood Chain ids differ by one digit: ${MAINNET} mainnet, ${TESTNET} testnet.`,
-    });
+  const result = await checkKeeper(
+    { chainId: CHAIN_ID, rpcUrl: RPC_URL, oracle: ORACLE, keeper: account.address },
+    liveChain,
+  );
+
+  if (!result.ok) {
+    log('error', result.message, result.fields);
     process.exit(1);
   }
 
-  /**
-   * Every read below assumes ORACLE_ADDRESS names the oracle CONTRACT. When it
-   * does not, viem reports each read as `returned no data ("0x")` and blames
-   * whichever function it happened to be calling, never the address:
-   *
-   *     The contract function "updaterCount" returned no data ("0x").
-   *       address: 0xF2FEb9B3E49890320539CfdEed28dE8A84da03DF
-   *
-   * Measured: ORACLE_ADDRESS had been set to the keeper's OWN address, and the
-   * restart loop blamed updaterCount, UPDATER_ROLE, maxStaleness and decimals
-   * in turn -- whichever promise below settled first -- so eight restarts read
-   * like four unrelated faults instead of one swapped variable.
-   *
-   * The signing key already gets this treatment; the address deserves it too.
-   * One eth_getCode separates "not a contract" from "wrong contract", and the
-   * swap is worth naming outright because these two vars sit next to each
-   * other and invite exactly this.
-   */
-  const code = await publicClient.getBytecode({ address: ORACLE });
-  if (!code || code === '0x') {
-    log('error', 'ORACLE_ADDRESS is not a contract on this chain', {
-      oracle: ORACLE,
-      chainId: CHAIN_ID,
-      hint:
-        ORACLE.toLowerCase() === account.address.toLowerCase()
-          ? 'this is the KEEPER address -- ORACLE_ADDRESS and ORACLE_KEEPER_PRIVATE_KEY have been swapped'
-          : 'check the address, and that it is deployed on this chain',
-    });
-    process.exit(1);
-  }
-
-  const [role, staleness, quorum, count, decimals] = await Promise.all([
-    read<Hex>('UPDATER_ROLE'),
-    read<bigint>('maxStaleness'),
-    read<bigint>('minQuorum'),
-    read<bigint>('updaterCount'),
-    read<number>('decimals'),
-  ]);
-
-  // Checked at startup rather than discovered on the first send, when the only
-  // symptom would be a revert every REFRESH_AFTER seconds forever.
-  const permitted = await read<boolean>('hasRole', [role, account.address]);
-  if (!permitted) {
-    log('error', 'this key does not hold UPDATER_ROLE on the oracle', {
-      keeper: account.address,
-      oracle: ORACLE,
-    });
-    process.exit(1);
-  }
-
-  const balance = await publicClient.getBalance({ address: account.address });
-  if (balance === 0n) {
-    log('error', 'keeper has no gas', { keeper: account.address });
-    process.exit(1);
-  }
+  const { ready, warnings } = result;
 
   log('info', 'keeper ready', {
     keeper: account.address,
     oracle: ORACLE,
-    chainId: id,
-    maxStaleness: Number(staleness),
+    chainId: ready.chainId,
+    maxStaleness: Number(ready.maxStaleness),
     refreshAfter: REFRESH_AFTER,
-    minQuorum: Number(quorum),
-    updaters: Number(count),
-    decimals,
+    minQuorum: Number(ready.minQuorum),
+    updaters: Number(ready.updaterCount),
+    decimals: ready.decimals,
   });
 
-  if (count <= 1n) {
-    log('warn', 'a single updater against this quorum has no redundancy and no median', {
-      updaters: Number(count),
-      minQuorum: Number(quorum),
-    });
+  for (const warning of warnings) {
+    log('warn', warning.message, warning.fields);
   }
-  return { decimals, staleness };
+
+  return { decimals: ready.decimals, staleness: ready.maxStaleness };
 }
 
 async function tick(decimals: number) {
