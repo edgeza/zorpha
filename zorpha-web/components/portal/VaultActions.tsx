@@ -152,6 +152,24 @@ export function VaultActions({
     allowance !== undefined &&
     (allowance as bigint) < parsed;
 
+  /**
+   * More than the wallet holds.
+   *
+   * Nothing checked this. `parseUnits` rejects garbage, so a nonsense amount
+   * already disabled the button -- but a perfectly well-formed number larger
+   * than the balance did not. The deposit was submitted, the token's transfer
+   * reverted, and the depositor paid gas to receive a wallet error naming a
+   * contract they have never heard of. On the approval path they paid it
+   * twice, since the approve itself succeeds and only the deposit behind it
+   * fails.
+   *
+   * The balance is displayed directly above this field and Max fills it in, so
+   * the information was always there -- it just was not enforced.
+   */
+  const spendable = mode === 'deposit' ? assetBalance : shareBalance;
+  const exceedsBalance =
+    parsed !== null && spendable !== undefined && parsed > (spendable as bigint);
+
   const busy = isPending || confirming;
 
   return (
@@ -219,7 +237,7 @@ export function VaultActions({
       <button
         type="button"
         className="btn-primary mt-4 w-full"
-        disabled={busy || parsed === null || parsed === 0n || !address}
+        disabled={busy || parsed === null || parsed === 0n || !address || exceedsBalance}
         onClick={() => {
           if (parsed === null || !address) return;
           if (needsApproval) {
@@ -260,6 +278,13 @@ export function VaultActions({
           {assetSymbol ?? 'asset'}, then the deposit itself. Approving on its own moves nothing.
         </p>
       )}
+
+      {exceedsBalance && !busy ? (
+        <p className="mt-2 text-xs leading-relaxed text-danger-400">
+          That is more than this wallet holds. Use Max for the full{' '}
+          {mode === 'deposit' ? (assetSymbol ?? 'asset') : 'share'} balance.
+        </p>
+      ) : null}
 
       {error ? (
         <p className="mt-3 text-xs leading-relaxed text-danger-400">

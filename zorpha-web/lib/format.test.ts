@@ -121,3 +121,40 @@ test('converts basis points the way the contracts mean them', () => {
   assert.equal(bpsToPct(100), '1.00%');       // maxSlippageBps
   assert.equal(bpsToPct(0), '0.00%');
 });
+
+// --- the Max button invariant ---------------------------------------------
+//
+// VaultActions now disables the submit button when the typed amount exceeds
+// the wallet's balance, which stops a depositor paying gas for a transfer that
+// reverts. That guard is only safe if "Max" cannot itself produce a rejected
+// amount, and Max fills the field with formatUnits(balance, decimals, 6).
+//
+// So the round trip has to be lossy DOWNWARD, never upward. formatUnits
+// truncates the fraction rather than rounding it, and these pin that: a change
+// to rounding would silently make Max un-submittable at exactly the moment
+// someone tries to withdraw everything.
+
+test('Max never re-parses to more than the balance it came from', () => {
+  const cases: [bigint, number][] = [
+    [1_234_567_890_123_456_789n, 18], // fraction past six places
+    [999_999_999_999_999_999n, 18], // all nines, the rounding trap
+    [4_925_501n, 6], // the real USDG balance
+    [4_925_501_000_000n, 12], // 12dp vault shares
+    [1n, 18], // one wei
+  ];
+  for (const [balance, decimals] of cases) {
+    const shown = formatUnits(balance, decimals, 6);
+    const reparsed = parseUnits(shown.replace(/,/g, ''), decimals);
+    assert.ok(reparsed !== null, `Max produced something unparseable: ${shown}`);
+    assert.ok(
+      (reparsed as bigint) <= balance,
+      `Max re-parsed above the balance: ${shown} -> ${reparsed} > ${balance}`,
+    );
+  }
+});
+
+test('formatUnits truncates the fraction rather than rounding it up', () => {
+  // 0.9999999 at 6 places is 0.999999, not 1. Rounding here is what would
+  // break the invariant above.
+  assert.equal(formatUnits(999_999_900_000_000_000n, 18, 6), '0.999999');
+});
