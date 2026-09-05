@@ -1,6 +1,7 @@
 /**
- * Graphic-tier brand colours, mirrored from the `--zor-graphic-*` custom
- * properties in app/globals.css.
+ * Graphic-tier brand colours. `core`, `bright` and `accent` mirror the
+ * `--zor-graphic-*` custom properties in app/globals.css; `tint` has no CSS
+ * custom-property counterpart and lives here only.
  *
  * These exist as TypeScript because the prism is a WebGL component that takes
  * colours as props, and reading custom properties out of getComputedStyle at
@@ -15,7 +16,9 @@ export const BRAND_GRAPHIC = {
   core: '#4700f8',
   /** Brightest logo violet. */
   bright: '#8700f9',
-  /** Mid value used for prism glow and dispersion. */
+  /** Mid-range logo violet. Mirrors `--zor-graphic-accent`; not consumed by
+   *  any component today — kept as a record of the measured graphic-tier
+   *  value. */
   accent: '#7a3cff',
   /** Prism body tint. Replaces the previous pure white, which caused the wash-out. */
   tint: '#6d2bff',
