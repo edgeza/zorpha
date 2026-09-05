@@ -1,0 +1,72 @@
+name: web
+
+# Split from a single ci.yml so each job carries its own `paths:` filter.
+#
+# Everything here ran on every pull request regardless of what changed. On the
+# seven PRs merged on 5 September, ALL of them web-only, `contracts (forge)`
+# ran seven times and tested not one changed line -- roughly eighty minutes of
+# a paid runner spent on code nobody had edited. That is what exhausted the
+# Actions allowance, not the number of checks.
+#
+# GitHub evaluates `paths:` per workflow file, not per job, which is the only
+# reason this is four files instead of one. The alternative -- a change-detection
+# job gating the others with `if:` -- keeps one file but pays a checkout on
+# every run to work out that it has nothing to do.
+#
+# A job that does not run shows no check at all rather than a failing one.
+# `main` has no branch protection requiring these contexts, so a filtered-out
+# job cannot block a merge.
+#
+# NOTE: Vercel already runs typecheck and build on every pull request, and
+# next.config.mjs sets no ignoreBuildErrors, so that build really does
+# typecheck. This job is kept for `npm run lint`, which Vercel does not run,
+# and for the prebuild gates (env, tokenomics, contrast) that guard published
+# numbers. If Actions minutes get tight again, this is the job to cut first.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'zorpha-web/**'
+      - '.github/workflows/web.yml'
+  pull_request:
+    paths:
+      - 'zorpha-web/**'
+      - '.github/workflows/web.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: web (next)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: zorpha-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: zorpha-web/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # `prebuild` runs scripts/check-tokenomics.mjs, so this also asserts the
+      # published supply numbers still agree with lib/tokenomics.ts.
+      - name: Build
+        run: npm run build
+        env:
+          # A build must not depend on secrets being present. If it does, that
+          # is the finding.
+          NEXT_TELEMETRY_DISABLED: "1"

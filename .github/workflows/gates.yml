@@ -1,0 +1,49 @@
+name: gates
+
+# Split from a single ci.yml so each job carries its own `paths:` filter.
+#
+# Everything here ran on every pull request regardless of what changed. On the
+# seven PRs merged on 5 September, ALL of them web-only, `contracts (forge)`
+# ran seven times and tested not one changed line -- roughly eighty minutes of
+# a paid runner spent on code nobody had edited. That is what exhausted the
+# Actions allowance, not the number of checks.
+#
+# GitHub evaluates `paths:` per workflow file, not per job, which is the only
+# reason this is four files instead of one. The alternative -- a change-detection
+# job gating the others with `if:` -- keeps one file but pays a checkout on
+# every run to work out that it has nothing to do.
+#
+# A job that does not run shows no check at all rather than a failing one.
+# `main` has no branch protection requiring these contexts, so a filtered-out
+# job cannot block a merge.
+#
+# Unfiltered on purpose: it greps the whole tree for conflict markers and takes
+# about five seconds. Filtering it would save nothing and could miss a marker
+# committed in a directory no other filter covers.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: launch gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A merge conflict was committed into components/marketing/Hero.tsx on
+      # 2026-09-02 and broke the whole marketing site until it was noticed by
+      # hand. Vendored dependencies are excluded; they are not ours to police.
+      - name: No committed merge conflict markers
+        run: |
+          if git grep -In -E '^(<<<<<<<|>>>>>>>) ' -- . ':!*/lib/*' ; then
+            echo "::error::merge conflict markers are committed"
+            exit 1
+          fi
+          echo "clean"

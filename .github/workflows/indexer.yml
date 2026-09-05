@@ -1,0 +1,63 @@
+name: indexer
+
+# Split from a single ci.yml so each job carries its own `paths:` filter.
+#
+# Everything here ran on every pull request regardless of what changed. On the
+# seven PRs merged on 5 September, ALL of them web-only, `contracts (forge)`
+# ran seven times and tested not one changed line -- roughly eighty minutes of
+# a paid runner spent on code nobody had edited. That is what exhausted the
+# Actions allowance, not the number of checks.
+#
+# GitHub evaluates `paths:` per workflow file, not per job, which is the only
+# reason this is four files instead of one. The alternative -- a change-detection
+# job gating the others with `if:` -- keeps one file but pays a checkout on
+# every run to work out that it has nothing to do.
+#
+# A job that does not run shows no check at all rather than a failing one.
+# `main` has no branch protection requiring these contexts, so a filtered-out
+# job cannot block a merge.
+#
+# No packages/** path here on purpose. The indexer briefly depended on
+# packages/orbit-preflight via `file:../../`, which broke every Railway deploy
+# because that service builds with its root at sidequest-protocol/indexer and
+# cannot see two levels up. That dependency was reverted; if it ever returns,
+# it needs a published package, and this filter needs packages/** with it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sidequest-protocol/indexer/**'
+      - '.github/workflows/indexer.yml'
+  pull_request:
+    paths:
+      - 'sidequest-protocol/indexer/**'
+      - '.github/workflows/indexer.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  indexer:
+    name: indexer (tsc)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sidequest-protocol/indexer
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: sidequest-protocol/indexer/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
