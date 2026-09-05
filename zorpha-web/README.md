@@ -66,9 +66,12 @@ npm run build        # also typechecks
 
 ## Known gaps
 
-- **Vault deposits are disabled** via `NEXT_PUBLIC_ENABLE_VAULT_DEPOSITS=false`. Audit finding
-  V-01 (critical, open) means a yield-vault depositor would redeem for zero. Do not enable until
-  `forge test` is green in `sidequest-protocol/contracts`.
+- **Vault deposits are gated** by `NEXT_PUBLIC_ENABLE_VAULT_DEPOSITS`, which defaults to enabled
+  and exists as an incident kill switch. It is not a workaround for an open bug: audit finding
+  V-01 — the yield vault priced shares against an adapter balance it never funded, so a redeemer
+  received nothing — is fixed, and recorded as `fixed` in `lib/audit.ts`. `YieldVault` overrides
+  the ERC-4626 deposit and withdraw hooks, so a deposit is forwarded to the adapter and a
+  redemption recalls from it within the same transaction.
 - The legal pages are engineer-written templates and are labelled as such on the page.
 - `/api/airdrop/[address]` reads Merkle proofs from `data/airdrop/<address>.json`, which does not
   exist until the Season 1 snapshot is generated. Until then every lookup returns "not eligible".
