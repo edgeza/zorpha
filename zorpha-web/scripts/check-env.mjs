@@ -107,6 +107,16 @@ const isProd =
 // will be served from, as VERCEL_URL. lib/site-url.ts consumes the public
 // twin of it, so a preview now labels itself correctly instead of claiming to
 // be zorpha.xyz.
+/**
+ * The hosts this site is actually served from.
+ *
+ * An assertion about the world, not a preference: changing it should be a
+ * deliberate edit in the same commit as the domain change, which is exactly
+ * why it lives in the repository rather than in an environment variable that
+ * could be set to anything.
+ */
+const PUBLIC_HOSTS = ['www.zorpha.xyz', 'zorpha.xyz'];
+
 const isPreview = process.env.VERCEL_ENV === 'preview';
 const problems = [];
 const notes = [];
@@ -175,6 +185,44 @@ if (!siteUrl) {
         [
           `NEXT_PUBLIC_SITE_URL points at ${url.hostname} in a production build.`,
           '  This is almost certainly a .env.local value leaking into a deploy.',
+        ].join(LF + '      '),
+      );
+    }
+
+    // The origin must be one users actually reach.
+    //
+    // Every check above asks whether the value is WELL FORMED -- a valid URL, a
+    // bare origin, https, not localhost. A production deploy once shipped with
+    // NEXT_PUBLIC_SITE_URL set to the project's vercel.app alias, which passes
+    // all four and is still wrong. It went unnoticed because nothing on the
+    // page looks broken:
+    //
+    //   canonical  https://<project>.vercel.app/whitepaper   on every page
+    //   robots     Sitemap + Host pointing at the same host
+    //   sitemap    all twelve entries
+    //
+    // and worst, lib/wagmi.ts hands that origin to the wallet approval dialog,
+    // so someone on the real domain is asked to trust a name that does not
+    // match the site in front of them -- the shape of a phishing prompt, on a
+    // page asking for a deposit.
+    //
+    // Gated on VERCEL_ENV === 'production' rather than isProd, because isProd
+    // is also true for previews and for a plain `next build`, and a preview is
+    // SUPPOSED to label itself with its vercel.app origin.
+    if (process.env.VERCEL_ENV === 'production' && !PUBLIC_HOSTS.includes(url.hostname)) {
+      problems.push(
+        [
+          `NEXT_PUBLIC_SITE_URL is ${url.hostname} in a PRODUCTION deploy.`,
+          `  Expected one of: ${PUBLIC_HOSTS.join(', ')}`,
+          '  This value is inlined at build time into the wallet approval',
+          '  dialog, every canonical URL, robots.txt and every sitemap entry.',
+          '  A vercel.app alias passes every other check here and is still the',
+          '  wrong answer: it tells search engines the deployment host is',
+          '  authoritative, and it asks a depositor to approve an origin whose',
+          '  name does not match the site they are looking at.',
+          '  Set it in Vercel -> Settings -> Environment Variables -> Production.',
+          '  If the public domain has genuinely changed, update PUBLIC_HOSTS in',
+          '  this file in the same commit -- deliberately, not to silence this.',
         ].join(LF + '      '),
       );
     }
