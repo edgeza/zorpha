@@ -14,8 +14,8 @@ dotenv.config();
 export const dryRun = process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true';
 
 const required = dryRun
-  ? (['RPC_URL'] as const)
-  : (['RPC_URL', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'] as const);
+  ? (['RPC_URL', 'CHAIN_ID'] as const)
+  : (['RPC_URL', 'CHAIN_ID', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'] as const);
 
 // Accept the older RH_TESTNET_RPC_URL name so an existing Railway service does
 // not break on rename.
@@ -48,12 +48,75 @@ function list(name: string): string[] {
     .filter((v) => v.length > 0);
 }
 
+/**
+ * The two Robinhood Chain deployments, and everything that differs between
+ * them.
+ *
+ * These chain ids differ BY ONE DIGIT -- 4663 mainnet, 46630 testnet -- and
+ * every host name differs too. Held together in one table because the failure
+ * that motivated it was a Railway config carrying `CHAIN_ID=4663` beside a
+ * `rpc.testnet.` URL, a testnet explorer, testnet vault addresses and a testnet
+ * block height: five values, one of them flipped, no single place that could
+ * notice. `assertChainPreflight()` compares this table against the live RPC,
+ * so a half-flipped config now fails at startup and names the halves.
+ */
+export const KNOWN_CHAINS = {
+  4663: {
+    name: 'Robinhood Chain mainnet',
+    rpcUrl: 'https://rpc.mainnet.chain.robinhood.com/rpc',
+    explorerUrl: 'https://robinhoodchain.blockscout.com',
+    /** Measured 2026-09-05. Documentation only -- the START_BLOCK check in
+     *  assertChainPreflight() reads the LIVE head, so this never goes stale in
+     *  a way that can affect behaviour. It is here to make the ~2x gap between
+     *  the two chains' heights legible at a glance, since that gap is the
+     *  thing that makes a transposed START_BLOCK survive review. */
+    approxHead: 55_214_104n,
+  },
+  46630: {
+    name: 'Robinhood Chain testnet',
+    rpcUrl: 'https://rpc.testnet.chain.robinhood.com/rpc',
+    explorerUrl: 'https://explorer.testnet.chain.robinhood.com',
+    approxHead: 113_526_734n,
+  },
+} as const;
+
+export type KnownChainId = keyof typeof KNOWN_CHAINS;
+
+function knownChain(id: number) {
+  return (KNOWN_CHAINS as Record<number, (typeof KNOWN_CHAINS)[KnownChainId]>)[id];
+}
+
+/**
+ * CHAIN_ID is required and has no default.
+ *
+ * It used to default to 46630. A default is how a mainnet deployment gets
+ * labelled testnet: the operator sets RPC_URL, sees the service come up, and
+ * every row it writes carries the wrong chain -- which, once written, cannot be
+ * told apart from real testnet history afterwards.
+ */
+function chainIdFromEnv(): number {
+  const id = int('CHAIN_ID', 0);
+  if (!knownChain(id)) {
+    throw new Error(
+      `CHAIN_ID=${id} is not a Robinhood Chain deployment this indexer knows. ` +
+        `Expected 4663 (mainnet) or 46630 (testnet). Note they differ by one digit.`,
+    );
+  }
+  return id;
+}
+
+const chainId = chainIdFromEnv();
+
 export const config = {
   dryRun,
   rpcUrl: process.env.RPC_URL!,
   rpcFallbackUrls: list('RPC_URL_FALLBACK'),
-  chainId: int('CHAIN_ID', 46630),
-  explorerUrl: process.env.EXPLORER_URL ?? 'https://explorer.testnet.chain.robinhood.com',
+  chainId,
+  /** Derived from the chain, not defaulted to testnet. EXPLORER_URL overrides
+   *  it only for a mirror; getting it wrong mislabels every receipt link. */
+  explorerUrl: process.env.EXPLORER_URL ?? knownChain(chainId).explorerUrl,
+  chainName: knownChain(chainId).name,
+  approxHead: knownChain(chainId).approxHead,
 
   vaultAddresses: list('VAULT_ADDRESSES') as `0x${string}`[],
   reputationRegistryAddress: process.env.REPUTATION_REGISTRY_ADDRESS as

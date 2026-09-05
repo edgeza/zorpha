@@ -3,7 +3,7 @@ import { planWindows, toRebalanceRow, type DecodedLog } from './decode.js';
 import { navDecimalsFor } from './chain.js';
 import { config } from './config.js';
 import {
-  assertChainId,
+  assertChainPreflight,
   getBlockTimestamp,
   getPublicClient,
   isValidAddress,
@@ -206,6 +206,7 @@ async function indexRegistry(address: `0x${string}`, safeHead: bigint): Promise<
 
       if (name === 'StatsPublished') {
         await insertReputationPublish({
+          chain_id: config.chainId,
           contract_address: address,
           manager_address: args.manager as string,
           commitment: args.commitment as string,
@@ -341,13 +342,22 @@ function sleep(ms: number): Promise<void> {
 async function main(): Promise<void> {
   log('info', 'starting', {
     chainId: config.chainId,
+    chain: config.chainName,
     pollIntervalMs: config.pollIntervalMs,
     confirmations: config.confirmations.toString(),
     chunkSize: config.blockChunkSize.toString(),
   });
 
-  await assertChainId();
-  log('info', 'chain id verified', { chainId: config.chainId });
+  // Chain id, START_BLOCK and the configured vault addresses, all checked
+  // against the live chain. Two of those three fail SILENTLY when they come
+  // from the other deployment -- see assertChainPreflight.
+  await assertChainPreflight(config.vaultAddresses);
+  log('info', 'chain preflight passed', {
+    chainId: config.chainId,
+    chain: config.chainName,
+    startBlock: config.startBlock.toString(),
+    vaultAddressesChecked: config.vaultAddresses.length,
+  });
 
   // A dry run is one cycle, no health server, no writes, and a summary. It
   // exists because the indexing path could not be executed at all without a

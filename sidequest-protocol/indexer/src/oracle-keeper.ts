@@ -109,7 +109,50 @@ function privateKeyFrom(name: string): Hex {
 }
 
 const PRIVATE_KEY = privateKeyFrom('ORACLE_KEEPER_PRIVATE_KEY');
-const CHAIN_ID = Number(process.env.CHAIN_ID ?? '46630');
+
+/**
+ * THIS PROCESS CANNOT FOLLOW THE PROTOCOL TO MAINNET.
+ *
+ * There is no oracle on Robinhood Chain mainnet 4663. The minimal deploy path
+ * shipped no MedianOracle -- `NEXT_PUBLIC_ORACLE_ADDRESS` is deliberately
+ * blank in `zorpha-web/.env.mainnet.template` -- and the only mainnet vault,
+ * zsUSDG, is a yield vault that prices from its ERC-4626 target rather than a
+ * feed. That is precisely why it could launch without one.
+ *
+ * So `CHAIN_ID=4663` here is not a repoint, it is a mistake, and the preflight
+ * below would catch it as "ORACLE_ADDRESS is not a contract on this chain" --
+ * true, but it reads like a typo rather than an architectural fact. Named
+ * here instead, at the point where someone would change the value.
+ *
+ * Required rather than defaulted for the same reason as the indexer: a default
+ * chain is how a process ends up reporting prices to the wrong network.
+ */
+const MAINNET = 4663;
+const TESTNET = 46630;
+
+const rawChainId = process.env.CHAIN_ID;
+if (!rawChainId) {
+  log('error', 'missing required env var', {
+    name: 'CHAIN_ID',
+    hint: `${TESTNET} (testnet). There is no oracle deployed on mainnet ${MAINNET}.`,
+  });
+  process.exit(1);
+}
+const CHAIN_ID = Number(rawChainId);
+if (CHAIN_ID === MAINNET) {
+  log('error', 'there is no oracle on mainnet, so there is nothing to keep', {
+    chainId: MAINNET,
+    hint:
+      'The 4663 deploy shipped no MedianOracle and the only mainnet vault ' +
+      '(zsUSDG) prices from its ERC-4626 target. Keep this service on ' +
+      `CHAIN_ID=${TESTNET}, or retire it.`,
+  });
+  process.exit(1);
+}
+if (!Number.isInteger(CHAIN_ID) || CHAIN_ID <= 0) {
+  log('error', 'CHAIN_ID is not a chain id', { got: rawChainId });
+  process.exit(1);
+}
 
 /** Post once the price is older than this. Well inside maxStaleness so a few
  *  consecutive failures are survivable rather than an outage. */

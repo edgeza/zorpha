@@ -42,6 +42,16 @@ export type VaultRow = {
    * vault appearing, and the migration's trigger handles that on write.
    */
   listed?: boolean;
+  /**
+   * Which Robinhood Chain this vault is deployed on. 46630 testnet, 4663
+   * mainnet. Added by migration 012.
+   *
+   * Optional, unlike the same field on RebalanceRow -- and deliberately so.
+   * `listVaults()` falls back to an unfiltered query when the column is
+   * missing, so a row genuinely can arrive without it, and a required field
+   * would be a lie that only shows up at runtime.
+   */
+  chain_id?: number;
   address: `0x${string}`;
   vault_type: VaultType;
   name: string;

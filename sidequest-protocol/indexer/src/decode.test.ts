@@ -13,9 +13,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { planWindows, toRebalanceRow, type DecodedLog } from './decode.js';
 
-const SPOT = { address: '0xspot', vault_type: 'spot' as const, manager_address: '0xmgr' };
-const ROT = { address: '0xrot', vault_type: 'rotation' as const, manager_address: '0xmgr' };
-const YIELD = { address: '0xyield', vault_type: 'yield' as const, manager_address: '0xmgr' };
+// 46630 is testnet. Fixtures use it because the block heights below are
+// testnet heights; a row claiming 4663 at block 112,522,645 would describe a
+// block mainnet has never produced.
+const SPOT = { chain_id: 46630, address: '0xspot', vault_type: 'spot' as const, manager_address: '0xmgr' };
+const ROT = { chain_id: 46630, address: '0xrot', vault_type: 'rotation' as const, manager_address: '0xmgr' };
+const YIELD = { chain_id: 46630, address: '0xyield', vault_type: 'yield' as const, manager_address: '0xmgr' };
 
 const TS = '2026-09-04T00:00:00.000Z';
 
@@ -175,4 +178,23 @@ test('the scale is independent of the vault type', () => {
   assert.equal(toRebalanceRow(YIELD, log({ navPerShare: 1n }), TS, 6).nav_decimals, 6);
   assert.equal(toRebalanceRow(SPOT, log({ navPerShare: 1n }), TS, 18).nav_decimals, 18);
   assert.equal(toRebalanceRow(ROT, log({ navInBase: 1n }), TS, 8).nav_decimals, 8);
+});
+
+// ─── chain_id ───────────────────────────────────────────────────────────────
+
+test('a receipt carries the chain of the vault it came from', () => {
+  const row = toRebalanceRow(SPOT, log({ targetBps: 5000, nonce: 1n }), TS);
+  assert.equal(row.chain_id, 46630);
+});
+
+test('a mainnet vault produces mainnet receipts, with nothing ambient to get wrong', () => {
+  // The bug this guards: chain_id sourced from process.env or a module-level
+  // constant means one misconfigured service writes mainnet receipts labelled
+  // testnet, and after the write the two are indistinguishable. Sourcing it
+  // from the vault row makes disagreement impossible to express.
+  const mainnetVault = { ...YIELD, chain_id: 4663 };
+  const row = toRebalanceRow(mainnetVault, log({ navPerShare: 1_000_000n }), TS);
+
+  assert.equal(row.chain_id, 4663);
+  assert.notEqual(row.chain_id, 46630, 'one transposed digit is the whole bug');
 });

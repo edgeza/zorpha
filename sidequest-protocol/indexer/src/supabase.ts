@@ -44,7 +44,17 @@ const UNIQUE_VIOLATION = '23505';
 
 export type VaultType = 'spot' | 'rotation' | 'yield';
 
-export type VaultRow = {
+/**
+ * Which Robinhood Chain a row belongs to. 46630 testnet, 4663 mainnet.
+ *
+ * Required rather than optional on every row type below. An optional field
+ * lets a writer that forgets it type-check cleanly, and a forgotten chain is
+ * the exact bug migrations 011 and 012 exist to stop -- once a mainnet row is
+ * written as testnet it is indistinguishable from real testnet history.
+ */
+export type ChainScoped = { chain_id: number };
+
+export type VaultRow = ChainScoped & {
   address: string;
   vault_type: VaultType;
   name: string;
@@ -57,7 +67,7 @@ export type VaultRow = {
   manager_address: string;
 };
 
-export type RebalanceRow = {
+export type RebalanceRow = ChainScoped & {
   vault_address: string;
   vault_type: VaultType;
   manager: string;
@@ -83,7 +93,7 @@ export type RebalanceRow = {
   commitment?: string | null;
 };
 
-export type ReputationRow = {
+export type ReputationRow = ChainScoped & {
   contract_address: string;
   manager_address: string;
   commitment: string;
@@ -95,7 +105,9 @@ export type ReputationRow = {
 };
 
 export async function upsertVault(v: VaultRow): Promise<void> {
-  const { error } = await db().from('vaults').upsert(v, { onConflict: 'address' });
+  const { error } = await db()
+    .from('vaults')
+    .upsert(v, { onConflict: 'chain_id,address' });
   if (error) throw new Error(`upsertVault failed: ${error.message}`);
 }
 
@@ -118,6 +130,7 @@ export async function getKnownVaults(): Promise<VaultRow[]> {
         );
       }
       rows.push({
+        chain_id: config.chainId,
         address,
         vault_type,
         name: '(dry run)',
@@ -130,9 +143,20 @@ export async function getKnownVaults(): Promise<VaultRow[]> {
     return rows;
   }
 
+  // The chain filter is the whole point of migration 012. Without it this
+  // returns every vault in the table, and an indexer on 4663 scans the three
+  // testnet vaults 008 registered -- addresses with no code on mainnet, so
+  // getLogs returns [] rather than an error and every cycle reports success.
+  //
+  // `listed` is deliberately NOT filtered on: an unlisted vault is hidden from
+  // the storefront, not retired from history, and its receipts should keep
+  // arriving. Chain is the thing that makes a row unscannable, not visibility.
   const { data, error } = await db()
     .from('vaults')
-    .select('address,vault_type,name,symbol,asset,cash,base_asset,oracle,strategy,manager_address');
+    .select(
+      'chain_id,address,vault_type,name,symbol,asset,cash,base_asset,oracle,strategy,manager_address',
+    )
+    .eq('chain_id', config.chainId);
   if (error) throw new Error(`getKnownVaults failed: ${error.message}`);
   return (data ?? []) as VaultRow[];
 }
@@ -159,9 +183,11 @@ export async function insertRebalances(rows: RebalanceRow[]): Promise<number> {
 
   const { data, error } = await db()
     .from('rebalances')
-    // (tx_hash, log_index) is unique; ignoreDuplicates makes a re-scan a no-op
-    // instead of an error, which is what makes the whole pipeline idempotent.
-    .upsert(rows, { onConflict: 'tx_hash,log_index', ignoreDuplicates: true })
+    // (chain_id, tx_hash, log_index) is unique since migration 011;
+    // ignoreDuplicates makes a re-scan a no-op instead of an error, which is
+    // what makes the whole pipeline idempotent. The arbiter must name every
+    // column of the constraint or PostgREST answers 42P10.
+    .upsert(rows, { onConflict: 'chain_id,tx_hash,log_index', ignoreDuplicates: true })
     .select('id');
 
   if (error) {
@@ -171,14 +197,19 @@ export async function insertRebalances(rows: RebalanceRow[]): Promise<number> {
   return data?.length ?? 0;
 }
 
-/** Atomic counter bump. Requires migration 002. */
+/** Atomic counter bump. Requires migration 012. */
 export async function bumpManager(address: string, blockTimestamp: string): Promise<void> {
   if (config.dryRun) {
     dryRunTally.managers.add(address.toLowerCase());
     return;
   }
 
+  // Three arguments, chain first. The two-argument signature is retired and
+  // raises with an explanation -- see migration 012. `managers` is keyed
+  // (address, chain_id), so the same manager operating on both chains keeps
+  // two independent receipt counts rather than one merged total.
   const { error } = await db().rpc('bump_manager', {
+    p_chain_id: config.chainId,
     p_address: address,
     p_last_seen: blockTimestamp,
   });
@@ -188,7 +219,7 @@ export async function bumpManager(address: string, blockTimestamp: string): Prom
     // read zero for every manager forever. A missing migration should be loud.
     throw new Error(
       `bumpManager RPC failed: ${error.message}. ` +
-        'Has migration 002_indexer_state_and_counters.sql been applied?',
+        'Has migration 012-cursor-and-vault-chain-scope.sql been applied?',
     );
   }
 }
@@ -201,7 +232,10 @@ export async function insertReputationPublish(r: ReputationRow): Promise<boolean
 
   const { error } = await db()
     .from('reputation_publishes')
-    .upsert([r], { onConflict: 'contract_address,manager_address,nonce', ignoreDuplicates: true });
+    .upsert([r], {
+      onConflict: 'chain_id,contract_address,manager_address,nonce',
+      ignoreDuplicates: true,
+    });
   if (error) {
     if (error.code === UNIQUE_VIOLATION) return false;
     throw new Error(`insertReputationPublish failed: ${error.message}`);
@@ -232,6 +266,11 @@ export async function markChallenged(args: {
       // forgeable in the first place (audit V-06).
       upheld: null,
     })
+    // Chain-scoped to match the (chain_id, contract_address, manager_address,
+    // nonce) key. Without it a dispute on one chain would also mark the
+    // same-nonce publish on the other, since registry addresses and nonces
+    // both restart per deployment.
+    .eq('chain_id', config.chainId)
     .eq('contract_address', args.contractAddress)
     .eq('manager_address', args.managerAddress)
     .eq('nonce', args.nonce);
@@ -256,6 +295,7 @@ export async function markResolved(args: {
       arbiter: args.arbiter,
       resolved_at: args.resolvedAt,
     })
+    .eq('chain_id', config.chainId)
     .eq('contract_address', args.contractAddress)
     .eq('manager_address', args.managerAddress)
     .eq('nonce', args.nonce);
@@ -269,9 +309,14 @@ export type CursorKind = 'vault' | 'registry';
 export async function getCursor(kind: CursorKind, address: string): Promise<bigint | null> {
   if (config.dryRun) return null;
 
+  // Chain-scoped. This is the read that decides where a scan resumes, and it
+  // is the one that made repointing look safe: the testnet cursors sit at
+  // ~112.5M, mainnet's head is ~55.2M, so an unscoped read returned a testnet
+  // height and every mainnet window came back empty with no error at all.
   const { data, error } = await db()
     .from('indexer_cursor')
     .select('last_block')
+    .eq('chain_id', config.chainId)
     .eq('source_kind', kind)
     .eq('source_address', address)
     .maybeSingle();
@@ -279,7 +324,7 @@ export async function getCursor(kind: CursorKind, address: string): Promise<bigi
   if (error) {
     throw new Error(
       `getCursor failed: ${error.message}. ` +
-        'Has migration 002_indexer_state_and_counters.sql been applied?',
+        'Has migration 012-cursor-and-vault-chain-scope.sql been applied?',
     );
   }
   if (!data) return null;
@@ -294,6 +339,7 @@ export async function advanceCursor(
   if (config.dryRun) return;
 
   const { error } = await db().rpc('advance_cursor', {
+    p_chain_id: config.chainId,
     p_kind: kind,
     p_address: address,
     p_block: Number(block),
@@ -310,6 +356,7 @@ export async function recordCursorError(
 
   // Best-effort: never let error reporting mask the original error.
   const { error } = await db().rpc('record_cursor_error', {
+    p_chain_id: config.chainId,
     p_kind: kind,
     p_address: address,
     p_error: message.slice(0, 1000),
@@ -321,6 +368,13 @@ export async function recordCursorError(
 export async function pingDatabase(): Promise<boolean> {
   if (config.dryRun) return true;
 
-  const { error } = await db().from('vaults').select('address').limit(1);
+  // Filters on chain_id so /readyz fails if migration 012 has not been applied
+  // -- a plain select would pass against the old schema and the service would
+  // report ready while every write path was about to raise 42P10.
+  const { error } = await db()
+    .from('vaults')
+    .select('address')
+    .eq('chain_id', config.chainId)
+    .limit(1);
   return !error;
 }
