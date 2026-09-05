@@ -2,7 +2,7 @@
 
 import { useBlockNumber } from 'wagmi';
 import { activeChain } from '@/lib/chains';
-import { missingContracts } from '@/lib/contracts';
+import { misconfiguredContracts } from '@/lib/contracts';
 
 const LABELS: Record<string, string> = {
   zor: 'ZOR token',
@@ -50,9 +50,19 @@ const LABELS: Record<string, string> = {
  * A block-number read is the cheapest possible proof of reachability: if it
  * fails, nothing else on the page can work either, and the banner says so
  * instead of leaving a reader to guess from a screen of dashes.
+ *
+ * IT NOW REPORTS ONLY UNEXPECTED ABSENCES. It previously counted every unset
+ * address, which on mainnet meant permanently announcing "7 contract addresses
+ * are unset, so the panels below have nothing to read" while those panels read
+ * perfectly well. Six of the seven are deliberate -- the oracle, executor and
+ * two priced vaults are not on 4663 by decision, the bond faucet is testnet-
+ * only -- and the seventh, the yield vault, is deployed and simply not named by
+ * an env var any more. See `isExpectedAbsence` for the per-key reasoning.
+ *
+ * A banner that is always on is a banner nobody reads on the day it matters.
  */
 export function EnvBanner() {
-  const missing = missingContracts();
+  const missing = misconfiguredContracts();
 
   const { isError: chainUnreachable, error } = useBlockNumber({
     chainId: activeChain.id,

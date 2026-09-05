@@ -26,6 +26,7 @@ function normalise(value: string | undefined): `0x${string}` {
   return trimmed.toLowerCase() as `0x${string}`;
 }
 
+export const MAINNET_CHAIN_ID = 4663;
 export const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? '46630');
 
 export const contracts = {
@@ -60,9 +61,66 @@ export function isDeployed(key: ContractKey): boolean {
   return contracts[key] !== ZERO_ADDRESS;
 }
 
-/** Every unconfigured contract, for the portal's environment banner. */
+/** Every unconfigured contract, whether or not that is expected. */
 export function missingContracts(): ContractKey[] {
   return (Object.keys(contracts) as ContractKey[]).filter((k) => !isDeployed(k));
+}
+
+/**
+ * Whether a contract being unset is CORRECT on the given chain.
+ *
+ * The environment banner used to report all sixteen keys alike, which on
+ * mainnet meant shouting "7 contract addresses are unset, so the panels below
+ * have nothing to read" at every visitor -- while the panels below read fine.
+ * Six of those seven are deliberate, and one of them was simply wrong.
+ *
+ * Crying wolf has a cost beyond looking untidy: this banner is the same
+ * surface that has to be believed on the day something IS broken, and a
+ * warning that is always on is a warning nobody reads.
+ *
+ * Testnet 46630 ran the full stack, so nothing is expected to be absent there
+ * and this returns false for every key.
+ */
+export function isExpectedAbsence(key: ContractKey, chainId: number = CHAIN_ID): boolean {
+  if (chainId !== MAINNET_CHAIN_ID) return false;
+
+  switch (key) {
+    // Written and tested, deliberately not deployed on 4663. lib/deployment.ts
+    // NOT_ON_MAINNET carries the reasoning and the public disclosure; the
+    // whitepaper and /protocol say so too. Absent by decision, not by fault.
+    case 'oracle':
+    case 'strategyExecutor':
+    case 'spotVault':
+    case 'rotationVault':
+    case 'reputationRegistry':
+      return true;
+
+    // Testnet-only by design. `isMainnet` exists in lib/chains.ts precisely so
+    // this cannot reach mainnet -- reporting its absence there as a
+    // misconfiguration inverts the intent.
+    case 'leaderFaucet':
+      return true;
+
+    // Deployed on mainnet (zsUSDG, 0x3829bC78...), just not through this env
+    // var. Vaults stopped being env-configured singletons: the portal reads
+    // them from `vaults` filtered by chain_id (migrations 011 and 012), which
+    // is what lets a second yield vault exist at all. A singleton address here
+    // could only ever name one of them, so leaving it unset is right and the
+    // banner should not have called it missing.
+    case 'yieldVault':
+      return true;
+
+    default:
+      return false;
+  }
+}
+
+/**
+ * Unconfigured contracts that SHOULD have been configured -- the only ones
+ * worth interrupting a reader about.
+ */
+export function misconfiguredContracts(chainId: number = CHAIN_ID): ContractKey[] {
+  return missingContracts().filter((k) => !isExpectedAbsence(k, chainId));
 }
 
 export const explorerUrl =
