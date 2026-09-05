@@ -37,7 +37,7 @@ export default function LaunchVaultPage() {
       <LaunchVaultForm />
 
       <div className="card-pad">
-        <h3 className="text-sm font-semibold text-ink-100">What you are agreeing to</h3>
+        <h2 className="text-sm font-semibold text-ink-100">What you are agreeing to</h2>
         <ul className="mt-3 space-y-2 text-xs leading-relaxed text-ink-400">
           <li>
             <strong className="text-ink-300">Your capital absorbs losses first.</strong> That is the

@@ -205,7 +205,7 @@ export default function ProtocolPage() {
         </div>
 
         <div className="mt-8">
-          <Callout tone="verified" title="Each of these is pinned by a test">
+          <Callout headingLevel={3} tone="verified" title="Each of these is pinned by a test">
             <p>
               Each guarantee above is covered by tests rather than asserted in prose:{' '}
               {TEST_STATUS.suiteTests - TEST_STATUS.suiteInvariants} unit and fuzz tests plus{' '}

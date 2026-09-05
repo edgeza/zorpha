@@ -243,7 +243,7 @@ export default function TokenPage() {
               </ol>
             </div>
 
-            <Callout tone="info" title="What ZOR is not">
+            <Callout headingLevel={3} tone="info" title="What ZOR is not">
               <p>
                 Not a dividend. Not a revenue share. Not a claim on treasury assets. Burning
                 reduces supply. It does not entitle any holder to a payment, and it does not
@@ -310,7 +310,7 @@ export default function TokenPage() {
           </div>
 
           <div className="mt-8">
-            <Callout tone="info" title="Where the contracts stand today">
+            <Callout headingLevel={3} tone="info" title="Where the contracts stand today">
               <p>
                 Every one of the {countBy('fixed')} findings from the internal review is closed,
                 and the full suite is green at{' '}
