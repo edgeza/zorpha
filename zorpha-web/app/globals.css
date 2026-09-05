@@ -8,12 +8,20 @@
 
     /* Chart colours, mirrored from tailwind.config.mjs so lib/tokenomics.ts
        can reference them as plain CSS custom properties. */
-    --zor-500: #8b6dff;
+    --zor-500: #7c4dff;
     --verified-500: #a8ee2b;
     --cyan-500: #22d3ee;
     --amber-500: #f59e0b;
     --magenta-500: #e849c0;
     --danger-500: #f2555a;
+
+    /* Graphic tier: true logo chroma, measured from public/zorpha-256.png.
+       WebGL and gradient surfaces only. These FAIL WCAG as text colours
+       (#4700f8 scores 2.53 on this background) and check-contrast.mjs
+       rejects them if they reach --zor-500. */
+    --zor-graphic-core: #4700f8;
+    --zor-graphic-bright: #8700f9;
+    --zor-graphic-accent: #7a3cff;
   }
 
   html {
