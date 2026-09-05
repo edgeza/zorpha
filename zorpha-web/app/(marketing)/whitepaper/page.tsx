@@ -101,12 +101,18 @@ export default function WhitepaperPage() {
             <Link href="/portal" className="btn-primary">
               Open the portal
             </Link>
-            <a
-              href="https://github.com/edgeza/zorpha"
-              target="_blank"
-              rel="noreferrer noopener"
-              className="btn"
-            >
+            {/*
+              Was https://github.com/edgeza/zorpha, which is private and returned
+              404 to every visitor who clicked it -- a button labelled "Read the
+              contracts" that let nobody read the contracts.
+
+              It now points at the deployment section below, where all nine
+              mainnet addresses are listed and each links to its source-verified
+              page on the explorer. That is where the contracts are genuinely
+              readable, and verified source is better evidence than a repository
+              anyway: it is provably the source of the deployed bytecode.
+            */}
+            <a href="#deployment" className="btn">
               Read the contracts
             </a>
           </div>
