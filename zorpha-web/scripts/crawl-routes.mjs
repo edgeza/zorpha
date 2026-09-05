@@ -47,7 +47,20 @@ for (const route of ROUTES) {
   // naming the testnet is the POINT: the post is about telling 46630 and 4663
   // apart. Exempting those two routes keeps the rule strict everywhere it
   // guards something, rather than loosening the pattern for the whole site.
-  if (!route.startsWith('/writing') && /46630|testnet\.chain\.robinhood/i.test(body)) {
+  // The home page and /protocol carry ONE sanctioned testnet link: the receipt
+  // in ReceiptVerifier is a real event the rotation vault emitted on 46630, and
+  // there is no mainnet equivalent because no mainnet rebalance has happened
+  // yet. It used to be pointed at the MAINNET explorer, which answered 200 and
+  // then rendered a details page with the block, sender and recipient
+  // permanently blank -- a dead end on the one link the page offers as proof.
+  //
+  // That single URL is stripped before the check rather than exempting the two
+  // routes, so any OTHER testnet reference appearing on them still fails. An
+  // exemption by route would switch the rule off exactly where it guards most.
+  const SANCTIONED_TESTNET_LINK =
+    'https://explorer.testnet.chain.robinhood.com/tx/0x6d2ab9adc9c004ace161e0f2bf4904317c17b84e72a5ef417b823bfbd60a3869';
+  const scanned = body.split(SANCTIONED_TESTNET_LINK).join('');
+  if (!route.startsWith('/writing') && /46630|testnet\.chain\.robinhood/i.test(scanned)) {
     failures.push(route + ': testnet reference');
   }
   if (/21% (of supply|float)|Float at launch/i.test(body)) failures.push(route + ': stale 21% float claim');

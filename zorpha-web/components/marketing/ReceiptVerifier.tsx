@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from 'react';
 import { keccak256, encodeAbiParameters, parseAbiParameters, type Hex } from 'viem';
-import { explorerTx } from '@/lib/contracts';
 
 /**
  * The receipt, checked in the reader's own browser.
@@ -62,6 +61,22 @@ const ONCHAIN = {
     '0x28765283b075662fa21af1566ed5d0b7730f9ac9f94f753789e95ed780d5d82c' as Hex,
   tx: '0x6d2ab9adc9c004ace161e0f2bf4904317c17b84e72a5ef417b823bfbd60a3869',
   block: 112_417_756,
+  /**
+   * The TESTNET explorer, hardcoded, because this receipt is a testnet artifact
+   * and permanently will be.
+   *
+   * This link used to be built from NEXT_PUBLIC_EXPLORER_URL, so when the site
+   * moved to mainnet it started pointing a testnet transaction hash at the
+   * mainnet explorer. That does not 404: Blockscout is a single-page app that
+   * answers 200 for any /tx/ path and resolves client-side, so the reader got a
+   * details page with the block, the sender and the recipient all permanently
+   * blank, a nonsense "5y ago" timestamp, and no error saying why. A dead end
+   * with no explanation, on the one link the home page offers as proof.
+   *
+   * Deriving it from config would reintroduce exactly that: the environment
+   * says which chain the SITE is on, and this receipt is not on that chain.
+   */
+  explorerBase: 'https://explorer.testnet.chain.robinhood.com',
 };
 
 const COMMITMENT_TYPES = parseAbiParameters(
@@ -138,7 +153,7 @@ export function ReceiptVerifier() {
           <span className="font-mono text-xs text-ink-300">Rebalanced</span>
         </div>
         <a
-          href={explorerTx(ONCHAIN.tx)}
+          href={`${ONCHAIN.explorerBase}/tx/${ONCHAIN.tx}`}
           target="_blank"
           rel="noreferrer"
           className="font-mono text-2xs text-ink-500 underline-offset-2 hover:text-ink-300 hover:underline"
