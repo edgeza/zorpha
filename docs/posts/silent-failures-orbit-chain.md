@@ -239,5 +239,6 @@ every configured address has bytecode, and every RPC you list can serve the
 query you actually make. Four calls. They run once at startup and they turn an
 entire category of invisible failure into a refusal to boot.
 
-*Zorpha is a vault protocol on Robinhood Chain. The safety layer described here
-is being extracted into a standalone package for Orbit deployments.*
+*Zorpha is a vault protocol on Robinhood Chain. We intend to extract the safety
+layer described here into a standalone package for Orbit deployments; today it
+lives inside the protocol's own indexer.*
