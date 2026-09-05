@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { SectionHeading } from '@/components/ui/Primitives';
-import { TOKEN, FLOAT_AT_LAUNCH_PCT, INSIDER_PCT } from '@/lib/tokenomics';
+import { TOKEN, CIRCULATING_PCT } from '@/lib/tokenomics';
 import { countBy } from '@/lib/audit';
 
 export const metadata: Metadata = {
@@ -56,12 +56,12 @@ const GROUPS: { heading: string; items: QA[] }[] = [
         a: 'No. There is no staking, no yield, no dividend and no revenue share. Protocol fees are used to buy ZOR on the open market and burn it, which reduces supply. That is not a payment to holders and it is not a promise about price.',
       },
       {
-        q: `Why is ${FLOAT_AT_LAUNCH_PCT}% of supply liquid at launch? Isn't that a lot?`,
-        a: 'It is more than the fashion, and that is the point. Launching a small float into a thin order book produces a price that means nothing, and every subsequent unlock then lands on a market that cannot absorb it. A real float and protocol-owned liquidity make the token harder to move around and less dependent on the next unlock going quietly.',
+        q: `How much of the supply is actually liquid?`,
+        a: `${CIRCULATING_PCT}% circulating: the governance Safe, protocol-owned liquidity and holders. 800,000,000 — 80% — sits in a vesting contract on a 180-day cliff and then releases linearly to day 1095. That schedule is marked non-revocable onchain, so it cannot be cancelled or clawed back by anyone, including us.`,
       },
       {
         q: 'How much do insiders hold?',
-        a: `${INSIDER_PCT}% between contributors and backers, with nothing at launch and nothing for twelve months. Contributors then vest linearly to month 48, backers to month 36. Unvested tokens sit in the vesting contract and carry zero voting weight, so nobody votes with tokens they have not earned.`,
+        a: 'The published allocation reserves 25% for contributors and backers. Onchain, that share is not held as separate per-cohort schedules: the treasury, contributor and backer buckets were locked together as one non-revocable schedule to the governance Safe. Verify the vesting contract rather than the allocation table — it is the schedule that binds, and it releases nothing until day 180.',
       },
       {
         q: 'Is ZOR a security?',

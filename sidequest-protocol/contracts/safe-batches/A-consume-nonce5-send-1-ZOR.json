@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 1788598207230,
+  "meta": {
+    "name": "A - throwaway: send 1 ZOR (consumes nonce 5)",
+    "description": "Sends exactly 1 ZOR to the PC owner wallet. Sole purpose is to consume Safe nonce 5 so the queued pool batch at nonce 6 can execute.",
+    "txBuilderVersion": "1.16.5"
+  },
+  "transactions": [
+    {
+      "to": "0x9684AFe2422a0B03719201c78959b6B70e8d4ae8",
+      "value": "0",
+      "data": "0xa9059cbb000000000000000000000000070e3c6766cb6c7dece7401a9e562a0c8d25f8ef0000000000000000000000000000000000000000000000000de0b6b3a7640000",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}

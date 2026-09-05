@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 1788564683530,
+  "meta": {
+    "name": "5 - Exit LP position #1027313",
+    "description": "decreaseLiquidity: burn all 102587694505467941 liquidity from #1027313; collect: sweep both tokens + fees to the Safe; burn the now-empty position NFT",
+    "txBuilderVersion": "1.16.5"
+  },
+  "transactions": [
+    {
+      "to": "0x73991a25C818Bf1f1128dEAaB1492D45638DE0D3",
+      "value": "0",
+      "data": "0x0c49ccbe00000000000000000000000000000000000000000000000000000000000facf1000000000000000000000000000000000000000000000000016c76f6f153202500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006a9b70eb",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0x73991a25C818Bf1f1128dEAaB1492D45638DE0D3",
+      "value": "0",
+      "data": "0xfc6f786500000000000000000000000000000000000000000000000000000000000facf1000000000000000000000000c75e64ccf3ce6e2f40939ab58255681769bcf8c400000000000000000000000000000000ffffffffffffffffffffffffffffffff00000000000000000000000000000000ffffffffffffffffffffffffffffffff",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0x73991a25C818Bf1f1128dEAaB1492D45638DE0D3",
+      "value": "0",
+      "data": "0x42966c6800000000000000000000000000000000000000000000000000000000000facf1",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}

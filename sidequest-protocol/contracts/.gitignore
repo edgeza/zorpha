@@ -15,3 +15,4 @@ seed.sql
 .yield-adapter-*
 .stale-oracle-*
 .noop-rebalancer-*
+verification-mainnet/

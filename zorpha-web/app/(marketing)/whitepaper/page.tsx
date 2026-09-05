@@ -3,13 +3,19 @@ import type { Metadata } from 'next';
 import {
   ALLOCATIONS,
   TOKEN,
-  FLOAT_AT_LAUNCH_PCT,
-  INSIDER_PCT,
+  CIRCULATING_PCT,
   tokensFor,
   pctFor,
 } from '@/lib/tokenomics';
 import { formatCompact, formatMonths } from '@/lib/format';
 import { TEST_STATUS } from '@/lib/audit';
+import {
+  MAINNET,
+  DEPLOYED_ON_MAINNET,
+  LIVE_VAULTS,
+  NOT_ON_MAINNET,
+} from '@/lib/deployment';
+import { explorerAddress } from '@/lib/contracts';
 
 export const metadata: Metadata = {
   alternates: { canonical: '/whitepaper' },
@@ -160,6 +166,60 @@ export default function WhitepaperPage() {
                 open market and burn it. It confers no claim on revenue and is never required to
                 deposit.
               </P>
+            </div>
+
+
+            {/* Deployment status — what is live, versus what this document describes */}
+            <div className="mt-14 rounded-xl border border-amber-500/25 bg-amber-500/[0.04] p-6 sm:p-8">
+              <h2 id="deployment" className="scroll-mt-28 text-xl font-semibold text-ink-100">
+                Deployment status
+              </h2>
+              <p className="mt-3 max-w-3xl text-sm leading-relaxed text-ink-300">
+                This document describes the protocol as designed, and as it ran in full on testnet.
+                Mainnet took the minimal path. Everything below is checkable on the explorer, and
+                where this section and the rest of the document disagree about what exists, this
+                section is the one that is current.
+              </p>
+
+              <h3 className="mt-7 text-2xs font-medium uppercase tracking-[0.16em] text-ink-500">
+                Live on {MAINNET.chainName} (chain {MAINNET.chainId}), since {MAINNET.launchedOn}
+              </h3>
+              <ul className="mt-4 space-y-3">
+                {[...DEPLOYED_ON_MAINNET, ...LIVE_VAULTS].map((c) => (
+                  <li key={c.address} className="text-sm">
+                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <span className="font-medium text-ink-100">{c.name}</span>
+                      <a
+                        href={explorerAddress(c.address)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="break-all font-mono text-2xs text-ink-500 underline-offset-2 transition-colors hover:text-ink-300 hover:underline"
+                      >
+                        {c.address}
+                      </a>
+                    </div>
+                    <p className="mt-0.5 text-sm leading-relaxed text-ink-400">{c.role}</p>
+                  </li>
+                ))}
+              </ul>
+
+              <h3 className="mt-8 text-2xs font-medium uppercase tracking-[0.16em] text-ink-500">
+                Written and tested, but not deployed to mainnet
+              </h3>
+              <ul className="mt-4 space-y-3">
+                {NOT_ON_MAINNET.map((c) => (
+                  <li key={c.name} className="text-sm">
+                    <span className="font-medium text-ink-100">{c.name}</span>
+                    <p className="mt-0.5 max-w-3xl text-sm leading-relaxed text-ink-400">{c.note}</p>
+                  </li>
+                ))}
+              </ul>
+
+              <p className="mt-7 max-w-3xl text-sm leading-relaxed text-ink-300">
+                Sections 3 and 4 describe the oracle, the strategy executor and three vault types in
+                the present tense. One vault type is live on mainnet. Read those sections as the
+                design, and this list as the deployment.
+              </p>
             </div>
 
             {/* 1 */}
@@ -469,15 +529,16 @@ export default function WhitepaperPage() {
               </div>
 
               <P>
-                Circulating supply at launch is {FLOAT_AT_LAUNCH_PCT}%, being the Season 1 airdrop
-                plus protocol-owned liquidity. Contributors and backers together hold{' '}
-                {INSIDER_PCT}%, receive nothing at launch, and unlock nothing for twelve months.
+                Circulating supply is {CIRCULATING_PCT}%, being the governance Safe,
+                protocol-owned liquidity and holders. The remaining 800,000,000 is locked in a
+                vesting contract on a 180-day cliff releasing linearly to day 1095, marked
+                non-revocable onchain so it cannot be cancelled or clawed back.
               </P>
               <P>
-                The float is deliberately higher than is fashionable. A small float paired with a
-                large fully-diluted valuation produces a price discovered against very little
-                liquidity, and every subsequent unlock then arrives into a market that cannot
-                absorb it. Deep protocol-owned liquidity and a real launch float are the structural
+                A small float paired with a large fully-diluted valuation produces a price
+                discovered against very little liquidity, and every subsequent unlock then arrives
+                into a market that cannot absorb it. Protocol-owned liquidity and a long,
+                non-revocable lock on the remainder are the structural
                 answer to that, and they are priced as insurance rather than as cost.
               </P>
               <P>
@@ -657,15 +718,19 @@ ZOR.burn(zorBurned)          // reduces totalSupply`}
                 rather than by the protocol.
               </P>
               <P>
-                <strong className="text-ink-100">No third-party audit.</strong> The gating item
-                before mainnet.
+                <strong className="text-ink-100">No third-party audit.</strong> Earlier revisions
+                of this document called an audit the gating item before mainnet. That is not what
+                happened: the contracts were deployed to mainnet on {MAINNET.launchedOn} unaudited,
+                and they remain unaudited today. The source is verified on the explorer and the test
+                suite is public, which is evidence but is not an audit. Treat every contract listed
+                above as unreviewed by a third party, and size any position accordingly.
               </P>
             </div>
 
             {/* Footer */}
             <div className="mt-16 border-t border-void-700 pt-8">
               <p className="text-xs leading-relaxed text-ink-500">
-                Version 1.0, 1 September 2026. This document describes the protocol as implemented
+                Version 1.1, 5 September 2026. This document describes the protocol as implemented
                 at the time of writing and will be revised as the protocol changes. The contracts
                 are the authoritative specification; where this document and the code disagree, the
                 code is correct and this document is a bug.

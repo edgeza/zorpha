@@ -5,13 +5,15 @@ import { SupplyCurve } from '@/components/marketing/SupplyCurve';
 import { SectionHeading, Callout, SpecRow, Stat } from '@/components/ui/Primitives';
 import {
   ALLOCATIONS,
+  ON_CHAIN_CUSTODY,
+  CIRCULATING_PCT,
   TOKEN,
-  FLOAT_AT_LAUNCH_PCT,
   INSIDER_PCT,
   tokensFor,
   pctFor,
 } from '@/lib/tokenomics';
 import { formatCompact, formatMonths } from '@/lib/format';
+import { explorerAddress } from '@/lib/contracts';
 import { countBy, TEST_STATUS } from '@/lib/audit';
 import { activeChain, isMainnet } from '@/lib/chains';
 
@@ -19,7 +21,7 @@ export const metadata: Metadata = {
   alternates: { canonical: '/token' },
   title: 'Token',
   description:
-    '$ZOR tokenomics: 1,000,000,000 fixed supply, no mint function, 21% float at launch, and 50% of protocol fees used to buy and burn on the open market.',
+    '$ZOR tokenomics: 1,000,000,000 fixed supply, no mint function, 8% circulating with 800,000,000 locked in a non-revocable vesting contract, and 50% of protocol fees used to buy and burn on the open market.',
 };
 
 export default function TokenPage() {
@@ -43,11 +45,11 @@ export default function TokenPage() {
           <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Stat label="Max supply" value={formatCompact(TOKEN.maxSupply)} sub="No mint function exists" />
             <Stat
-              label="Float at launch"
-              value={`${FLOAT_AT_LAUNCH_PCT}%`}
-              sub="Airdrop plus protocol liquidity"
+              label="Circulating"
+              value={`${CIRCULATING_PCT}%`}
+              sub="Measured onchain, not planned"
             />
-            <Stat label="Insider share" value={`${INSIDER_PCT}%`} sub="Contributors and backers combined" />
+            <Stat label="Insider share" value={`${INSIDER_PCT}%`} sub="Policy: contributors and backers" />
             <Stat label="Fees to burn" value="50%" tone="verified" sub="Of all protocol revenue" />
           </div>
         </div>
@@ -56,9 +58,9 @@ export default function TokenPage() {
       {/* ─── Allocation ───────────────────────────────────────────────────── */}
       <section id="allocation" className="shell py-20">
         <SectionHeading
-          eyebrow="Allocation"
-          title="Where the supply goes"
-          lede="Six buckets, summing to exactly 100%. The same basis points are hardcoded in the deploy script, which refuses to run if the distribution does not consume the entire supply and leave the deploy key holding zero."
+          eyebrow="Allocation policy"
+          title="Where the supply is meant to go"
+          lede="Six buckets, summing to exactly 100%. The same basis points are hardcoded in the deploy script, which refuses to run if the distribution does not consume the entire supply and leave the deploy key holding zero. This is the published policy; what the chain holds today is set out directly below it."
         />
 
         <div className="mt-12 card-pad">
@@ -113,6 +115,45 @@ export default function TokenPage() {
           ))}
         </div>
       </section>
+
+      {/* ─── Onchain custody ─────────────────────────────────────────────── */}
+      <section id="custody" className="shell py-20">
+        <SectionHeading
+          eyebrow="Onchain today"
+          title="What the chain actually holds"
+          lede="The policy above is intent. This is custody, readable from any block explorer. The treasury, contributor and backer buckets were locked as one non-revocable schedule to the governance Safe rather than four separate cliffs, so this table, not the policy, is what to verify."
+        />
+
+        <div className="mt-12 space-y-4">
+          {ON_CHAIN_CUSTODY.map((c) => (
+            <div key={c.label} className="card-pad">
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <h3 className="text-base font-semibold text-ink-100">{c.label}</h3>
+                <div className="flex items-baseline gap-3">
+                  <span className="font-mono text-sm text-ink-200">
+                    {formatCompact(c.tokens)}
+                  </span>
+                  <span className="font-mono text-2xs text-ink-500">
+                    {((c.tokens / TOKEN.maxSupply) * 100).toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+              <p className="mt-2.5 max-w-3xl text-sm leading-relaxed text-ink-400">{c.note}</p>
+              {c.address ? (
+                <a
+                  href={explorerAddress(c.address)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-block break-all font-mono text-2xs text-ink-500 underline-offset-2 transition-colors hover:text-ink-300 hover:underline"
+                >
+                  {c.address}
+                </a>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </section>
+
 
       {/* ─── Unlocks ──────────────────────────────────────────────────────── */}
       <section id="unlocks" className="border-y border-void-700 bg-void-900/40 py-20">

@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 1788601783209,
+  "meta": {
+    "name": "B - lower vault seed minimum to 90 USDG",
+    "description": "setParams on VaultLauncher. Only minSeedEscrow changes (1,000 -> 90 USDG). The other four are passed at their current on-chain values so they are not reset.",
+    "txBuilderVersion": "1.16.5"
+  },
+  "transactions": [
+    {
+      "to": "0x9eD12842A222aeD986E768b3D50aDCf89691159A",
+      "value": "0",
+      "data": "0x46fb955700000000000000000000000000000000000000000000021e19e0c9bab240000000000000000000000000000000000000000000000000000000000000055d4a8000000000000000000000000000000000000000000000000000000000000001f40000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000000000000000003e8",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}

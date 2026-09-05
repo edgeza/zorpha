@@ -41,7 +41,22 @@ gwei() { node -e 'process.stdout.write((Number(process.argv[1])/1e9).toFixed(3))
 CHAIN=$(cast chain-id --rpc-url "$RPC")
 [[ "$CHAIN" == "4663" ]] || die "this is chain $CHAIN, not mainnet 4663"
 
-DEPLOYER=$(cast wallet address --account "$ACCOUNT")
+# DEPLOYER_ADDRESS skips one passphrase prompt.
+#
+# This script asks three times: once here to learn the address, then once per
+# forge script to sign. Each is a chance to mistype, and a typo on the second
+# loses the whole run -- which is exactly what happened on the first real
+# attempt, after the simulation had already succeeded.
+#
+# The address is public and derived from the keystore, so supplying it costs
+# nothing in safety and removes a prompt. If it disagrees with the keystore the
+# deploy would fail at --sender rather than doing something subtle, and the
+# broadcast checks below would catch it either way.
+if [[ -n "${DEPLOYER_ADDRESS:-}" ]]; then
+  DEPLOYER=$(cast to-check-sum-address "$DEPLOYER_ADDRESS")
+else
+  DEPLOYER=$(cast wallet address --account "$ACCOUNT")
+fi
 BAL=$(cast balance "$DEPLOYER" --rpc-url "$RPC")
 GP=$(cast gas-price --rpc-url "$RPC")
 

@@ -21,6 +21,56 @@ export const TOKEN = {
   domain: 'zorpha.xyz',
 } as const;
 
+/**
+ * What the chain actually holds TODAY, which is not the same thing as the
+ * allocation policy below.
+ *
+ * The policy describes six buckets with separate cliffs. On mainnet the
+ * treasury, contributor and backer buckets were locked as a SINGLE
+ * non-revocable schedule to the governance Safe rather than as separate
+ * per-cohort schedules, so the site must not imply four independent cliffs
+ * exist onchain when one does. These figures are what a block explorer shows.
+ */
+export const ON_CHAIN_CUSTODY: {
+  label: string;
+  tokens: number;
+  note: string;
+  address: string | null;
+}[] = [
+  {
+    label: 'Locked in vesting',
+    tokens: 800_000_000,
+    note: '180-day cliff, then linear release to day 1095. Non-revocable: the schedule cannot be cancelled or clawed back.',
+    address: '0x81613D9914F7b4c02c897941757a99BC191De88e',
+  },
+  {
+    label: 'Airdrop, unclaimed',
+    tokens: 80_000_000,
+    note: 'Held by the Merkle distributor until claimed by eligible wallets.',
+    address: '0x1045AeCaCad091eC791815Be8c28DA12Ed94D4E3',
+  },
+  {
+    label: 'Insurance fund',
+    tokens: 40_000_000,
+    note: 'Released only by governance, only against a verified shortfall.',
+    address: '0x9D3B787a3492b4fe6D2a2C12062a4164263522Fd',
+  },
+  {
+    label: 'Circulating',
+    tokens: 80_000_000,
+    note: 'Governance Safe, protocol-owned liquidity and holders.',
+    address: null,
+  },
+];
+
+/** Circulating share of max supply, measured onchain rather than planned. */
+export const CIRCULATING_PCT =
+  (ON_CHAIN_CUSTODY.find((c) => c.label === 'Circulating')!.tokens / 1_000_000_000) * 100;
+
+if (ON_CHAIN_CUSTODY.reduce((s, c) => s + c.tokens, 0) !== 1_000_000_000) {
+  throw new Error('Zorpha: ON_CHAIN_CUSTODY must sum to max supply.');
+}
+
 export type UnlockShape = 'tge' | 'cliff-linear' | 'seasonal' | 'locked';
 
 export interface Allocation {

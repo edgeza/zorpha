@@ -1,10 +1,10 @@
 'use client';
 
-import { TOKEN, FLOAT_AT_LAUNCH_PCT } from '@/lib/tokenomics';
+import { TOKEN, CIRCULATING_PCT } from '@/lib/tokenomics';
 import { formatCompact } from '@/lib/format';
 import { CountUp } from '@/components/motion/CountUp';
 import { PrismHero } from '@/components/ui/prism-hero';
-import { isMainnet } from '@/lib/chains';
+import { activeChain, isMainnet } from '@/lib/chains';
 
 /**
  * Hero.
@@ -28,13 +28,13 @@ import { isMainnet } from '@/lib/chains';
 
 const STATS = [
   { label: 'Max supply', value: TOKEN.maxSupply, sub: 'fixed, no mint', compact: true },
-  { label: 'Launch float', value: FLOAT_AT_LAUNCH_PCT, sub: 'circulating day one', suffix: '%' },
+  { label: 'Circulating', value: CIRCULATING_PCT, sub: 'onchain, 800M locked', suffix: '%' },
   { label: 'Fee to buyback', value: 50, sub: 'bought and burned', suffix: '%' },
   { label: 'Timelock delay', value: 48, sub: 'on every admin action', suffix: 'h' },
 ];
 
 const BUILT_ON = [
-  { label: 'Robinhood Chain', detail: 'chain 46630' },
+  { label: activeChain.name, detail: 'chain ' + activeChain.id },
   { label: 'ERC-4626', detail: 'vault shares' },
   { label: 'ERC-5805', detail: 'vote checkpoints' },
   { label: 'ERC-2612', detail: 'gasless approvals' },
