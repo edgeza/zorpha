@@ -412,10 +412,51 @@ if (!code || code === '0x') codeless.push(address);`}</Pre>
             Run against Robinhood Chain mainnet, not simulated.
           </p>
 
+          <H2 id="package">The checks, as a package</H2>
+          <P>
+            These four checks are now <Code>orbit-preflight</Code> on npm, lifted out of the indexer
+            they were written for. Zero dependencies, MIT, and the same fourteen tests gate the
+            published build.
+          </P>
+
+          <Pre>{`npm i orbit-preflight`}</Pre>
+
+          <P>
+            It takes <em>every</em> endpoint the application may use rather than the primary alone,
+            because the fallback pointed at the other network is the one that survives review.
+          </P>
+
+          <Pre>{`import { assertPreflight } from 'orbit-preflight';
+
+await assertPreflight({
+  chainId: 4663,
+  rpcUrls: [process.env.RPC_URL, process.env.RPC_URL_FALLBACK],
+  startBlock: 55_201_684n,
+  addresses: ['0x3829bC787d4eB15Ec855A6cA33e1492a9103d130'],
+});`}</Pre>
+
+          <P>
+            It throws before the first write. Handed a mainnet RPC and a testnet chain id &mdash; the
+            mistake this piece opens with &mdash; it refuses to start, and names both chains rather
+            than only the one it wanted:
+          </P>
+
+          <Pre>{`fatal [chain-id-mismatch]
+  https://rpc.mainnet.chain.robinhood.com/rpc serves chain 4663, but this
+  deployment is configured for 46630. Every address in your config comes
+  from the configured chain and every balance beside it from this RPC;
+  while they disagree the application does confident, wrong work.`}</Pre>
+
           <div className="mt-14 border-t border-void-700 pt-6 text-sm text-ink-500">
             <p>
-              We intend to extract the safety layer described here into a standalone package for
-              Orbit deployments; today it lives inside the protocol&rsquo;s own indexer.
+              The safety layer described here is published as{' '}
+              <a
+                href="https://www.npmjs.com/package/orbit-preflight"
+                className="text-zor-400 hover:text-zor-300"
+              >
+                orbit-preflight
+              </a>{' '}
+              for any Orbit deployment to use.
             </p>
             <p className="mt-3">
               <Link href="/whitepaper#deployment" className="text-zor-400 hover:text-zor-300">
