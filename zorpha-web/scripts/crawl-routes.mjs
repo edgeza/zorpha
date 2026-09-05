@@ -1,10 +1,17 @@
 #!/usr/bin/env node
 /**
- * Crawls every static route against a running production server.
+ * Crawls every route against a running production server.
  *
- * Guards three things at once: that pages render, that no testnet chain id or
- * RPC host leaked back in, and that the tokenomics figures corrected on
- * 5 September have not regressed.
+ * Guards three things: that pages render, that no testnet chain id or RPC host
+ * leaked back in, and that the tokenomics figures corrected on 5 September have
+ * not regressed.
+ *
+ * COVERAGE BOUNDARY: this fetches server-rendered HTML and runs no JavaScript.
+ * It cannot see client-only failures. In particular the hero prism is imported
+ * with `ssr: false` (components/ui/prism-hero.tsx:38) and is never present in
+ * the HTML fetched here, so a broken or mis-coloured prism will still report
+ * "routes ok". Verifying that needs a real browser. Read a pass as "the server
+ * renders every route without leaking the wrong chain", not as "the site works".
  */
 const BASE = process.env.BASE ?? 'http://localhost:3000';
 
@@ -14,6 +21,9 @@ const ROUTES = [
   '/portal', '/portal/airdrop', '/portal/governance', '/portal/leaderboard',
   '/portal/leaders', '/portal/leaders/launch', '/portal/manage',
   '/portal/receipts', '/portal/vaults', '/portal/vesting',
+  // Dynamic routes exercised with real mainnet values:
+  '/portal/vaults/0x3829bC787d4eB15Ec855A6cA33e1492a9103d130',  // zsUSDG vault
+  '/portal/managers/0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4', // governance Safe
 ];
 
 const failures = [];
