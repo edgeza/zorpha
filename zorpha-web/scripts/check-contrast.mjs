@@ -56,8 +56,9 @@ for (const [token, min] of Object.entries(THRESHOLDS)) {
 }
 
 // A graphic-tier value must never be reachable as a UI token.
-if (/--zor-500:\s*#(4700f8|8700f9)/i.test(css)) {
-  failures.push('--zor-500 is set to a graphic-tier value; it governs text and borders.');
+for (const token of Object.keys(THRESHOLDS)) {
+  const m = css.match(new RegExp(token + ':\\s*#(4700f8|8700f9)', 'i'));
+  if (m) failures.push(token + ' is set to a graphic-tier value; UI tokens must not reuse graphic-tier colours.');
 }
 
 if (failures.length) {
