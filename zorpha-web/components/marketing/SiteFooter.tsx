@@ -1,6 +1,17 @@
 import Link from 'next/link';
 import { Logo } from '@/components/ui/Primitives';
 import { TOKEN } from '@/lib/tokenomics';
+import { contracts, explorerAddress } from '@/lib/contracts';
+
+/**
+ * Listing aggregators (GeckoTerminal, Blockscout token info) verify a project's
+ * socials and contract address against the official site before they will show
+ * them. Both therefore have to be publicly rendered here, not just handed to a
+ * submission form.
+ */
+const SOCIALS: { href: string; label: string }[] = [
+  { href: 'https://x.com/ZorphaProtocol', label: 'X' },
+];
 
 const COLUMNS: { heading: string; links: { href: string; label: string; external?: boolean }[] }[] =
   [
@@ -60,6 +71,36 @@ export function SiteFooter() {
               <span className="badge-zor">{TOKEN.ticker}</span>
               <span className="badge">{TOKEN.domain}</span>
             </div>
+
+            <div className="mt-5 flex items-center gap-3">
+              {SOCIALS.map((s) => (
+                <a
+                  key={s.href}
+                  href={s.href}
+                  target="_blank"
+                  rel="noopener noreferrer me"
+                  aria-label={`Zorpha on ${s.label}`}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-void-700 text-ink-400 transition-colors hover:border-void-600 hover:text-ink-100"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-current">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                  </svg>
+                </a>
+              ))}
+            </div>
+
+            <p className="mt-5 text-2xs leading-relaxed text-ink-500">
+              {TOKEN.ticker} contract
+              <br />
+              <a
+                href={explorerAddress(contracts.zor)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="break-all font-mono text-ink-400 underline-offset-2 transition-colors hover:text-ink-100 hover:underline"
+              >
+                {contracts.zor}
+              </a>
+            </p>
           </div>
 
           {COLUMNS.map((col) => (
