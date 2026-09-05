@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { PortalNav } from '@/components/portal/PortalNav';
 import { EnvBanner } from '@/components/portal/EnvBanner';
 import { activeChain } from '@/lib/chains';
+import { assertServerChain } from '@/lib/chain-guard';
 
 export const metadata: Metadata = {
   title: 'Portal',
@@ -11,7 +12,21 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function PortalLayout({ children }: { children: ReactNode }) {
+/**
+ * The chain check lives here, not on each page, so a route added tomorrow gets
+ * it for free. `indexer/src/index.ts:277` describes the cost of the other
+ * arrangement: a per-page step "is exactly the step that gets forgotten after a
+ * redeploy".
+ *
+ * It throws only when the RPC serves a different chain than NEXT_PUBLIC_CHAIN_ID
+ * claims -- a state in which every address on the page comes from one chain and
+ * every balance beside it from another. An unreachable RPC is logged and
+ * rendered through; see lib/chain-guard.ts for why those two are not the same
+ * failure.
+ */
+export default async function PortalLayout({ children }: { children: ReactNode }) {
+  await assertServerChain();
+
   return (
     <div className="flex min-h-dvh flex-col">
       <PortalNav />

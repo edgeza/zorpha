@@ -26,6 +26,7 @@ function normalise(value: string | undefined): `0x${string}` {
   return trimmed.toLowerCase() as `0x${string}`;
 }
 
+export const MAINNET_CHAIN_ID = 4663;
 export const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? '46630');
 
 export const contracts = {
@@ -60,9 +61,66 @@ export function isDeployed(key: ContractKey): boolean {
   return contracts[key] !== ZERO_ADDRESS;
 }
 
-/** Every unconfigured contract, for the portal's environment banner. */
+/** Every unconfigured contract, whether or not that is expected. */
 export function missingContracts(): ContractKey[] {
   return (Object.keys(contracts) as ContractKey[]).filter((k) => !isDeployed(k));
+}
+
+/**
+ * Whether a contract being unset is CORRECT on the given chain.
+ *
+ * The environment banner used to report all sixteen keys alike, which on
+ * mainnet meant shouting "7 contract addresses are unset, so the panels below
+ * have nothing to read" at every visitor -- while the panels below read fine.
+ * Six of those seven are deliberate, and one of them was simply wrong.
+ *
+ * Crying wolf has a cost beyond looking untidy: this banner is the same
+ * surface that has to be believed on the day something IS broken, and a
+ * warning that is always on is a warning nobody reads.
+ *
+ * Testnet 46630 ran the full stack, so nothing is expected to be absent there
+ * and this returns false for every key.
+ */
+export function isExpectedAbsence(key: ContractKey, chainId: number = CHAIN_ID): boolean {
+  if (chainId !== MAINNET_CHAIN_ID) return false;
+
+  switch (key) {
+    // Written and tested, deliberately not deployed on 4663. lib/deployment.ts
+    // NOT_ON_MAINNET carries the reasoning and the public disclosure; the
+    // whitepaper and /protocol say so too. Absent by decision, not by fault.
+    case 'oracle':
+    case 'strategyExecutor':
+    case 'spotVault':
+    case 'rotationVault':
+    case 'reputationRegistry':
+      return true;
+
+    // Testnet-only by design. `isMainnet` exists in lib/chains.ts precisely so
+    // this cannot reach mainnet -- reporting its absence there as a
+    // misconfiguration inverts the intent.
+    case 'leaderFaucet':
+      return true;
+
+    // Deployed on mainnet (zsUSDG, 0x3829bC78...), just not through this env
+    // var. Vaults stopped being env-configured singletons: the portal reads
+    // them from `vaults` filtered by chain_id (migrations 011 and 012), which
+    // is what lets a second yield vault exist at all. A singleton address here
+    // could only ever name one of them, so leaving it unset is right and the
+    // banner should not have called it missing.
+    case 'yieldVault':
+      return true;
+
+    default:
+      return false;
+  }
+}
+
+/**
+ * Unconfigured contracts that SHOULD have been configured -- the only ones
+ * worth interrupting a reader about.
+ */
+export function misconfiguredContracts(chainId: number = CHAIN_ID): ContractKey[] {
+  return missingContracts().filter((k) => !isExpectedAbsence(k, chainId));
 }
 
 export const explorerUrl =
@@ -319,9 +377,102 @@ export const vaultAbi = [
     inputs: [],
     outputs: [{ type: 'bool' }],
   },
+  {
+    // Basis points of gains taken above a high-water mark, paid to the
+    // treasury. Needed to quote a depositor the rate they actually keep
+    // rather than the underlying venue's headline number.
+    type: 'function',
+    name: 'performanceFee',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    // Yield vaults only. Reverts on the spot and rotation vaults, which is
+    // how the APY panel tells the two apart without being told.
+    type: 'function',
+    name: 'adapter',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+  },
 ] as const;
 
 export { erc20Abi, erc4626Abi };
+
+/**
+ * ERC4626YieldAdapter: the hop from a Zorpha yield vault to the venue it
+ * actually earns in. `target` is that venue.
+ */
+export const yieldAdapterAbi = [
+  {
+    type: 'function',
+    name: 'target',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+  },
+] as const;
+
+/**
+ * Morpho Vault V2, the shape of the venue behind the live yield vault
+ * (Steakhouse USDG, 0xBeEff0...09dd on chain 4663).
+ *
+ * These three reads are the whole live-APY measurement. `_totalAssets` is what
+ * the vault has booked as of `lastUpdate`; the first return of
+ * `accrueInterestView` is what it would book at the current block. The gap
+ * between them, over the elapsed seconds, is the rate -- see lib/apy.ts.
+ *
+ * Deliberately NOT part of `vaultAbi`: these are the underlying venue's
+ * functions, not Zorpha's, and a venue that is not a Morpho V2 vault will
+ * revert on all three. The panel treats that as "cannot measure" and says so,
+ * which is the honest outcome for a venue whose rate it has no way to read.
+ */
+/**
+ * Multicall3's view of the block it is executing in.
+ *
+ * Read alongside the accrual figures in the SAME `useReadContracts` group, so
+ * the timestamp and the balances come from one block. Taking the timestamp
+ * from a separate `useBlock` instead lets the two drift apart, and at ~0.15s
+ * blocks that skew lands directly in the numerator of the rate. See the note
+ * on MULTICALL3 in lib/chains.ts.
+ */
+export const multicall3TimestampAbi = [
+  {
+    type: 'function',
+    name: 'getCurrentBlockTimestamp',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+] as const;
+
+export const MULTICALL3_ADDRESS =
+  '0xcA11bde05977b3631167028862bE2a173976CA11' as const;
+
+export const morphoVaultV2Abi = [
+  {
+    type: 'function',
+    name: '_totalAssets',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint128' }],
+  },
+  {
+    type: 'function',
+    name: 'lastUpdate',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint64' }],
+  },
+  {
+    type: 'function',
+    name: 'accrueInterestView',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }],
+  },
+] as const;
 
 /**
  * VaultLauncher: permissionless vault creation.

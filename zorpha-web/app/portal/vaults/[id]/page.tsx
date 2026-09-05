@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 import { getVault, listRebalancesForVault } from '@/lib/queries';
 import { ReceiptCard } from '@/components/portal/ReceiptCard';
 import { VaultActions } from '@/components/portal/VaultActions';
+import { VaultApyPanel } from '@/components/portal/VaultApy';
 import { EmptyState, SpecRow } from '@/components/ui/Primitives';
 import { explorerAddress } from '@/lib/contracts';
 import { formatAddress, formatDate } from '@/lib/format';
@@ -129,7 +130,12 @@ export default async function VaultDetailPage({
           </div>
         </div>
 
-        <div>
+        <div className="flex flex-col gap-6">
+          {/* The rate sits above the deposit box because it is the thing being
+              decided on. It reads live from the venue rather than from any
+              figure stored here -- see components/portal/VaultApy.tsx. */}
+          <VaultApyPanel vaultAddress={vault.address} />
+
           {/* No assetSymbol or assetDecimals: VaultActions reads both from the
               token. This used to pass
               `assetSymbol={vault.vault_type === 'yield' ? 'USDC' : 'USDC'}` --
