@@ -17,6 +17,7 @@ const BASE = process.env.BASE ?? 'http://localhost:3000';
 
 const ROUTES = [
   '/', '/faq', '/protocol', '/roadmap', '/token', '/whitepaper', '/tools/bridge',
+  '/writing', '/writing/silent-failures',
   '/legal/terms', '/legal/privacy', '/legal/disclaimer',
   '/portal', '/portal/airdrop', '/portal/governance', '/portal/leaderboard',
   '/portal/leaders', '/portal/leaders/launch', '/portal/manage',
@@ -40,7 +41,15 @@ for (const route of ROUTES) {
 
   if (res.status !== 200) failures.push(route + ': HTTP ' + res.status);
   if (/application error|Internal Server Error/i.test(body)) failures.push(route + ': render error');
-  if (/46630|testnet\.chain\.robinhood/i.test(body)) failures.push(route + ': testnet reference');
+  // The testnet check exists because a mainnet page mentioning 46630 is almost
+  // always a leftover -- that is how three dead testnet vaults were once
+  // offered to mainnet visitors. The writing routes are the one place where
+  // naming the testnet is the POINT: the post is about telling 46630 and 4663
+  // apart. Exempting those two routes keeps the rule strict everywhere it
+  // guards something, rather than loosening the pattern for the whole site.
+  if (!route.startsWith('/writing') && /46630|testnet\.chain\.robinhood/i.test(body)) {
+    failures.push(route + ': testnet reference');
+  }
   if (/21% (of supply|float)|Float at launch/i.test(body)) failures.push(route + ': stale 21% float claim');
   console.log('  ' + String(res.status).padEnd(4) + route);
 }

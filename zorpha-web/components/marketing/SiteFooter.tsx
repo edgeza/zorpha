@@ -23,6 +23,7 @@ const COLUMNS: { heading: string; links: { href: string; label: string; external
         { href: '/protocol#vaults', label: 'Vaults' },
         { href: '/tools/bridge', label: 'Zorpha Bridging' },
         { href: '/roadmap', label: 'Roadmap' },
+        { href: '/writing', label: 'Writing' },
       ],
     },
     {
