@@ -46,3 +46,6 @@ tsconfig.tsbuildinfo
 # Agent skills are installed to .agents/skills (canonical). On Windows the
 # installer copies rather than symlinks, so .claude/skills is a duplicate.
 .claude/skills/
+
+# backup taken when switching the web app from testnet to mainnet config
+.env.local.testnet-backup
