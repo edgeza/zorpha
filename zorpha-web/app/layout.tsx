@@ -72,19 +72,31 @@ export const metadata: Metadata = {
     'verifiable track record',
     'DeFi',
   ],
+  /**
+   * Titles here are templates, and descriptions are deliberately absent.
+   *
+   * These two blocks used to hardcode the site pitch, and Next.js applies a
+   * static openGraph value to every page beneath it -- so every shared link,
+   * whatever it pointed at, previewed as "Zorpha: verifiable onchain asset
+   * management / Curated vaults where every rebalance is a public, verifiable
+   * receipt". The engineering write-up, which is the most shareable thing here
+   * and carries its own title and summary, rendered on X and in Slack as a
+   * generic token pitch.
+   *
+   * Omitting both title and description here is what fixes it: Next.js then
+   * falls back to each page's own `title` and `description`, and the root
+   * `title.default` still covers anything that sets neither. A template was
+   * tried first and does nothing -- `openGraph.title.template` only applies to
+   * a child that sets its own `openGraph.title`, which none of these pages do,
+   * so every page kept receiving the root default.
+   */
   openGraph: {
     type: 'website',
     url: siteUrl,
     siteName: 'Zorpha',
-    title: 'Zorpha: verifiable onchain asset management',
-    description:
-      'Curated vaults where every rebalance is a public, verifiable receipt. Fixed-supply $ZOR with fee-funded buyback and burn.',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Zorpha: verifiable onchain asset management',
-    description:
-      'Curated vaults where every rebalance is a public, verifiable receipt. Fixed-supply $ZOR.',
   },
   robots: { index: true, follow: true },
 };
