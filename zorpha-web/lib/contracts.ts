@@ -377,9 +377,102 @@ export const vaultAbi = [
     inputs: [],
     outputs: [{ type: 'bool' }],
   },
+  {
+    // Basis points of gains taken above a high-water mark, paid to the
+    // treasury. Needed to quote a depositor the rate they actually keep
+    // rather than the underlying venue's headline number.
+    type: 'function',
+    name: 'performanceFee',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    // Yield vaults only. Reverts on the spot and rotation vaults, which is
+    // how the APY panel tells the two apart without being told.
+    type: 'function',
+    name: 'adapter',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+  },
 ] as const;
 
 export { erc20Abi, erc4626Abi };
+
+/**
+ * ERC4626YieldAdapter: the hop from a Zorpha yield vault to the venue it
+ * actually earns in. `target` is that venue.
+ */
+export const yieldAdapterAbi = [
+  {
+    type: 'function',
+    name: 'target',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+  },
+] as const;
+
+/**
+ * Morpho Vault V2, the shape of the venue behind the live yield vault
+ * (Steakhouse USDG, 0xBeEff0...09dd on chain 4663).
+ *
+ * These three reads are the whole live-APY measurement. `_totalAssets` is what
+ * the vault has booked as of `lastUpdate`; the first return of
+ * `accrueInterestView` is what it would book at the current block. The gap
+ * between them, over the elapsed seconds, is the rate -- see lib/apy.ts.
+ *
+ * Deliberately NOT part of `vaultAbi`: these are the underlying venue's
+ * functions, not Zorpha's, and a venue that is not a Morpho V2 vault will
+ * revert on all three. The panel treats that as "cannot measure" and says so,
+ * which is the honest outcome for a venue whose rate it has no way to read.
+ */
+/**
+ * Multicall3's view of the block it is executing in.
+ *
+ * Read alongside the accrual figures in the SAME `useReadContracts` group, so
+ * the timestamp and the balances come from one block. Taking the timestamp
+ * from a separate `useBlock` instead lets the two drift apart, and at ~0.15s
+ * blocks that skew lands directly in the numerator of the rate. See the note
+ * on MULTICALL3 in lib/chains.ts.
+ */
+export const multicall3TimestampAbi = [
+  {
+    type: 'function',
+    name: 'getCurrentBlockTimestamp',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+] as const;
+
+export const MULTICALL3_ADDRESS =
+  '0xcA11bde05977b3631167028862bE2a173976CA11' as const;
+
+export const morphoVaultV2Abi = [
+  {
+    type: 'function',
+    name: '_totalAssets',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint128' }],
+  },
+  {
+    type: 'function',
+    name: 'lastUpdate',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint64' }],
+  },
+  {
+    type: 'function',
+    name: 'accrueInterestView',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }],
+  },
+] as const;
 
 /**
  * VaultLauncher: permissionless vault creation.

@@ -5,6 +5,7 @@ import { EmptyState, Callout } from '@/components/ui/Primitives';
 import { VAULT_DEPOSITS_ENABLED } from '@/lib/contracts';
 import { formatAddress, formatDate } from '@/lib/format';
 import { LaunchLink } from '@/components/portal/VaultLeaderboard';
+import { VaultApyInline } from '@/components/portal/VaultApy';
 
 export const metadata: Metadata = { title: 'Vaults' };
 export const revalidate = 60;
@@ -64,7 +65,10 @@ export default async function VaultsPage() {
                   <div className="stat-label">{vault.vault_type}</div>
                   <h2 className="mt-1.5 text-base font-semibold text-ink-100">{vault.name}</h2>
                 </div>
-                <span className="badge shrink-0 font-mono">{vault.symbol}</span>
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  <span className="badge font-mono">{vault.symbol}</span>
+                  <VaultApyInline vaultAddress={vault.address} />
+                </div>
               </div>
 
               <p className="mt-3 flex-1 text-sm leading-relaxed text-ink-400">{vault.strategy}</p>
