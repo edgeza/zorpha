@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { SectionHeading } from '@/components/ui/Primitives';
 import { TOKEN, CIRCULATING_PCT } from '@/lib/tokenomics';
 import { countBy } from '@/lib/audit';
+import { MAINNET } from '@/lib/deployment';
 
 export const metadata: Metadata = {
   alternates: { canonical: '/faq' },
@@ -104,8 +105,15 @@ const GROUPS: { heading: string; items: QA[] }[] = [
           <>
             The contracts have been through a full internal security review. Every finding is
             written up in the protocol repository, all of them are closed, and each one is pinned
-            by a regression test. An external audit is a gate before mainnet, not something
-            arranged afterwards.
+            by a regression test.
+            <br />
+            <br />
+            There has been no third-party audit. An earlier version of this answer called one a
+            gate before mainnet. That is not what happened: the contracts were deployed to mainnet
+            on {MAINNET.launchedOn} unaudited, and they remain unaudited today. Verified source on
+            the explorer and a public test suite are evidence, but they are not an audit. Treat
+            every deployed contract as unreviewed by a third party and size any position
+            accordingly.
           </>
         ),
       },
