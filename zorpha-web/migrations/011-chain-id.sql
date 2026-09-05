@@ -62,6 +62,11 @@ alter table public.reputation_publishes
 alter table public.rebalances
   drop constraint if exists rebalances_tx_hash_log_index_key;
 
+-- Drop the new name too, so re-running this file is a no-op rather than an
+-- error: Postgres has no `add constraint if not exists`.
+alter table public.rebalances
+  drop constraint if exists rebalances_chain_tx_log_key;
+
 alter table public.rebalances
   add constraint rebalances_chain_tx_log_key unique (chain_id, tx_hash, log_index);
 
