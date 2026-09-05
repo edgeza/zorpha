@@ -4,7 +4,7 @@ import { TOKEN, FLOAT_AT_LAUNCH_PCT } from '@/lib/tokenomics';
 import { formatCompact } from '@/lib/format';
 import { CountUp } from '@/components/motion/CountUp';
 import { PrismHero } from '@/components/ui/prism-hero';
-import { isMainnet } from '@/lib/chains';
+import { activeChain, isMainnet } from '@/lib/chains';
 
 /**
  * Hero.
@@ -34,7 +34,7 @@ const STATS = [
 ];
 
 const BUILT_ON = [
-  { label: 'Robinhood Chain', detail: 'chain 46630' },
+  { label: activeChain.name, detail: 'chain ' + activeChain.id },
   { label: 'ERC-4626', detail: 'vault shares' },
   { label: 'ERC-5805', detail: 'vote checkpoints' },
   { label: 'ERC-2612', detail: 'gasless approvals' },
