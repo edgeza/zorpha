@@ -233,7 +233,7 @@ export function LaunchVaultForm() {
     <div className="space-y-5">
       {/* --- What it costs ------------------------------------------------ */}
       <div className="card-pad">
-        <h3 className="text-sm font-semibold text-ink-100">What it costs</h3>
+        <h2 className="text-sm font-semibold text-ink-100">What it costs</h2>
         <dl className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
             <dt className="stat-label">Bond</dt>
@@ -265,7 +265,7 @@ export function LaunchVaultForm() {
 
       {/* --- The form ----------------------------------------------------- */}
       <div className="card-pad space-y-4">
-        <h3 className="text-sm font-semibold text-ink-100">Your vault</h3>
+        <h2 className="text-sm font-semibold text-ink-100">Your vault</h2>
 
         {venues.length > 0 ? (
           <div>
@@ -379,7 +379,7 @@ export function LaunchVaultForm() {
 
       {/* --- The three transactions --------------------------------------- */}
       <div className="card-pad">
-        <h3 className="text-sm font-semibold text-ink-100">Three transactions</h3>
+        <h2 className="text-sm font-semibold text-ink-100">Three transactions</h2>
         <p className="mt-2 text-xs leading-relaxed text-ink-400">
           Approve the bond, approve the capital, then launch. Each settles before the next unlocks,
           so you can stop after any of them; an approval on its own moves nothing.

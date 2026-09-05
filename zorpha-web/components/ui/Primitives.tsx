@@ -102,17 +102,26 @@ export function EmptyState({
   title,
   body,
   action,
+  headingLevel = 2,
 }: {
   title: string;
   body: string;
   action?: ReactNode;
+  /**
+   * Heading level for the empty-state title. See the note on `Callout`: this
+   * was a hardcoded h3, and an empty state usually sits directly under the
+   * page h1, so /portal/receipts and /portal/leaders/launch jumped h1 to h3.
+   * Level 2 is skip-free in both positions the component appears in.
+   */
+  headingLevel?: 2 | 3 | 4;
 }) {
+  const Heading = `h${headingLevel}` as 'h2' | 'h3' | 'h4';
   return (
     <div className="card flex flex-col items-center gap-3 px-6 py-14 text-center">
       <div className="flex h-10 w-10 items-center justify-center rounded-full border border-void-600 bg-void-800">
         <span className="h-2 w-2 rounded-full bg-ink-500" />
       </div>
-      <h3 className="text-base font-medium text-ink-200">{title}</h3>
+      <Heading className="text-base font-medium text-ink-200">{title}</Heading>
       <p className="max-w-md text-sm leading-relaxed text-ink-400">{body}</p>
       {action}
     </div>
@@ -123,11 +132,35 @@ export function Callout({
   tone = 'info',
   title,
   children,
+  headingLevel = 2,
 }: {
   tone?: 'info' | 'warn' | 'danger' | 'verified';
   title: string;
   children: ReactNode;
+  /**
+   * The heading level for the callout's title.
+   *
+   * This was a hardcoded `h4`, and a callout almost always sits directly under
+   * an `h2` -- so /token and /protocol both jumped h2 to h4, which is the jump
+   * screen-reader users feel: heading navigation skips a rung and the callout
+   * reads as a sub-sub-section of something that does not exist.
+   *
+   * The default is 2 because callouts appear in both positions -- directly
+   * under the page h1 (the legal pages and most of the portal) and inside an
+   * h2 section (/token, /protocol). Level 2 skips in neither: h1 to h2 is a
+   * descent, h2 to h2 is a sibling. A default of 3 was tried first and simply
+   * moved the skip onto the nine pages with no h2, which is why this was
+   * checked against every route rather than reasoned about.
+   *
+   * Pass 3 where the callout genuinely sits inside an h2 section, so the
+   * outline nests instead of flattening.
+   *
+   * Appearance is unaffected either way: the size comes from the class, not
+   * the tag.
+   */
+  headingLevel?: 2 | 3 | 4 | 5;
 }) {
+  const Heading = `h${headingLevel}` as 'h2' | 'h3' | 'h4' | 'h5';
   const styles = {
     info: 'border-zor-600/40 bg-zor-500/[0.07]',
     warn: 'border-amber-600/40 bg-amber-500/[0.07]',
@@ -145,7 +178,7 @@ export function Callout({
     <div className={`rounded-card border p-5 ${styles}`}>
       <div className="flex items-center gap-2">
         <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-        <h4 className="text-sm font-semibold text-ink-100">{title}</h4>
+        <Heading className="text-sm font-semibold text-ink-100">{title}</Heading>
       </div>
       <div className="mt-2.5 space-y-2 text-sm leading-relaxed text-ink-300">{children}</div>
     </div>
