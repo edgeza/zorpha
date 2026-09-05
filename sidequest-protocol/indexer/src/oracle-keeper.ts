@@ -214,6 +214,35 @@ async function newestReportAge(now: bigint): Promise<number> {
 
 async function preflight() {
   /**
+   * The chain comes first, before anything read FROM it is interpreted.
+   *
+   * This check used to run after the bytecode check below, inside the same
+   * Promise.all as the oracle's own parameters. That ordering blamed the wrong
+   * variable: point RPC_URL at the other Robinhood Chain deployment and the
+   * oracle address has no code there, so the process exited with
+   * "ORACLE_ADDRESS is not a contract on this chain" and a hint to check the
+   * address -- which is correct about the symptom and wrong about the cause.
+   * The address was fine. The RPC was not.
+   *
+   * Every other check in this function reads something from the chain and
+   * decides what it means. None of them can mean anything until it is settled
+   * WHICH chain answered.
+   */
+  const id = await publicClient.getChainId();
+  if (id !== CHAIN_ID) {
+    log('error', 'chain id mismatch, refusing to keep an oracle on the wrong chain', {
+      expected: CHAIN_ID,
+      actual: id,
+      rpcUrl: RPC_URL,
+      hint:
+        id === MAINNET
+          ? `RPC_URL serves mainnet ${MAINNET}, which has no oracle to keep. Point it at testnet ${TESTNET}.`
+          : `RPC_URL serves ${id}, not the CHAIN_ID this keeper was configured with. The two Robinhood Chain ids differ by one digit: ${MAINNET} mainnet, ${TESTNET} testnet.`,
+    });
+    process.exit(1);
+  }
+
+  /**
    * Every read below assumes ORACLE_ADDRESS names the oracle CONTRACT. When it
    * does not, viem reports each read as `returned no data ("0x")` and blames
    * whichever function it happened to be calling, never the address:
@@ -244,19 +273,13 @@ async function preflight() {
     process.exit(1);
   }
 
-  const [id, role, staleness, quorum, count, decimals] = await Promise.all([
-    publicClient.getChainId(),
+  const [role, staleness, quorum, count, decimals] = await Promise.all([
     read<Hex>('UPDATER_ROLE'),
     read<bigint>('maxStaleness'),
     read<bigint>('minQuorum'),
     read<bigint>('updaterCount'),
     read<number>('decimals'),
   ]);
-
-  if (id !== CHAIN_ID) {
-    log('error', 'chain id mismatch', { expected: CHAIN_ID, actual: id });
-    process.exit(1);
-  }
 
   // Checked at startup rather than discovered on the first send, when the only
   // symptom would be a revert every REFRESH_AFTER seconds forever.
