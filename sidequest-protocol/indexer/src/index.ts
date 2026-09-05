@@ -348,28 +348,15 @@ async function main(): Promise<void> {
     chunkSize: config.blockChunkSize.toString(),
   });
 
-  // Chain id, archive capability, START_BLOCK and the configured vault
-  // addresses -- every one of them checked against the live chain, on every
-  // configured endpoint rather than whichever answers first. Three of the four
-  // fail SILENTLY when they come from the other deployment. See
-  // assertChainPreflight.
-  const preflight = await assertChainPreflight(config.vaultAddresses);
-
-  // Endpoints that did not answer. Not fatal -- an outage is not a
-  // misconfiguration -- but silence here is how a dead fallback goes unnoticed
-  // until the primary blips and there is nothing behind it.
-  for (const finding of preflight.findings) {
-    log('warn', 'preflight warning', { code: finding.code, detail: finding.message, url: finding.url });
-  }
-
+  // Chain id, START_BLOCK and the configured vault addresses, all checked
+  // against the live chain. Two of those three fail SILENTLY when they come
+  // from the other deployment -- see assertChainPreflight.
+  await assertChainPreflight(config.vaultAddresses);
   log('info', 'chain preflight passed', {
     chainId: config.chainId,
     chain: config.chainName,
     startBlock: config.startBlock.toString(),
     vaultAddressesChecked: config.vaultAddresses.length,
-    head: preflight.head?.toString() ?? null,
-    rpcsChecked: preflight.rpcs.length,
-    rpcsServingArchive: preflight.rpcs.filter((r) => r.servesArchive === true).length,
   });
 
   // A dry run is one cycle, no health server, no writes, and a summary. It
