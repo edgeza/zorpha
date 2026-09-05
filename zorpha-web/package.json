@@ -16,6 +16,7 @@
     "logo:favicon": "node script/crop-logo.js app/favicon.png app/icon.png --square --fill=92",
     "check:env": "node scripts/check-env.mjs",
     "check:contrast": "node scripts/check-contrast.mjs",
+    "check:routes": "node scripts/crawl-routes.mjs",
     "test": "node --import tsx --test lib/**/*.test.ts"
   },
   "dependencies": {
