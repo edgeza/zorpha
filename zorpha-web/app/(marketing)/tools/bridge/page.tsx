@@ -6,7 +6,10 @@ import { robinhoodMainnet } from '@/lib/chains';
 
 export const metadata: Metadata = {
   alternates: { canonical: '/tools/bridge' },
-  title: 'Zorpha Bridging',
+  // 'Bridge', not 'Zorpha Bridging': the root template appends the site name,
+  // so the old value rendered as "Zorpha Bridging · Zorpha" -- the only tab on
+  // the site that said Zorpha twice.
+  title: 'Bridge',
   description:
     'Move assets onto Robinhood Chain from Ethereum, Arbitrum, Base, Solana, Bitcoin and 65 other chains. Best-price routing across every major bridge and DEX, fully non-custodial.',
 };
