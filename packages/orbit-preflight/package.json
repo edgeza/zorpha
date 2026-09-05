@@ -10,7 +10,8 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test src/**/*.test.ts"
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "prepare": "npm run build"
   },
   "keywords": ["ethereum", "arbitrum", "orbit", "rollup", "rpc", "indexer", "preflight", "chain-id"],
   "license": "MIT",
