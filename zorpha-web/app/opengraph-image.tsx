@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-import { TOKEN, FLOAT_AT_LAUNCH_PCT } from '@/lib/tokenomics';
+import { TOKEN, CIRCULATING_PCT } from '@/lib/tokenomics';
 
 /**
  * The social card.
@@ -148,7 +148,7 @@ export default function Image() {
         >
           <div style={{ display: 'flex', gap: 76 }}>
             <Fact k="Max supply" v="1B" />
-            <Fact k="Float at launch" v={`${FLOAT_AT_LAUNCH_PCT}%`} />
+            <Fact k="Circulating" v={`${CIRCULATING_PCT}%`} />
             <Fact k="Fees to burn" v="50%" />
           </div>
           {/* One expression, not three text nodes: Satori treats adjacent

@@ -3,8 +3,7 @@ import type { Metadata } from 'next';
 import {
   ALLOCATIONS,
   TOKEN,
-  FLOAT_AT_LAUNCH_PCT,
-  INSIDER_PCT,
+  CIRCULATING_PCT,
   tokensFor,
   pctFor,
 } from '@/lib/tokenomics';
@@ -469,15 +468,16 @@ export default function WhitepaperPage() {
               </div>
 
               <P>
-                Circulating supply at launch is {FLOAT_AT_LAUNCH_PCT}%, being the Season 1 airdrop
-                plus protocol-owned liquidity. Contributors and backers together hold{' '}
-                {INSIDER_PCT}%, receive nothing at launch, and unlock nothing for twelve months.
+                Circulating supply is {CIRCULATING_PCT}%, being the governance Safe,
+                protocol-owned liquidity and holders. The remaining 800,000,000 is locked in a
+                vesting contract on a 180-day cliff releasing linearly to day 1095, marked
+                non-revocable onchain so it cannot be cancelled or clawed back.
               </P>
               <P>
-                The float is deliberately higher than is fashionable. A small float paired with a
-                large fully-diluted valuation produces a price discovered against very little
-                liquidity, and every subsequent unlock then arrives into a market that cannot
-                absorb it. Deep protocol-owned liquidity and a real launch float are the structural
+                A small float paired with a large fully-diluted valuation produces a price
+                discovered against very little liquidity, and every subsequent unlock then arrives
+                into a market that cannot absorb it. Protocol-owned liquidity and a long,
+                non-revocable lock on the remainder are the structural
                 answer to that, and they are priced as insurance rather than as cost.
               </P>
               <P>
