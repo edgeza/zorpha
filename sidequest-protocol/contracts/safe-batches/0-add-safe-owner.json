@@ -1,9 +1,0 @@
-{
-  "version": "1.0",
-  "chainId": "4663",
-  "createdAt": 1788560837000,
-  "meta": { "name": "0 - Add second Safe owner (2-of-2)", "description": "Adds 0x40Aaa675aE2Dd1e3D94E5D39D6D1Ed77038a844A and raises threshold to 2.", "txBuilderVersion": "1.16.5" },
-  "transactions": [
-    { "to": "0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4", "value": "0", "data": "0x0d582f1300000000000000000000000040aaa675ae2dd1e3d94e5d39d6d1ed77038a844a0000000000000000000000000000000000000000000000000000000000000002", "contractMethod": null, "contractInputsValues": null }
-  ]
-}
