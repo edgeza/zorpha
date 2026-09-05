@@ -1,9 +1,9 @@
 import { createPublicClient, http, fallback, defineChain, getAddress, type PublicClient } from 'viem';
-import { config } from './config.js';
+import { config, KNOWN_CHAINS } from './config.js';
 
 const chain = defineChain({
   id: config.chainId,
-  name: 'Robinhood Chain',
+  name: config.chainName,
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
   rpcUrls: { default: { http: [config.rpcUrl] } },
   blockExplorers: { default: { name: 'Explorer', url: config.explorerUrl } },
@@ -155,12 +155,76 @@ export async function assertChainId(): Promise<void> {
   if (chainIdVerified) return;
   const actual = await getPublicClient().getChainId();
   if (actual !== config.chainId) {
+    const known = KNOWN_CHAINS as Record<number, { name: string; rpcUrl: string }>;
+    const expected = known[config.chainId];
+    const served = known[actual];
     throw new Error(
-      `RPC chain id mismatch: expected ${config.chainId}, got ${actual}. ` +
-        'Refusing to index — check RPC_URL and CHAIN_ID.',
+      `RPC chain id mismatch: CHAIN_ID says ${config.chainId}` +
+        (expected ? ` (${expected.name})` : '') +
+        `, but RPC_URL serves ${actual}` +
+        (served ? ` (${served.name})` : '') +
+        `. Refusing to index.` +
+        (expected ? ` For ${config.chainId} use RPC_URL=${expected.rpcUrl}` : ''),
     );
   }
   chainIdVerified = true;
+}
+
+/**
+ * Everything that must be true before the first getLogs, checked against the
+ * live chain rather than against config.
+ *
+ * `assertChainId` alone is not enough. It catches the loud half of a
+ * half-flipped config -- a mainnet CHAIN_ID beside a testnet RPC -- and misses
+ * both quiet halves, which are worse because the service comes up green and
+ * indexes nothing:
+ *
+ *   START_BLOCK from the other chain. It is read only when a source has no
+ *   cursor (index.ts:107). A testnet height of 112,522,500 against mainnet's
+ *   head of ~55.2M makes every window empty. No error, no rows, healthy.
+ *
+ *   Vault addresses from the other chain. getLogs on an address with no code
+ *   is not an error, it is an empty array. Three testnet vaults scanned on
+ *   mainnet look exactly like three quiet vaults.
+ *
+ * Both are cheap to check once and impossible to notice later, so they are
+ * checked once, here, and the process refuses to start.
+ */
+export async function assertChainPreflight(vaultAddresses: readonly string[]): Promise<void> {
+  await assertChainId();
+
+  const client = getPublicClient();
+  const head = await client.getBlockNumber();
+
+  if (config.startBlock > head) {
+    throw new Error(
+      `START_BLOCK=${config.startBlock} is beyond the head of chain ` +
+        `${config.chainId} (${config.chainName}), currently ${head}. ` +
+        'Nothing would ever be scanned and every cycle would report success. ' +
+        'This is what a block height from the other chain looks like: testnet ' +
+        'heights are ~113M, mainnet ~55M. Set START_BLOCK to the deployment ' +
+        'block on THIS chain.',
+    );
+  }
+
+  // Only the addresses the operator named. The vaults table is the real source
+  // outside DRY_RUN, and it is checked by getKnownVaults' chain filter.
+  const codeless: string[] = [];
+  for (const address of vaultAddresses) {
+    const code = await client.getBytecode({ address: address as `0x${string}` });
+    if (!code || code === '0x') codeless.push(address);
+  }
+
+  if (codeless.length > 0) {
+    throw new Error(
+      `${codeless.length} of ${vaultAddresses.length} configured vault ` +
+        `address(es) have no code on chain ${config.chainId} ` +
+        `(${config.chainName}): ${codeless.join(', ')}. getLogs on an address ` +
+        'with no code returns an empty array rather than an error, so these ' +
+        'would be scanned forever and never yield a receipt. They are almost ' +
+        'certainly addresses from the other Robinhood Chain deployment.',
+    );
+  }
 }
 
 export function isValidAddress(value: string | undefined): value is `0x${string}` {

@@ -1,3 +1,4 @@
+import { activeChain } from './chains';
 import {
   getSupabase,
   supabaseConfigured,
@@ -15,6 +16,28 @@ import {
  * into a 500 on the home page, which is the worst possible failure mode during
  * a launch window. Callers render an explicit empty state instead.
  */
+
+/**
+ * The chain this build serves. Every query below filters on it.
+ *
+ * One Supabase project holds both deployments' rows, separated only by
+ * `chain_id` (migrations 011 and 012). An unfiltered query returns both, and
+ * the failure is silent and public: pointing the site at mainnet changed the
+ * RPC and the contract addresses but not the data, so /portal/vaults served
+ * three TESTNET vaults to mainnet visitors, each with a mandate and a manager,
+ * none of which has any code on 4663. Someone who picked one and deposited
+ * would have sent funds to an empty address.
+ *
+ * Migration 010 patched that by unlisting those three rows by hand, and said
+ * of itself: "correct only while production points at mainnet". Run the app
+ * against testnet after 010 and it shows the mainnet vault -- the same bug
+ * mirrored. Filtering on chain_id is the fix 010 was standing in for, and it
+ * is correct in both directions.
+ */
+const CHAIN_ID = activeChain.id;
+
+/** Postgres "column does not exist" -- i.e. migration 012 has not been run. */
+const UNDEFINED_COLUMN = '42703';
 
 async function safe<T>(label: string, run: () => Promise<T>, fallback: T): Promise<T> {
   if (!supabaseConfigured) return fallback;
@@ -65,16 +88,23 @@ export async function listVaults(): Promise<VaultRow[]> {
       // exclusion below runs regardless, and the query degrades to unfiltered
       // when the column is missing. The fix works before the migration and
       // gets stronger after it.
-      const q = getSupabase()!.from('vaults').select('*');
-      let { data, error } = await q
+      let { data, error } = await getSupabase()!
+        .from('vaults')
+        .select('*')
+        .eq('chain_id', CHAIN_ID)
         .eq('listed', true)
         .order('deployed_at', { ascending: true });
 
-      if (error && error.code === '42703') {
-        // Column not migrated yet. Fall back rather than showing nothing.
+      if (error && error.code === UNDEFINED_COLUMN) {
+        // One of the two columns is not migrated yet. Degrade rather than
+        // showing nothing: an EMPTY vault list is worse than an imprecise one,
+        // and migration 010 already unlisted the testnet rows by hand, so the
+        // fallback is still correct for the mainnet build it was written for.
         console.warn(
-          '[zorpha] vaults.listed missing — run migrations/004-vault-visibility.sql. ' +
-            'Falling back to name-based exclusion.',
+          '[zorpha] vaults.chain_id or vaults.listed missing — run ' +
+            'migrations/012-cursor-and-vault-chain-scope.sql (and 004). ' +
+            'Falling back to name-based exclusion, which cannot tell the two ' +
+            'chains apart.',
         );
         ({ data, error } = await getSupabase()!
           .from('vaults')
@@ -96,6 +126,7 @@ export async function getVault(address: string): Promise<VaultRow | null> {
       const { data, error } = await getSupabase()!
         .from('vaults')
         .select('*')
+        .eq('chain_id', CHAIN_ID)
         .ilike('address', address)
         .maybeSingle();
       if (error) throw error;
@@ -115,6 +146,7 @@ export async function listRebalancesForVault(
       const { data, error } = await getSupabase()!
         .from('rebalances')
         .select('*')
+        .eq('chain_id', CHAIN_ID)
         .ilike('vault_address', address)
         .order('block_timestamp', { ascending: false })
         .limit(limit);
@@ -135,6 +167,7 @@ export async function listRebalancesForManager(
       const { data, error } = await getSupabase()!
         .from('rebalances')
         .select('*')
+        .eq('chain_id', CHAIN_ID)
         .ilike('manager', manager)
         .order('block_timestamp', { ascending: false })
         .limit(limit);
@@ -152,6 +185,7 @@ export async function listLatestRebalances(limit = 50): Promise<RebalanceRow[]> 
       const { data, error } = await getSupabase()!
         .from('rebalances')
         .select('*')
+        .eq('chain_id', CHAIN_ID)
         .order('block_timestamp', { ascending: false })
         .limit(limit);
       if (error) throw error;
@@ -168,6 +202,7 @@ export async function listManagers(): Promise<ManagerRow[]> {
       const { data, error } = await getSupabase()!
         .from('managers')
         .select('*')
+        .eq('chain_id', CHAIN_ID)
         .order('total_rebalances', { ascending: false });
       if (error) throw error;
       return (data ?? []) as ManagerRow[];
@@ -183,6 +218,7 @@ export async function getManager(address: string): Promise<ManagerRow | null> {
       const { data, error } = await getSupabase()!
         .from('managers')
         .select('*')
+        .eq('chain_id', CHAIN_ID)
         .ilike('address', address)
         .maybeSingle();
       if (error) throw error;
@@ -199,6 +235,7 @@ export async function listReputationForManager(manager: string): Promise<Reputat
       const { data, error } = await getSupabase()!
         .from('reputation_publishes')
         .select('*')
+        .eq('chain_id', CHAIN_ID)
         .ilike('manager_address', manager)
         .order('created_at', { ascending: false });
       if (error) throw error;

@@ -67,7 +67,7 @@ const asBig = (v: unknown): string | null =>
  * arrives under two different names. Every branch below is that, not taste.
  */
 export function toRebalanceRow(
-  vault: Pick<VaultRow, 'address' | 'vault_type' | 'manager_address'>,
+  vault: Pick<VaultRow, 'address' | 'vault_type' | 'manager_address' | 'chain_id'>,
   entry: DecodedLog,
   blockTimestamp: string,
   navDecimals?: number,
@@ -76,6 +76,11 @@ export function toRebalanceRow(
   const type: VaultType = vault.vault_type;
 
   return {
+    // Taken from the vault, not from ambient config. The vault list is already
+    // filtered to the connected chain, so sourcing it here means a receipt can
+    // never disagree with the vault it belongs to -- and it keeps this module
+    // pure, which is what lets it be tested without an RPC or an env file.
+    chain_id: vault.chain_id,
     vault_address: vault.address,
     vault_type: type,
     // The vault's configured manager, which is what KEEPER_ROLE actually

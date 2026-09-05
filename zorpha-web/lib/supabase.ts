@@ -42,6 +42,16 @@ export type VaultRow = {
    * vault appearing, and the migration's trigger handles that on write.
    */
   listed?: boolean;
+  /**
+   * Which Robinhood Chain this vault is deployed on. 46630 testnet, 4663
+   * mainnet. Added by migration 012.
+   *
+   * Optional, unlike the same field on RebalanceRow -- and deliberately so.
+   * `listVaults()` falls back to an unfiltered query when the column is
+   * missing, so a row genuinely can arrive without it, and a required field
+   * would be a lie that only shows up at runtime.
+   */
+  chain_id?: number;
   address: `0x${string}`;
   vault_type: VaultType;
   name: string;
@@ -57,6 +67,14 @@ export type VaultRow = {
 
 export type RebalanceRow = {
   id: string;
+  /**
+   * Which Robinhood Chain this happened on. 46630 testnet, 4663 mainnet.
+   *
+   * Required, not optional: an optional field would let a query that forgets
+   * to filter type-check cleanly, which is the bug this column exists to stop.
+   * Rows written before migration 011 are all testnet and were backfilled.
+   */
+  chain_id: number;
   vault_address: `0x${string}`;
   vault_type: VaultType;
   manager: `0x${string}`;
@@ -78,6 +96,8 @@ export type RebalanceRow = {
 
 export type ManagerRow = {
   address: `0x${string}`;
+  /** 46630 testnet, 4663 mainnet. See RebalanceRow.chain_id. */
+  chain_id: number;
   label: string | null;
   avatar_url: string | null;
   first_seen_at: string;
@@ -87,6 +107,8 @@ export type ManagerRow = {
 
 export type ReputationRow = {
   id: string;
+  /** 46630 testnet, 4663 mainnet. See RebalanceRow.chain_id. */
+  chain_id: number;
   manager_address: `0x${string}`;
   contract_address: `0x${string}`;
   commitment: `0x${string}`;
