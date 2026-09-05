@@ -1,4 +1,10 @@
 import { createPublicClient, http, fallback, defineChain, getAddress, type PublicClient } from 'viem';
+import {
+  assertPreflight,
+  PreflightError,
+  type PreflightReport,
+  type RpcOptions,
+} from 'orbit-preflight';
 import { config, KNOWN_CHAINS } from './config.js';
 
 const chain = defineChain({
@@ -144,87 +150,120 @@ export function getPublicClient(): PublicClient {
   return cached;
 }
 
-let chainIdVerified = false;
-
-/**
- * Confirm the RPC really answers with the expected chain id before any read.
- * A misconfigured URL would otherwise poison the database with another chain's
- * data, which is far harder to detect after the fact than at startup.
- */
-export async function assertChainId(): Promise<void> {
-  if (chainIdVerified) return;
-  const actual = await getPublicClient().getChainId();
-  if (actual !== config.chainId) {
-    const known = KNOWN_CHAINS as Record<number, { name: string; rpcUrl: string }>;
-    const expected = known[config.chainId];
-    const served = known[actual];
-    throw new Error(
-      `RPC chain id mismatch: CHAIN_ID says ${config.chainId}` +
-        (expected ? ` (${expected.name})` : '') +
-        `, but RPC_URL serves ${actual}` +
-        (served ? ` (${served.name})` : '') +
-        `. Refusing to index.` +
-        (expected ? ` For ${config.chainId} use RPC_URL=${expected.rpcUrl}` : ''),
-    );
-  }
-  chainIdVerified = true;
-}
-
 /**
  * Everything that must be true before the first getLogs, checked against the
  * live chain rather than against config.
  *
- * `assertChainId` alone is not enough. It catches the loud half of a
- * half-flipped config -- a mainnet CHAIN_ID beside a testnet RPC -- and misses
- * both quiet halves, which are worse because the service comes up green and
- * indexes nothing:
+ * The checks live in `orbit-preflight`, which was extracted from the incident
+ * this function was originally written for. Delegating rather than keeping the
+ * hand-rolled versions buys two things the local code did not have:
  *
- *   START_BLOCK from the other chain. It is read only when a source has no
- *   cursor (index.ts:107). A testnet height of 112,522,500 against mainnet's
- *   head of ~55.2M makes every window empty. No error, no rows, healthy.
+ *   EVERY endpoint is checked, not whichever one answers. The old checks ran
+ *   through `getPublicClient()`, whose viem `fallback` transport consults the
+ *   fallback only when the primary blips -- so a fallback pointed at the other
+ *   network passed review by never being asked. That is exactly how the
+ *   original bad fallback survived.
  *
- *   Vault addresses from the other chain. getLogs on an address with no code
- *   is not an error, it is an empty array. Three testnet vaults scanned on
- *   mainnet look exactly like three quiet vaults.
+ *   Archive capability is checked at all. An endpoint can answer `eth_chainId`
+ *   with 4663 and still refuse historic `eth_getLogs` -- the real one answered
+ *   `-32602 "Archive requests require a personal token"` on the next cycle. An
+ *   indexer is nothing BUT historic getLogs, so identity was never the question
+ *   worth asking.
  *
- * Both are cheap to check once and impossible to notice later, so they are
- * checked once, here, and the process refuses to start.
+ * The other two checks are unchanged in substance: START_BLOCK against the live
+ * head, and bytecode at every configured vault address. Both fail SILENTLY when
+ * they come from the other deployment -- a height past the head returns `[]`,
+ * and so does getLogs on an address with no code -- so the service comes up
+ * green and indexes nothing forever.
+ *
+ * Returns the report so the caller can log warnings. Warnings are endpoints
+ * that did not answer, which is an outage rather than a misconfiguration and
+ * must not stop startup: a guard that fires on node hiccups is a guard someone
+ * disables.
  */
-export async function assertChainPreflight(vaultAddresses: readonly string[]): Promise<void> {
-  await assertChainId();
-
-  const client = getPublicClient();
-  const head = await client.getBlockNumber();
-
-  if (config.startBlock > head) {
-    throw new Error(
-      `START_BLOCK=${config.startBlock} is beyond the head of chain ` +
-        `${config.chainId} (${config.chainName}), currently ${head}. ` +
-        'Nothing would ever be scanned and every cycle would report success. ' +
-        'This is what a block height from the other chain looks like: testnet ' +
-        'heights are ~113M, mainnet ~55M. Set START_BLOCK to the deployment ' +
-        'block on THIS chain.',
+export async function assertChainPreflight(
+  vaultAddresses: readonly string[],
+  /** Injectable transport, so the wiring can be tested without a live chain. */
+  opts: RpcOptions = {},
+): Promise<PreflightReport> {
+  try {
+    return await assertPreflight(
+      {
+        chainId: config.chainId,
+        // The whole list, fallbacks included. See the note above.
+        rpcUrls: [config.rpcUrl, ...config.rpcFallbackUrls],
+        startBlock: config.startBlock,
+        addresses: [...vaultAddresses],
+        requireArchive: true,
+      },
+      // Generous relative to the package default: startup is not latency
+      // sensitive, and a slow-but-correct endpoint should not read as broken.
+      { timeoutMs: 20_000, ...opts },
     );
+  } catch (error) {
+    if (error instanceof PreflightError) throw withChainGuidance(error);
+    throw error;
+  }
+}
+
+/**
+ * Re-throw a preflight failure with the bit `orbit-preflight` cannot know: which
+ * Robinhood Chain deployment this was supposed to be, and what the corrected
+ * value looks like.
+ *
+ * The package is deliberately generic and its findings say what is wrong. This
+ * says what to do about it, which is the half an operator at 2am actually
+ * needs.
+ */
+function withChainGuidance(error: PreflightError): Error {
+  const known = KNOWN_CHAINS as Record<number, { name: string; rpcUrl: string }>;
+  const expected = known[config.chainId];
+
+  const hints = new Set<string>();
+  for (const finding of error.report.findings) {
+    if (finding.severity !== 'fatal') continue;
+    switch (finding.code) {
+      case 'chain-id-mismatch':
+        if (expected) {
+          hints.add(`For CHAIN_ID=${config.chainId} (${expected.name}) use RPC_URL=${expected.rpcUrl}`);
+        }
+        hints.add('The two chain ids differ by one digit: 4663 mainnet, 46630 testnet.');
+        break;
+      case 'start-block-beyond-head':
+        hints.add(
+          'This is what a block height from the other chain looks like: testnet ' +
+            'heights are ~113M, mainnet ~55M. Set START_BLOCK to the deployment ' +
+            'block on THIS chain.',
+        );
+        break;
+      case 'address-has-no-code':
+        hints.add(
+          'Addresses with no code are almost certainly from the other Robinhood ' +
+            'Chain deployment. Check VAULT_ADDRESSES against the chain in CHAIN_ID.',
+        );
+        break;
+      case 'rpc-cannot-serve-archive':
+        hints.add(
+          'An indexer is nothing but historic eth_getLogs, so an endpoint that ' +
+            'cannot serve it is unusable here however correct its chain id is. ' +
+            'Replace it, or drop it from RPC_URL_FALLBACK.',
+        );
+        break;
+      default:
+        break;
+    }
   }
 
-  // Only the addresses the operator named. The vaults table is the real source
-  // outside DRY_RUN, and it is checked by getKnownVaults' chain filter.
-  const codeless: string[] = [];
-  for (const address of vaultAddresses) {
-    const code = await client.getBytecode({ address: address as `0x${string}` });
-    if (!code || code === '0x') codeless.push(address);
-  }
+  if (hints.size === 0) return error;
 
-  if (codeless.length > 0) {
-    throw new Error(
-      `${codeless.length} of ${vaultAddresses.length} configured vault ` +
-        `address(es) have no code on chain ${config.chainId} ` +
-        `(${config.chainName}): ${codeless.join(', ')}. getLogs on an address ` +
-        'with no code returns an empty array rather than an error, so these ' +
-        'would be scanned forever and never yield a receipt. They are almost ' +
-        'certainly addresses from the other Robinhood Chain deployment.',
-    );
-  }
+  const enriched = new Error(
+    `${error.message}\n\n` +
+      `Configured as ${config.chainId} (${config.chainName}).\n` +
+      [...hints].map((h) => `  - ${h}`).join('\n'),
+  );
+  enriched.name = error.name;
+  enriched.cause = error;
+  return enriched;
 }
 
 export function isValidAddress(value: string | undefined): value is `0x${string}` {
