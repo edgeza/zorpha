@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { listVaults, listLatestRebalances, listManagers } from '@/lib/queries';
 import { TokenPanel } from '@/components/portal/TokenPanel';
@@ -5,6 +6,11 @@ import { BuybackPanel } from '@/components/portal/BuybackPanel';
 import { ReceiptCard } from '@/components/portal/ReceiptCard';
 import { EmptyState, Stat } from '@/components/ui/Primitives';
 import { isMainnet } from '@/lib/chains';
+
+// The page's own title. Without one it fell through to the root default and
+// the dashboard rendered in the browser tab as the site tagline, while every
+// other portal page carried its own name.
+export const metadata: Metadata = { title: 'Dashboard' };
 
 export const revalidate = 30;
 

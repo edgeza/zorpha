@@ -6,7 +6,19 @@ import { activeChain } from '@/lib/chains';
 import { assertServerChain } from '@/lib/chain-guard';
 
 export const metadata: Metadata = {
-  title: 'Portal',
+  /**
+   * A template, not a bare string. A plain `title` in a layout stops the root
+   * template reaching this subtree, so /portal rendered as "Portal · Zorpha"
+   * while every page under it rendered as bare "Vesting", "Receipts",
+   * "Governance" -- the whole portal losing the site name in the browser tab
+   * and in bookmarks.
+   */
+  title: {
+    // Bare 'Portal': the ROOT template still applies to this segment's own
+    // default, so spelling the suffix here renders "Portal - Zorpha - Zorpha".
+    default: 'Portal',
+    template: '%s · Zorpha',
+  },
   description:
     'Zorpha portal. Vault positions, live rebalance receipts, manager records, airdrop and vesting claims, governance.',
   robots: { index: false, follow: false },
