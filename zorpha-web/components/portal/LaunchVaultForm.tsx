@@ -10,6 +10,7 @@ import {
 } from 'wagmi';
 import { activeChain } from '@/lib/chains';
 import { contracts, erc20Abi, erc4626Abi, vaultLauncherAbi } from '@/lib/contracts';
+import { parseUnits } from '@/lib/format';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
 
@@ -40,12 +41,17 @@ function units(v: bigint | undefined, decimals: number, dp = 2) {
   return s;
 }
 
-function parseUnits(input: string, decimals: number): bigint | null {
-  if (!/^\d*\.?\d*$/.test(input.trim()) || input.trim() === '' || input.trim() === '.') return null;
-  const [whole, frac = ''] = input.trim().split('.');
-  if (frac.length > decimals) return null;
-  return BigInt(whole || '0') * 10n ** BigInt(decimals) + BigInt(frac.padEnd(decimals, '0') || '0');
-}
+/*
+ * `parseUnits` is imported rather than redefined here.
+ *
+ * This file carried its own copy. The two agreed on every input tried except
+ * "." -- shared returns 0, the local one returned null, and both are rejected
+ * downstream, so nothing was visibly broken. The risk was the next edit: two
+ * implementations of the function that turns what someone typed into an amount
+ * of money, one of them tested and one not, and no reason for a reader to
+ * suspect the other exists. The shared one also wraps the BigInt conversion in
+ * a try/catch, which the copy did not.
+ */
 
 export function LaunchVaultForm() {
   const { address, isConnected, chainId } = useAccount();
@@ -226,8 +232,33 @@ export function LaunchVaultForm() {
     );
   }
 
+  /**
+   * Short of what the launch will actually pull.
+   *
+   * Neither balance was enforced, only displayed. `bondDone` compared the
+   * ALLOWANCE against the bond and `seedOk` compared the seed against the
+   * minimum, so a leader who approved amounts larger than they held cleared
+   * every gate: the two approvals succeed on their own, and the launch itself
+   * reverts on the first transferFrom. Three transactions, two of them paid
+   * for, and the failure arrives last.
+   *
+   * Phrased as "short" rather than "affordable" so an unknown balance never
+   * blocks: while the reads are in flight these are false, and only a balance
+   * we have actually seen can stop the flow.
+   */
+  const bondShort = bond !== undefined && zorBalance !== undefined && zorBalance < bond;
+  const seedShort = seed !== null && assetBalance !== undefined && seed > assetBalance;
+
   const canLaunch =
-    isConnected && !wrongChain && targetValid && approvedVenue === true && seedOk && !!name && !!symbol;
+    isConnected &&
+    !wrongChain &&
+    targetValid &&
+    approvedVenue === true &&
+    seedOk &&
+    !bondShort &&
+    !seedShort &&
+    !!name &&
+    !!symbol;
 
   return (
     <div className="space-y-5">
@@ -366,6 +397,17 @@ export function LaunchVaultForm() {
           {seed !== null && minSeed !== undefined && seed < minSeed ? (
             <span className="mt-1 block text-xs text-amber-400">
               Below the {units(minSeed, assetDecimals, 0)} {assetLabel} minimum.
+            </span>
+          ) : null}
+          {seedShort ? (
+            <span className="mt-1 block text-xs text-danger-400">
+              More {assetLabel} than this wallet holds. The launch pulls the full seed, so it
+              would revert after both approvals.
+            </span>
+          ) : null}
+          {bondShort ? (
+            <span className="mt-1 block text-xs text-danger-400">
+              Not enough $ZOR for the {units(bond, 18, 0)} bond. That is pulled at launch too.
             </span>
           ) : null}
           {address ? (
