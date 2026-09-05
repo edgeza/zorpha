@@ -1,8 +1,12 @@
 {
-  "generatedFrom": "snapshot-testnet.csv",
-  "snapshotSha256": "159d496127bf75709549a54e71e9939b0daa5c6bf5946b27635e80940eeeccaf",
-  "merkleRoot": "0xa0ca411e2333dcf4cb30ab4eb2d39895b0f6f82fa8beedb14ecf9f152054d161",
-  "recipients": 5,
-  "totalAllocationWei": "285000000000000000000000",
-  "totalAllocationZor": "285000"
+  "generatedFrom": "deferred-governance-only.csv",
+  "network": "robinhood-mainnet",
+  "chainId": 4663,
+  "distributor": "0x1045AeCaCad091eC791815Be8c28DA12Ed94D4E3",
+  "merkleRoot": "0x82f08a3e5c2343714663a14670596246566ee2a13c6dbc5e032e519e820f8797",
+  "recipients": 1,
+  "totalAllocationWei": "80000000000000000000000000",
+  "totalAllocationZor": "80000000",
+  "claimDeadline": 1796330353,
+  "note": "The deployed tree has a single leaf: the governance Safe. The whole 8% TGE tranche is claimable by governance, which distributes it later through a second MerkleDistributor built from a real recipient list. There is no per-wallet snapshot yet, so proofs.json is intentionally empty and /api/airdrop returns 404 for every address. Do not repopulate it from a testnet snapshot -- proofs built against any other root revert InvalidProof on chain 4663."
 }
