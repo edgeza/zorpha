@@ -5,7 +5,7 @@ import { formatCompact } from '@/lib/format';
 import { CountUp } from '@/components/motion/CountUp';
 import { PrismHero } from '@/components/ui/prism-hero';
 import { activeChain, isMainnet } from '@/lib/chains';
-import { BRAND_GRAPHIC } from '@/lib/brand';
+import { BRAND_GRAPHIC, PRISM_ACCENT } from '@/lib/brand';
 
 /**
  * Hero.
@@ -51,7 +51,7 @@ export function Hero() {
         className="-mt-20"
         topInset
         tint={BRAND_GRAPHIC.tint}
-        accent={BRAND_GRAPHIC.accent}
+        accent={PRISM_ACCENT}
         word="Zorpha"
         eyebrow={`${isMainnet ? 'Live' : 'Testnet live'} on ${TOKEN.chain}`}
         description={
