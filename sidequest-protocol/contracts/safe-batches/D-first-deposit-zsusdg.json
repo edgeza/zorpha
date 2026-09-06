@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 1788637279991,
+  "meta": {
+    "name": "D - first deposit into zsUSDG (4.500000)",
+    "description": "approve 4500000 USDG units (4.500000 USDG) to the vault, then deposit them with the Safe as receiver. Mints 4.500000 zsUSDG at parity; previewRedeem round-trips exactly, so there is no rounding loss. Re-cut from the original full-balance 4.925501 so that batch F (which needs a round 100.000000 USDG) fits alongside it: the Safe holds 104.667567 USDG, F takes 100.000000, and this takes 4.500000, leaving 0.167567. Verified on a mainnet fork: deposit lands, _pushToAdapter forwards it into Steakhouse in the same transaction so it earns immediately, and a full redeem returns the principal to the unit. One batch rather than two transactions so it consumes a single Safe nonce. NOTE: Safe nonces execute in order -- the treasury handover is the other thing waiting on one.",
+    "txBuilderVersion": "1.16.5"
+  },
+  "transactions": [
+    {
+      "to": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+      "value": "0",
+      "data": "0x095ea7b30000000000000000000000003829bc787d4eb15ec855a6ca33e1492a9103d130000000000000000000000000000000000000000000000000000000000044aa20",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0x3829bC787d4eB15Ec855A6cA33e1492a9103d130",
+      "value": "0",
+      "data": "0x6e553f65000000000000000000000000000000000000000000000000000000000044aa20000000000000000000000000c75e64ccf3ce6e2f40939ab58255681769bcf8c4",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}

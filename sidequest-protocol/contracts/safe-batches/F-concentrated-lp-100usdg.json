@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 1788640000000,
+  "meta": {
+    "name": "F - concentrated LP, $100 at -20%/+25%",
+    "description": "Mint a SECOND ZOR/USDG 0.3% position, concentrated to ticks 391020..395580 (ZOR $0.0000066414..$0.0000103772, i.e. -20%/+25% around the $0.0000083018 spot), with 100.000000 USDG + 12,058,020 ZOR. Position #1034952 (full range) is deliberately LEFT IN PLACE as a backstop, so if price leaves this band the pool still quotes instead of going dead. Measured on a mainnet fork at block 55410052: active pool liquidity 7.365e16 -> 3.960e17 (5.4x), and buy slippage incl. the 0.3% fee falls from 5.19%/12.26%/24.05% to 1.35%/2.66%/4.86% on $10/$25/$50. Full-range alternative (batch E) would have bought only $312 of depth for the same money. Minimums are 90% of desired: no trades occur on this pair, so the ratio will not drift, but a 2-of-2 ceremony takes time. ZOR approval is set 2% above the pairing so USDG is the binding side; the surplus is not spent. Deadline 1789242486 (2026-09-12 19:48 UTC). PREREQUISITE: the Safe holds 4.925501 USDG -- send at least 95.08 USDG to 0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4 first, or tx3 reverts. Safe already holds 50,389,915 ZOR, which covers the ZOR leg.",
+    "txBuilderVersion": "1.16.5"
+  },
+  "transactions": [
+    {
+      "to": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+      "value": "0",
+      "data": "0x095ea7b300000000000000000000000073991a25c818bf1f1128deaab1492d45638de0d30000000000000000000000000000000000000000000000000000000005f5e100",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0x9684AFe2422a0B03719201c78959b6B70e8d4ae8",
+      "value": "0",
+      "data": "0x095ea7b300000000000000000000000073991a25c818bf1f1128deaab1492d45638de0d30000000000000000000000000000000000000000000a2c73e163131880000000",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0x73991a25C818Bf1f1128dEAaB1492D45638DE0D3",
+      "value": "0",
+      "data": "0x883164560000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d1680000000000000000000000009684afe2422a0b03719201c78959b6b70e8d4ae80000000000000000000000000000000000000000000000000000000000000bb8000000000000000000000000000000000000000000000000000000000005f76c000000000000000000000000000000000000000000000000000000000006093c0000000000000000000000000000000000000000000000000000000005f5e10000000000000000000000000000000000000000000009f9628ca7680e0000000000000000000000000000000000000000000000000000000000000000055d4a8000000000000000000000000000000000000000000008fa0be4fd10d980000000000000000000000000000000c75e64ccf3ce6e2f40939ab58255681769bcf8c4000000000000000000000000000000000000000000000000000000006aa5ac76",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}

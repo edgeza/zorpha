@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 1788637947110,
+  "meta": {
+    "name": "E - deepen the ZOR/USDG pool by $100",
+    "description": "approve 100 USDG and 12,100,000 ZOR to the NonfungiblePositionManager, then increaseLiquidity on position #1034952 (full range, the entire pool). Adds 100.000000 USDG paired with ~12,025,166 ZOR at the current ratio, raising depth from $212.40 to $312.40 and liquidity by ~47%. ZOR desired is set ~0.6% above the pairing so USDG is the binding side and the full $100 is deployed; the surplus approval is simply not spent. Minimums are 90% of expected: the pool is thin and a 2-of-2 ceremony takes time, so the ratio can shift before execution and a tighter bound would revert. Deadline 1789242486 (2026-09-12 19:48 UTC). PREREQUISITE: the Safe holds only 4.925501 USDG -- send at least 95.08 USDG to 0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4 before executing, or this reverts.",
+    "txBuilderVersion": "1.16.5"
+  },
+  "transactions": [
+    {
+      "to": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+      "value": "0",
+      "data": "0x095ea7b300000000000000000000000073991a25c818bf1f1128deaab1492d45638de0d30000000000000000000000000000000000000000000000000000000005f5e100",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0x9684AFe2422a0B03719201c78959b6B70e8d4ae8",
+      "value": "0",
+      "data": "0x095ea7b300000000000000000000000073991a25c818bf1f1128deaab1492d45638de0d30000000000000000000000000000000000000000000a024650797c6e82800000",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0x73991a25C818Bf1f1128dEAaB1492D45638DE0D3",
+      "value": "0",
+      "data": "0x219f5d1700000000000000000000000000000000000000000000000000000000000fcac80000000000000000000000000000000000000000000000000000000005f5e1000000000000000000000000000000000000000000000a024650797c6e8280000000000000000000000000000000000000000000000000000000000000055d4a8000000000000000000000000000000000000000000008f3c8fa431df7605e1df3000000000000000000000000000000000000000000000000000000006aa5ac76",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}
