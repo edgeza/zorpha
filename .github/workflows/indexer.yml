@@ -50,7 +50,7 @@ concurrency:
 
 jobs:
   indexer:
-    name: indexer (tsc)
+    name: indexer (tsc, tests)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -60,7 +60,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22, not 20: `npm test` passes a quoted glob to `node --test`,
+          # and expanding that is a Node 22 feature. On 20 the pattern
+          # reaches the runner verbatim and matches nothing.
+          node-version: 22
           cache: npm
           cache-dependency-path: sidequest-protocol/indexer/package-lock.json
 
@@ -68,6 +71,13 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      # This job was named `indexer (tsc)` because typecheck and build were all
+      # it did. src/decode.test.ts and src/keeper-preflight.test.ts have never
+      # run here, so the keeper's startup diagnosis, the whole reason that
+      # module was made testable, was covered by nothing in CI.
+      - name: Test
+        run: npm test
 
       - name: Build
         run: npm run build

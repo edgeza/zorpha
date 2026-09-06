@@ -1,0 +1,60 @@
+name: packages
+
+# orbit-preflight is published to npm and had no CI at all. Its tests ran only
+# on a developer machine, which is also where 0.1.0 was published from.
+#
+# Deliberately its own workflow rather than a `packages/**` path added to
+# indexer.yml. The indexer briefly depended on this package through
+# `file:../../`, which broke every Railway deploy because that service builds
+# with its root at sidequest-protocol/indexer and cannot see two levels up.
+# That dependency was reverted. Testing the package where it lives keeps the
+# two uncoupled.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/**'
+      - '.github/workflows/packages.yml'
+  pull_request:
+    paths:
+      - 'packages/**'
+      - '.github/workflows/packages.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  orbit-preflight:
+    name: orbit-preflight
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/orbit-preflight
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # 22, not 20: `npm test` passes a quoted glob to `node --test`,
+          # and expanding that is a Node 22 feature. On 20 the pattern
+          # reaches the runner verbatim and matches nothing. The package
+          # itself still declares engines >=20; only the test script needs 22.
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/orbit-preflight/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # `prepublishOnly` is `npm run build && npm test`, so a green run here is
+      # the same gate a publish has to clear.
+      - name: Build
+        run: npm run build

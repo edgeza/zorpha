@@ -28,7 +28,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test src/**/*.test.ts",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "prepare": "npm run build",
     "prepublishOnly": "npm run build && npm test"
   },

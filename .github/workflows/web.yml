@@ -68,7 +68,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22, not 20: `npm test` passes a quoted glob to `node --test`,
+          # and expanding that is a Node 22 feature. On 20 the pattern
+          # reaches the runner verbatim and matches nothing.
+          node-version: 22
           cache: npm
           cache-dependency-path: zorpha-web/package-lock.json
 
