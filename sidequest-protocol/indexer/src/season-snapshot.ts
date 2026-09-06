@@ -14,6 +14,7 @@ import {
   balanceIntervals, allocationFor, clusterOf, SEASON_1_TIERS,
   type ShareTransfer, type Funding,
 } from './season-eligibility.js';
+import { withAdaptiveRange } from './chain.js';
 
 function arg(name: string, fallback?: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -35,16 +36,42 @@ async function main() {
   const vault = getAddress(arg('vault')) as Address;
   const fromBlock = BigInt(arg('from-block'));
   const toBlock = BigInt(arg('to-block'));
+
+  // A reversed or degenerate range must fail loudly, before any I/O runs.
+  // Left unchecked it would walk zero blocks and print a clean, valid,
+  // zero-row CSV, which is indistinguishable from the legitimate "nobody
+  // qualified yet" result this same tool can honestly produce elsewhere. The
+  // Merkle root built from this output is immutable once deployed, so an
+  // operator typo in these two flags needs to crash, not quietly ship an
+  // empty season.
+  if (fromBlock > toBlock) {
+    throw new Error(
+      `--from-block (${fromBlock}) is greater than --to-block (${toBlock}); ` +
+        'refusing to scan a reversed or degenerate block range.',
+    );
+  }
+
   const client = createPublicClient({ transport: http(arg('rpc')) });
 
-  // Robinhood Chain caps getLogs at 10,000 RESULTS rather than on block range,
-  // so page by block and stop widening if a chunk comes back full.
-  const STEP = 100_000n;
-  const logs = [];
-  for (let lo = fromBlock; lo <= toBlock; lo += STEP) {
-    const hi = lo + STEP - 1n > toBlock ? toBlock : lo + STEP - 1n;
-    logs.push(...(await client.getLogs({ address: vault, event: TRANSFER, fromBlock: lo, toBlock: hi })));
-  }
+  // Robinhood Chain rejects a getLogs call outright once it would match more
+  // than 10,000 results, rather than truncating the response. A fixed-size
+  // step that happens to cross a busy stretch of blocks would hit that error
+  // and abort the whole run, which is expensive to discover on a one-shot
+  // script whose output feeds an immutable Merkle root. withAdaptiveRange
+  // (chain.ts) is the fix production already uses for this exact error: it
+  // starts at the given chunk size, halves and retries only on that specific
+  // over-cap error, and creeps back up once a chunk succeeds, so a busy
+  // sub-range costs extra round trips instead of an aborted run. 50_000n and
+  // 500n below match config.ts's BLOCK_CHUNK_SIZE and MIN_BLOCK_CHUNK_SIZE
+  // defaults; this CLI takes its RPC endpoint from --rpc rather than from
+  // config.ts, so both numbers are given directly here rather than imported.
+  const { results: logs } = await withAdaptiveRange(
+    fromBlock,
+    toBlock,
+    50_000n,
+    500n,
+    (f, t) => client.getLogs({ address: vault, event: TRANSFER, fromBlock: f, toBlock: t }),
+  );
 
   // Timestamps come from the block, not the log, so cache per block.
   const tsCache = new Map<bigint, number>();
