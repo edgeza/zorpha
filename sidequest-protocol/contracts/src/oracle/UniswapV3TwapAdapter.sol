@@ -79,6 +79,8 @@ contract UniswapV3TwapAdapter is AggregatorV3Interface {
     ///      vault reads this once at construction and scales every conversion
     ///      by it, so it is not free to change.
     uint8 private constant ANSWER_DECIMALS = 8;
+    uint256 private constant ANSWER_SCALE = 1e8;
+    uint256 private constant Q96 = 1 << 96;
     uint256 private constant BPS = 10000;
 
     IUniswapV3PoolMinimal public immutable pool;
@@ -100,6 +102,7 @@ contract UniswapV3TwapAdapter is AggregatorV3Interface {
     uint16 public immutable maxSpotDivergenceBps;
 
     error PoolTokenMismatch(address token0, address token1);
+    error InvalidAnswer(uint256 answer);
 
     /// @param pool_                 the Uniswap V3 pool to read
     /// @param base_                 the token being priced
@@ -170,20 +173,84 @@ contract UniswapV3TwapAdapter is AggregatorV3Interface {
         return ANSWER_DECIMALS;
     }
 
-    /// @notice The latest price, in Chainlink's shape.
-    /// @dev    Implemented in the next commit. The price arithmetic and the
-    ///         guards land together, deliberately, so no revision of this
-    ///         contract ever exists that can answer without checking.
+    /// @notice The price of one whole `base` token in whole `quote` units, at
+    ///         `ANSWER_DECIMALS`, for an arbitrary tick.
     ///
-    ///         `pure` only because a function whose whole body is a revert
-    ///         reads nothing. It relaxes to `view` the moment there is an
-    ///         implementation, which the interface permits either way.
+    ///         Public because the fork test compares it against a TWAP computed
+    ///         independently from the pool's raw cumulatives, and because the
+    ///         charting view and `latestRoundData` must demonstrably share one
+    ///         implementation rather than two that happen to agree today.
+    ///
+    ///         DIRECTION. `SpotVaultMinimal.assetToCash` is
+    ///         `assetAmt * 10^cashDec * p / (10^assetDec * 10^priceDec)`, so `p`
+    ///         is quote-per-base. A Uniswap tick expresses token1/token0 in RAW
+    ///         units, so when base is token1 it is the reciprocal of what the
+    ///         vault wants AND both decimal scalings apply. Worked at tick
+    ///         221,882 with token0 = USDG (6dp), token1 = NVDA (18dp):
+    ///
+    ///             raw token1/token0     1.0001^221882    = 4.3225e9
+    ///             NVDA per USDG         x 10^6 / 10^18   = 0.00432246
+    ///             USDG per NVDA         reciprocal       = 231.349708
+    ///             answer at 1e8                          = 23,134,970,771
+    ///
+    ///         Neither branch forms `sqrtP * sqrtP` as a plain product: that
+    ///         overflows uint256 above roughly tick 500,000. `Math.mulDiv`
+    ///         carries the 512-bit intermediate instead, so both branches are
+    ///         exact to within a single truncation.
+    function answerAtTick(int24 tick) public view returns (uint256) {
+        uint256 sqrtP = uint256(TickMath.getSqrtRatioAtTick(tick));
+        uint256 baseUnit = 10 ** baseDecimals;
+        uint256 quoteUnit = 10 ** quoteDecimals;
+
+        if (baseIsToken0) {
+            // token1/token0 is already quote-raw per base-raw. Scale directly.
+            uint256 ratioX96 = Math.mulDiv(sqrtP, sqrtP, Q96);
+            return Math.mulDiv(ratioX96, baseUnit * ANSWER_SCALE, Q96 * quoteUnit);
+        }
+        // base is token1, so invert first, then scale.
+        uint256 inverseX96 = Math.mulDiv(Q96, Q96, sqrtP);
+        return Math.mulDiv(inverseX96, baseUnit * ANSWER_SCALE, sqrtP * quoteUnit);
+    }
+
+    /// @notice The arithmetic mean tick over `twapWindow`, from the pool's own
+    ///         observation history.
+    function meanTick() public view returns (int24) {
+        uint32[] memory secondsAgos = new uint32[](2);
+        secondsAgos[0] = twapWindow;
+        secondsAgos[1] = 0;
+
+        (int56[] memory cumulatives, ) = pool.observe(secondsAgos);
+        int56 delta = cumulatives[1] - cumulatives[0];
+        int56 window = int56(uint56(twapWindow));
+
+        int24 mean = int24(delta / window);
+        // Solidity truncates toward zero; Uniswap's OracleLibrary floors. They
+        // differ only for a negative delta with a remainder. One tick is one
+        // basis point of price, so the gap is small -- but it is a one-sided
+        // bias on falling prices only, and matching the reference costs nothing.
+        if (delta < 0 && (delta % window != 0)) mean--;
+        return mean;
+    }
+
+    /// @notice The latest price, in Chainlink's shape.
+    /// @dev    `updatedAt` is `block.timestamp` because that is the truth: a
+    ///         TWAP is computed at call time from history and is never stale in
+    ///         the sense `MedianOracle.updatedAt` carries. The real staleness
+    ///         risk for a TWAP is a pool nobody is trading, which `updatedAt`
+    ///         cannot express and which the observation-age guard handles.
+    ///
+    ///         `roundId` and `answeredInRound` are both 1 so the vault's
+    ///         `answeredInRound < roundId` check passes. There are no rounds.
+    ///
+    ///         The guards land in the next commit.
     function latestRoundData()
         external
-        pure
+        view
         override
         returns (uint80, int256, uint256, uint256, uint80)
     {
-        revert("UniswapV3TwapAdapter: not implemented");
+        uint256 answer = answerAtTick(meanTick());
+        if (answer == 0 || answer > uint256(type(int256).max)) revert InvalidAnswer(answer);
+        return (1, int256(answer), block.timestamp, block.timestamp, 1);
     }
 }
