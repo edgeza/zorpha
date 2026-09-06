@@ -42,7 +42,14 @@ export function balanceIntervals(
     if (addr === ZERO_ADDRESS) return;
     const prior = balances.get(addr) ?? 0n;
     const spans = out.get(addr) ?? [];
-    if (spans.length > 0) spans[spans.length - 1].end = at;
+    if (spans.length > 0) {
+      const last = spans[spans.length - 1];
+      last.end = at;
+      // Same-block transfers share a timestamp. Closing a span that never
+      // actually elapsed any time would hand allocationFor a phantom
+      // interval it has no honest way to price, so drop it here instead.
+      if (last.start === last.end) spans.pop();
+    }
     const next = prior + delta;
     spans.push({ balance: next, start: at, end: windowEnd });
     balances.set(addr, next);
