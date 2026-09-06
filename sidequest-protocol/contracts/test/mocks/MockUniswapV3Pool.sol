@@ -32,10 +32,43 @@ contract MockUniswapV3Pool {
     int56 private olderCumulative;
     int56 private newerCumulative;
 
+    // Per-slot overrides, so code that computes WHICH slot to read can be
+    // tested. Without these the ring is uniform and an index bug is invisible.
+    mapping(uint256 => uint32) private ageAt;
+    mapping(uint256 => bool) private ageSetAt;
+    mapping(uint256 => bool) private uninitializedAt;
+
+    // An explicit cumulative series, for callers that need a price that MOVES
+    // across the span rather than a constant one.
+    int56[] private series;
+    bool private useSeries;
+
     constructor(address token0_, address token1_) {
         token0 = token0_;
         token1 = token1_;
     }
+
+    /// @notice Override one slot's age, leaving every other slot on the global
+    ///         `observationAge`.
+    function setObservationAgeAt(uint256 index, uint32 age) external {
+        ageAt[index] = age;
+        ageSetAt[index] = true;
+    }
+
+    /// @notice Mark one slot as never written, which is what an unfilled ring
+    ///         buffer looks like beyond its high-water mark.
+    function setObservationUninitialized(uint256 index, bool v) external {
+        uninitializedAt[index] = v;
+    }
+
+    /// @notice Return these cumulatives verbatim from `observe`, oldest first,
+    ///         instead of interpolating between two endpoints.
+    function setCumulativeSeries(int56[] calldata s) external {
+        series = s;
+        useSeries = true;
+    }
+
+    function clearCumulativeSeries() external { useSeries = false; }
 
     function setTick(int24 t) external { tick = t; }
     function setLiquidity(uint128 l) external { liquidity = l; }
@@ -73,14 +106,18 @@ contract MockUniswapV3Pool {
         return (0, tick, observationIndex, cardinality, cardinality, 0, true);
     }
 
-    /// @dev The index is ignored: this mock keeps one observation, not a ring.
-    ///      Every guard that reads an observation reads the newest one.
-    function observations(uint256)
+    /// @dev Slots read uniformly from `observationAge` unless one has been
+    ///      overridden. The override exists so that code choosing WHICH slot to
+    ///      read is actually tested: on a uniform ring, an off-by-one in
+    ///      `(index + 1) % cardinality` returns the right answer for the wrong
+    ///      reason and no test notices.
+    function observations(uint256 index)
         external
         view
         returns (uint32 blockTimestamp, int56 tickCumulative, uint160 secondsPerLiquidityX128, bool initialized)
     {
-        return (uint32(block.timestamp) - observationAge, newerCumulative, 0, true);
+        uint32 age = ageSetAt[index] ? ageAt[index] : observationAge;
+        return (uint32(block.timestamp) - age, newerCumulative, 0, !uninitializedAt[index]);
     }
 
     /// @dev Interpolates linearly between the two configured cumulatives, which
@@ -98,6 +135,12 @@ contract MockUniswapV3Pool {
         uint256 n = secondsAgos.length;
         tickCumulatives = new int56[](n);
         secondsPerLiquidityX128s = new uint160[](n);
+
+        if (useSeries) {
+            require(series.length == n, "MockUniswapV3Pool: series length");
+            for (uint256 i = 0; i < n; i++) tickCumulatives[i] = series[i];
+            return (tickCumulatives, secondsPerLiquidityX128s);
+        }
 
         int56 span = newerCumulative - olderCumulative;
         for (uint256 i = 0; i < n; i++) {

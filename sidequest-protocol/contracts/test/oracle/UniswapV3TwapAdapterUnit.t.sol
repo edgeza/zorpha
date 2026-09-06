@@ -613,4 +613,172 @@ contract UniswapV3TwapAdapterUnitTest is Test {
         vm.expectRevert(bytes("OLD"));
         a.latestRoundData();
     }
+
+    // --- charting -----------------------------------------------------------
+
+    function _agos(uint32 a, uint32 b, uint32 c, uint32 d) internal pure returns (uint32[] memory out) {
+        out = new uint32[](4);
+        out[0] = a; out[1] = b; out[2] = c; out[3] = d;
+    }
+
+    function test_AnswersOverWindows_ReturnsOneAnswerPerInterval() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        pool.setMeanTick(221882, 3600);
+
+        uint256[] memory answers = a.answersOverWindows(_agos(3600, 2400, 1200, 0));
+
+        assertEq(answers.length, 3, "four points bound three intervals");
+        // A constant tick across the whole span means three equal answers.
+        assertEq(answers[0], 23134970771);
+        assertEq(answers[1], 23134970771);
+        assertEq(answers[2], 23134970771);
+    }
+
+    /// THE SERIES MUST NOT COME BACK MIRRORED.
+    ///
+    /// `secondsAgos` runs oldest-first, so answers[0] is the OLDEST interval.
+    /// Reverse that and the chart renders back to front -- a bug nothing about
+    /// a constant-price fixture can reveal, because every point is identical.
+    /// So the ticks rise across the span here.
+    ///
+    /// Base is token1, so a rising TICK is a FALLING price. The answers must
+    /// therefore decrease, which pins the ordering and the inversion together.
+    function test_AnswersOverWindows_IsOrderedOldestFirst() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+
+        // Ticks of 221000, 221882, 222500 over three 1200-second intervals.
+        int56[] memory cum = new int56[](4);
+        cum[0] = 0;
+        cum[1] = cum[0] + int56(221000) * 1200;
+        cum[2] = cum[1] + int56(221882) * 1200;
+        cum[3] = cum[2] + int56(222500) * 1200;
+        pool.setCumulativeSeries(cum);
+
+        uint256[] memory answers = a.answersOverWindows(_agos(3600, 2400, 1200, 0));
+
+        assertEq(answers[1], 23134970771, "middle interval is the known tick");
+        assertGt(answers[0], answers[1], "oldest interval had the lowest tick");
+        assertGt(answers[1], answers[2], "newest interval had the highest tick");
+    }
+
+    /// The chart and NAV must be the same arithmetic, not two that agree today.
+    function test_AnswersOverWindows_AgreesWithLatestRoundData() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+
+        uint32[] memory agos = new uint32[](2);
+        agos[0] = WINDOW;
+        agos[1] = 0;
+        uint256[] memory answers = a.answersOverWindows(agos);
+
+        (, int256 nav, , , ) = a.latestRoundData();
+        assertEq(answers[0], uint256(nav), "same window, same number");
+    }
+
+    function test_AnswersOverWindows_RejectsANonDecreasingSeries() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        uint32[] memory agos = new uint32[](3);
+        agos[0] = 1200; agos[1] = 2400; agos[2] = 0; // goes backwards
+        vm.expectRevert(UniswapV3TwapAdapter.BadWindowSeries.selector);
+        a.answersOverWindows(agos);
+    }
+
+    /// Equal adjacent entries would be a zero-length interval, and a division
+    /// by zero rather than a validation error.
+    function test_AnswersOverWindows_RejectsARepeatedEntry() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        uint32[] memory agos = new uint32[](3);
+        agos[0] = 1200; agos[1] = 1200; agos[2] = 0;
+        vm.expectRevert(UniswapV3TwapAdapter.BadWindowSeries.selector);
+        a.answersOverWindows(agos);
+    }
+
+    function test_AnswersOverWindows_RejectsASeriesNotEndingAtZero() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        uint32[] memory agos = new uint32[](2);
+        agos[0] = 2400; agos[1] = 60;
+        vm.expectRevert(UniswapV3TwapAdapter.BadWindowSeries.selector);
+        a.answersOverWindows(agos);
+    }
+
+    function test_AnswersOverWindows_RejectsFewerThanTwoPoints() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        uint32[] memory one = new uint32[](1);
+        one[0] = 0;
+        vm.expectRevert(UniswapV3TwapAdapter.BadWindowSeries.selector);
+        a.answersOverWindows(one);
+
+        uint32[] memory none = new uint32[](0);
+        vm.expectRevert(UniswapV3TwapAdapter.BadWindowSeries.selector);
+        a.answersOverWindows(none);
+    }
+
+    /// A CHART IS NOT NAV.
+    ///
+    /// This view must keep answering while all five guards are refusing, or the
+    /// terminal goes blank in exactly the conditions a manager most needs to see
+    /// the price -- their rebalance has just been rejected and they want to know
+    /// what the market did. Every guarded quantity is broken here at once.
+    function test_AnswersOverWindows_IsNotGuarded() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        pool.setMeanTick(221882, 3600);
+        pool.setLiquidity(1);
+        pool.setCardinality(1);
+        pool.setObservationAge(MAX_OBS_AGE * 10);
+        pool.setTick(221882 + 5000); // far outside the divergence tolerance
+
+        // NAV refuses...
+        vm.expectRevert();
+        a.latestRoundData();
+
+        // ...and the chart still draws.
+        uint256[] memory answers = a.answersOverWindows(_agos(3600, 2400, 1200, 0));
+        assertEq(answers.length, 3);
+        assertEq(answers[0], 23134970771);
+    }
+
+    // --- buffer depth -------------------------------------------------------
+
+    /// `observe` reverts with a bare "OLD" beyond the ring's reach, so a caller
+    /// building a chart has to clamp its horizon rather than guess and retry.
+    ///
+    /// The oldest slot is the one AFTER the newest, because the ring overwrites
+    /// forward. Reading `index` instead of `index + 1` would return the newest
+    /// observation and report a buffer depth of seconds -- so the slots carry
+    /// different ages here, and the assertion picks between them.
+    function test_OldestObservationSecondsAgo_ReadsTheSlotAfterTheNewest() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        pool.setCardinality(6000);
+        pool.setObservationIndex(1);
+        pool.setObservationAgeAt(1, 60);        // newest
+        pool.setObservationAgeAt(2, 198438);    // oldest, ~55 hours
+
+        assertEq(a.oldestObservationSecondsAgo(), 198438, "must read index + 1");
+    }
+
+    /// The ring wraps: the newest at the last slot puts the oldest at slot 0.
+    function test_OldestObservationSecondsAgo_WrapsAtTheEndOfTheRing() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        pool.setCardinality(300);
+        pool.setObservationIndex(299);
+        pool.setObservationAgeAt(299, 30);
+        pool.setObservationAgeAt(0, 7200);
+
+        assertEq(a.oldestObservationSecondsAgo(), 7200, "must wrap to slot 0");
+    }
+
+    /// A ring that has not filled yet has nothing at `index + 1`. Uniswap
+    /// leaves those slots uninitialised, and their zero timestamp would read as
+    /// a buffer stretching back to 1970. Fall back to slot 0, which is written
+    /// when the pool is created and is genuinely the oldest.
+    function test_OldestObservationSecondsAgo_FallsBackWhenTheRingIsUnfilled() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        pool.setCardinality(6000);
+        pool.setObservationIndex(3);
+        pool.setObservationAgeAt(4, 0);
+        pool.setObservationUninitialized(4, true);
+        pool.setObservationAgeAt(0, 3600);
+
+        assertEq(a.oldestObservationSecondsAgo(), 3600, "uninitialised slot must not be trusted");
+    }
 }

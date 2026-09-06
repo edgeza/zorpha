@@ -107,6 +107,7 @@ contract UniswapV3TwapAdapter is AggregatorV3Interface {
     error ObservationTooOld(uint32 ageSeconds, uint32 maxAgeSeconds);
     error SpotDivergesFromTwap(uint256 twapAnswer, uint256 spotAnswer, uint256 divergenceBps);
     error InvalidAnswer(uint256 answer);
+    error BadWindowSeries();
 
     /// @param pool_                 the Uniswap V3 pool to read
     /// @param base_                 the token being priced
@@ -318,5 +319,72 @@ contract UniswapV3TwapAdapter is AggregatorV3Interface {
         }
 
         return (1, int256(twapAnswer), block.timestamp, block.timestamp, 1);
+    }
+
+    /// @notice The price over each of a series of consecutive intervals, for
+    ///         charting.
+    ///
+    ///         DELIBERATELY UNGUARDED. None of the five checks in
+    ///         `latestRoundData` runs here, and that is the point: a chart is
+    ///         not NAV. A manager whose rebalance has just been refused because
+    ///         spot diverged from the average is exactly the person who needs to
+    ///         see what the price has been doing, and a guarded view would go
+    ///         blank at that moment. Nothing that moves funds may call this.
+    ///
+    ///         Reading the series from the adapter rather than recomputing tick
+    ///         maths in a browser means the chart and the vault's own NAV cannot
+    ///         disagree: there is one implementation of the arithmetic, and a
+    ///         test asserts the two return the same number for the same window.
+    ///
+    /// @param  secondsAgos Strictly decreasing, ending at 0, at least two
+    ///         entries. Strictly, because equal neighbours are a zero-length
+    ///         interval and therefore a division by zero.
+    /// @return answers One per adjacent pair, `secondsAgos.length - 1` of them,
+    ///         OLDEST INTERVAL FIRST, matching the order of the input.
+    function answersOverWindows(uint32[] calldata secondsAgos)
+        external
+        view
+        returns (uint256[] memory answers)
+    {
+        uint256 n = secondsAgos.length;
+        if (n < 2) revert BadWindowSeries();
+        if (secondsAgos[n - 1] != 0) revert BadWindowSeries();
+        for (uint256 i = 1; i < n; i++) {
+            if (secondsAgos[i] >= secondsAgos[i - 1]) revert BadWindowSeries();
+        }
+
+        (int56[] memory cumulatives, ) = pool.observe(secondsAgos);
+
+        answers = new uint256[](n - 1);
+        for (uint256 i = 0; i < n - 1; i++) {
+            // Positive by the strictly-decreasing check above.
+            int56 span = int56(uint56(secondsAgos[i] - secondsAgos[i + 1]));
+            int56 delta = cumulatives[i + 1] - cumulatives[i];
+            int24 mean = int24(delta / span);
+            if (delta < 0 && (delta % span != 0)) mean--;
+            answers[i] = answerAtTick(mean);
+        }
+    }
+
+    /// @notice How far back the pool's observation ring buffer reaches.
+    ///
+    ///         `observe` reverts with a bare "OLD" for any `secondsAgo` beyond
+    ///         this, so a caller building a chart must clamp its horizon to what
+    ///         this returns rather than guessing a horizon and retrying.
+    ///
+    ///         The oldest slot is the one AFTER the newest, because the ring
+    ///         overwrites forward. A ring that has not filled yet has nothing
+    ///         there: Uniswap leaves those slots uninitialised, and their zero
+    ///         timestamp would read as a buffer stretching back to 1970. Slot 0
+    ///         is written when the pool is created, so it is the fallback.
+    function oldestObservationSecondsAgo() external view returns (uint32) {
+        (, , uint16 index, uint16 cardinality, , , ) = pool.slot0();
+        uint256 oldest = cardinality == 0 ? 0 : (uint256(index) + 1) % uint256(cardinality);
+
+        (uint32 ts, , , bool initialized) = pool.observations(oldest);
+        if (!initialized) (ts, , , ) = pool.observations(0);
+
+        // Wrapping subtraction, matching the pool's own truncated clock.
+        unchecked { return uint32(block.timestamp) - ts; }
     }
 }
