@@ -4,18 +4,24 @@ name: gates
 #
 # Everything here ran on every pull request regardless of what changed. On the
 # seven PRs merged on 5 September, ALL of them web-only, `contracts (forge)`
-# ran seven times and tested not one changed line -- roughly eighty minutes of
-# a paid runner spent on code nobody had edited. That is what exhausted the
-# Actions allowance, not the number of checks.
+# ran seven times and tested not one changed line, roughly eighty minutes of a
+# paid runner spent on code nobody had edited. That is what exhausted the
+# Actions allowance at the time.
+#
+# The repository is public now, so standard runners are free and that allowance
+# no longer applies. The filters stay because the reason for them outlived the
+# bill: a red check should mean the change under review broke something, and a
+# suite that keeps rerunning untouched code teaches you to skim past it.
 #
 # GitHub evaluates `paths:` per workflow file, not per job, which is the only
-# reason this is four files instead of one. The alternative -- a change-detection
-# job gating the others with `if:` -- keeps one file but pays a checkout on
-# every run to work out that it has nothing to do.
+# reason this is four files instead of one. The alternative, a change-detection
+# job gating the others with `if:`, keeps one file but pays a checkout on every
+# run to work out that it has nothing to do.
 #
-# A job that does not run shows no check at all rather than a failing one.
-# `main` has no branch protection requiring these contexts, so a filtered-out
-# job cannot block a merge.
+# A filtered-out job shows no check at all rather than a passing one, and a
+# required context that never appears blocks the merge forever. So anything
+# branch protection requires has to come from a workflow with no `paths:`
+# filter. `gates` is the only one.
 #
 # Unfiltered on purpose: it greps the whole tree for conflict markers and takes
 # about five seconds. Filtering it would save nothing and could miss a marker

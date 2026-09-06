@@ -4,24 +4,38 @@ name: web
 #
 # Everything here ran on every pull request regardless of what changed. On the
 # seven PRs merged on 5 September, ALL of them web-only, `contracts (forge)`
-# ran seven times and tested not one changed line -- roughly eighty minutes of
-# a paid runner spent on code nobody had edited. That is what exhausted the
-# Actions allowance, not the number of checks.
+# ran seven times and tested not one changed line, roughly eighty minutes of a
+# paid runner spent on code nobody had edited. That is what exhausted the
+# Actions allowance at the time.
+#
+# The repository is public now, so standard runners are free and that allowance
+# no longer applies. The filters stay because the reason for them outlived the
+# bill: a red check should mean the change under review broke something, and a
+# suite that keeps rerunning untouched code teaches you to skim past it.
 #
 # GitHub evaluates `paths:` per workflow file, not per job, which is the only
-# reason this is four files instead of one. The alternative -- a change-detection
-# job gating the others with `if:` -- keeps one file but pays a checkout on
-# every run to work out that it has nothing to do.
+# reason this is four files instead of one. The alternative, a change-detection
+# job gating the others with `if:`, keeps one file but pays a checkout on every
+# run to work out that it has nothing to do.
 #
-# A job that does not run shows no check at all rather than a failing one.
-# `main` has no branch protection requiring these contexts, so a filtered-out
-# job cannot block a merge.
+# A filtered-out job shows no check at all rather than a passing one, and a
+# required context that never appears blocks the merge forever. So anything
+# branch protection requires has to come from a workflow with no `paths:`
+# filter. `gates` is the only one.
 #
-# NOTE: Vercel already runs typecheck and build on every pull request, and
-# next.config.mjs sets no ignoreBuildErrors, so that build really does
-# typecheck. This job is kept for `npm run lint`, which Vercel does not run,
-# and for the prebuild gates (env, tokenomics, contrast) that guard published
-# numbers. If Actions minutes get tight again, this is the job to cut first.
+# NOTE: this job is the only thing that typechecks, lints, tests and builds
+# the web app. This note used to say Vercel covered typecheck and build, so
+# the job existed mainly for `npm run lint`. That was true while the Vercel
+# integration was connected. It is not connected now, the repository has no
+# webhooks at all, and the vercel check suite sits queued with zero check runs
+# on every commit. Verify that has been restored before deciding this job is
+# redundant, because at the moment cutting it would leave zorpha-web with no
+# build on any pull request.
+#
+# `prebuild` runs check-env, check-tokenomics and check-contrast, so a green
+# build here also asserts the published supply figures still agree with
+# lib/tokenomics.ts and that no colour pair has fallen below its contrast
+# floor.
 
 on:
   push:
@@ -65,6 +79,12 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      # `npm test` predates this workflow and was never wired into it, so the
+      # APY arithmetic the portal renders was reaching production with its
+      # tests run only on a developer's machine.
+      - name: Test
+        run: npm test
 
       # `prebuild` runs scripts/check-tokenomics.mjs, so this also asserts the
       # published supply numbers still agree with lib/tokenomics.ts.
