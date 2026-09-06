@@ -17,11 +17,18 @@ import { explorerAddress } from '@/lib/contracts';
 import { countBy, TEST_STATUS } from '@/lib/audit';
 import { activeChain, isMainnet } from '@/lib/chains';
 
+/*
+  The circulating share is interpolated from CIRCULATING_PCT rather than typed.
+  It read a literal "8% circulating" while the page body and the whitepaper both
+  rendered the derived constant -- correct on the day, with nothing to keep it
+  correct. Every stale claim found on this site in the first week of September
+  2026 had that same shape, so the one place still hardcoding this figure is
+  worth closing even while the two agree.
+*/
 export const metadata: Metadata = {
   alternates: { canonical: '/token' },
   title: 'Token',
-  description:
-    '$ZOR tokenomics: 1,000,000,000 fixed supply, no mint function, 8% circulating with 800,000,000 locked in a non-revocable vesting contract, and 50% of protocol fees used to buy and burn on the open market.',
+  description: `$ZOR tokenomics: 1,000,000,000 fixed supply, no mint function, ${CIRCULATING_PCT}% circulating with 800,000,000 locked in a non-revocable vesting contract, and 50% of protocol fees used to buy and burn on the open market.`,
 };
 
 export default function TokenPage() {

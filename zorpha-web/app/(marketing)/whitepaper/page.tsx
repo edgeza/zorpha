@@ -175,7 +175,7 @@ export default function WhitepaperPage() {
             </div>
 
 
-            {/* Deployment status; what is live, versus what this document describes */}
+            {/* Deployment status — what is live, versus what this document describes */}
             <div className="mt-14 rounded-xl border border-amber-500/25 bg-amber-500/[0.04] p-6 sm:p-8">
               <h2 id="deployment" className="scroll-mt-28 text-xl font-semibold text-ink-100">
                 Deployment status
@@ -534,11 +534,21 @@ export default function WhitepaperPage() {
                 </table>
               </div>
 
+              {/*
+                This sentence used to end "The remaining 800,000,000 is locked in a
+                vesting contract", which does not close: 8% circulating plus 800,000,000
+                is 88%, leaving 120,000,000 unmentioned. ON_CHAIN_CUSTODY is rendered on
+                /token, not here, so a reader doing the arithmetic on this page found 12%
+                of supply unaccounted for in a document whose whole claim is that it can
+                be checked. All four buckets are now named.
+              */}
               <P>
                 Circulating supply is {CIRCULATING_PCT}%, being the governance Safe,
-                protocol-owned liquidity and holders. The remaining 800,000,000 is locked in a
+                protocol-owned liquidity and holders. Of the rest, 800,000,000 is locked in a
                 vesting contract on a 180-day cliff releasing linearly to day 1095, marked
-                non-revocable onchain so it cannot be cancelled or clawed back.
+                non-revocable onchain so it cannot be cancelled or clawed back; 80,000,000
+                sits unclaimed in the airdrop distributor; and 40,000,000 is the insurance
+                fund, releasable only by governance against a verified shortfall.
               </P>
               <P>
                 A small float paired with a large fully-diluted valuation produces a price
