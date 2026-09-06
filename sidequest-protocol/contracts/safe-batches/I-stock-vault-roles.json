@@ -1,0 +1,54 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 1788725174655,
+  "meta": {
+    "name": "I - stock vault roles and handover to the Timelock",
+    "description": "Finishes the oracle-free NVDA long/flat vault in one atomic transaction. Grants KEEPER_ROLE and RISK_COUNCIL_ROLE to this Safe, grants VAULT_ROLE on the swap adapter to the vault, points the vault at that swap adapter, grants DEFAULT_ADMIN_ROLE to the Timelock, and renounces this Safe's own DEFAULT_ADMIN_ROLE. KEEPER on the Safe rather than the Timelock is deliberate and is disclosed on the site: rebalanceTo is the manager's actual job and cannot wait 48 hours. RISK_COUNCIL likewise, because a circuit breaker that takes two days to pull is not a brake. Everything about the vault's CONFIGURATION, its fees, its roles, the venue it trades through, stays timelocked. ATOMIC ON PURPOSE: the renounce is last, and any other order leaves a step needing an admin the Safe has already given up. The vault must never sit in a state where it has an admin who is neither this Safe nor the Timelock. Deployed 6 September 2026: oracle 0xaBefb351777d8E68FCafa4D2F8A5848F326298cA, vault 0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413, swap adapter 0x8E50FC336f87b454cc44a89dA3a7267412B045dc. NOTE: Safe nonces execute in order.",
+    "txBuilderVersion": "1.16.5"
+  },
+  "transactions": [
+    {
+      "to": "0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413",
+      "value": "0",
+      "data": "0x2f2ff15dfc8737ab85eb45125971625a9ebdb75cc78e01d5c1fa80c4c6e5203f47bc4fab000000000000000000000000c75e64ccf3ce6e2f40939ab58255681769bcf8c4",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413",
+      "value": "0",
+      "data": "0x2f2ff15d9957de8c5d95da580823ca52e598d0c0d2818cb1f8fd9773a5166d2a45d82b05000000000000000000000000c75e64ccf3ce6e2f40939ab58255681769bcf8c4",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0x8E50FC336f87b454cc44a89dA3a7267412B045dc",
+      "value": "0",
+      "data": "0x2f2ff15d31e0210044b4f6757ce6aa31f9c6e8d4896d24a755014887391a926c5224d959000000000000000000000000b129495f0ad616edd2f28b3b49470fc1f0fad413",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413",
+      "value": "0",
+      "data": "0xb826ee540000000000000000000000008e50fc336f87b454cc44a89da3a7267412b045dc",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413",
+      "value": "0",
+      "data": "0x2f2ff15d0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000813d69b8e1dbe2e08bcb892be203a6bce99b36fc",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413",
+      "value": "0",
+      "data": "0x36568abe0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c75e64ccf3ce6e2f40939ab58255681769bcf8c4",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}
