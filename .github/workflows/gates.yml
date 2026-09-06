@@ -73,10 +73,28 @@ jobs:
       # the pattern permits an em-dash that is the entire quoted string and
       # rejects it everywhere else. Written as a PCRE escape rather than the
       # character itself, so this file does not trip its own check.
+      #
+      # The exit status is read in three ways rather than two. `git grep` returns
+      # 0 for a match, 1 for none, and something else when it could not run at
+      # all, and `-P` is the one flag here that a git build can lack. Written as
+      # a plain `if`, a git without PCRE exits 128, the `if` reads that as "no
+      # match", and the step passes green having tested nothing. That is a bad
+      # failure for any check and a worse one for a required check, because the
+      # first sign of it would be an em-dash reaching a public repository.
       - name: No em-dashes in prose
         run: |
-          if git grep -nP "(?<!')\x{2014}(?!')" -- . ':!sidequest-protocol/contracts/lib' ; then
-            echo "::error::em-dash found: use a comma, semicolon, colon or parentheses"
-            exit 1
-          fi
-          echo "clean"
+          found=$(git grep -nP "(?<!')\x{2014}(?!')" -- . ':!sidequest-protocol/contracts/lib') && rc=0 || rc=$?
+          case "$rc" in
+            0)
+              printf '%s\n' "$found"
+              echo "::error::em-dash found: use a comma, semicolon, colon or parentheses"
+              exit 1
+              ;;
+            1)
+              echo "clean"
+              ;;
+            *)
+              echo "::error::git grep exited $rc, so this check did not run. Does this git have PCRE?"
+              exit 1
+              ;;
+          esac
