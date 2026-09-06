@@ -1,4 +1,4 @@
-# Oracle-free stock vault — slice 1 implementation plan
+# Oracle-free stock vault, slice 1 implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -26,16 +26,16 @@ Exact values, from the spec and from the live chain. Every task's requirements i
 include this section.
 
 - Chain: Robinhood Chain mainnet, **chain id 4663**, RPC `https://rpc.mainnet.chain.robinhood.com`
-- NVDA (asset, base): `0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC` — **18 decimals**
-- USDG (cash, quote): `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` — **6 decimals**
-- Pool: `0xd4eb21209c4d6093f80b5b84f5c45cc093ea14a3` — 0.05% fee, **token0 = USDG, token1 = NVDA**
+- NVDA (asset, base): `0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC`, **18 decimals**
+- USDG (cash, quote): `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168`, **6 decimals**
+- Pool: `0xd4eb21209c4d6093f80b5b84f5c45cc093ea14a3`, 0.05% fee, **token0 = USDG, token1 = NVDA**
 - SwapRouter02: `0xCaf681a66D020601342297493863E78C959E5cb2`
 - Governance Safe (2-of-2): `0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4`
 - Timelock: `0x813D69B8e1DBE2E08bcB892BE203A6BCE99b36Fc`
 - ProtocolTreasury (fee recipient): `0x3D9FE37DC0D08BeD0CD48c74Cb344064df9fB3C6`
 - Adapter params: `twapWindow` 1800, `minCardinality` 300, **`minLiquidity` 5000000000000000000
   (5e18)**, `maxObservationAge` 14400, `maxSpotDivergenceBps` 200, `decimals()` 8
-  — the floor was LOWERED from the spec's 1.2e19 on measurement; see "The liquidity
+ , the floor was LOWERED from the spec's 1.2e19 on measurement; see "The liquidity
   floor, revised" in the spec
 - Vault params: `maxOracleStaleness` 3600, `rebalanceThresholdBps` 100, `maxSlippageBps` 100,
   `performanceFeeBps` 1000, `emergencyRedeemCooldown` 0
@@ -44,7 +44,7 @@ include this section.
   `pragma solidity ^0.8.28;`
 - **All existing tests must stay green.** The runner's own baseline, measured on `main`:
   **334 passed, 0 failed, 34 skipped, 368 total.** (An earlier figure of 366 came from
-  grepping `function test`, which is not what the runner counts — use these.) The 34 skips
+  grepping `function test`, which is not what the runner counts, use these.) The 34 skips
   are the fork tests, which need `RH_MAINNET_RPC_URL`. Run `forge test` with no fork env set
   after every task, and get the exact delta with
   `forge test --no-match-path '<the file you added>'`
@@ -60,7 +60,7 @@ include this section.
   in `sidequest-protocol/contracts/safe-batches/`. The only hot-key transaction permitted is
   the `CREATE` in Task 8, signed from the `mainnet-deploy` keystore
 - Generate every hex calldata with `cast calldata` redirected **straight to a file**. Never
-  hand-copy hex into JSON — an earlier batch silently lost three bytes that way
+  hand-copy hex into JSON, an earlier batch silently lost three bytes that way
 
 ---
 
@@ -83,7 +83,7 @@ $ cast call 0xd4eb...14a3 "liquidity()(uint128)"
 
 All seven existing fork tests already use bare `vm.createSelectFork(url)` at head for this
 reason. Follow that convention, and follow `SpotRebalanceMainnet.t.sol`'s discipline of
-**deriving expected values from live state** rather than asserting hardcoded constants —
+**deriving expected values from live state** rather than asserting hardcoded constants,
 that file reads the price out of the pool precisely because a pinned number goes stale.
 
 Fork tests are opt-in and must skip cleanly:
@@ -114,7 +114,7 @@ The spec's "The terminal" section reads as though it were new. It is not:
 `factoryVaults()` in `lib/vault-terminal.ts` lists the spot vault the moment
 `NEXT_PUBLIC_SPOT_VAULT_ADDRESS` is set. So the genuinely new UI work in slice 1 is:
 
-- **the NVDA price chart** (Task 12) — nothing resembling it exists;
+- **the NVDA price chart** (Task 12), nothing resembling it exists;
 - **retracting the site's standing claim** that the spot vault and the oracle are
   deliberately absent from mainnet (Task 11), which becomes false the moment Task 8 lands;
 - **the two disclosures** the spec requires (Task 13).
@@ -139,7 +139,7 @@ exception in Task 13.
 | --- | --- |
 | `src/lib/TickMath.sol` | `getSqrtRatioAtTick` and the two ratio bounds. Nothing else. |
 | `src/oracle/UniswapV3TwapAdapter.sol` | Pool interface, price arithmetic, five guards, `latestRoundData`, and the ungated charting view. |
-| `test/mocks/MockUniswapV3Pool.sol` | A pool whose tick, liquidity, cardinality and observation age are settable, so each guard fires in isolation. It must ALSO support per-slot observation ages, a per-slot `initialized` flag, and an explicit cumulative series — see the note under Task 2, Step 3. |
+| `test/mocks/MockUniswapV3Pool.sol` | A pool whose tick, liquidity, cardinality and observation age are settable, so each guard fires in isolation. It must ALSO support per-slot observation ages, a per-slot `initialized` flag, and an explicit cumulative series, see the note under Task 2, Step 3. |
 | `test/lib/TickMath.t.sol` | Unit, no network. Known-answer checks. |
 | `test/oracle/UniswapV3TwapAdapterUnit.t.sol` | Unit, no network. Constructor ordering, price arithmetic, five guards. |
 | `test/fork/StockVaultMainnet.t.sol` | Fork. Adapter against the real pool, then the whole vault round-trip. |
@@ -241,7 +241,7 @@ Create `test/lib/TickMath.t.sol`.
 
 **The revert cases need a harness.** A library's `internal` function is inlined into its
 caller, so it reverts inside the test frame rather than in a sub-call and `vm.expectRevert`
-never sees it — the test simply fails with the library's own error. Put an external wrapper
+never sees it; the test simply fails with the library's own error. Put an external wrapper
 in the same file and route the two revert tests through it. (This does not apply to later
 tasks: a constructor revert is a CREATE and `latestRoundData` is an external call, both of
 which `expectRevert` does intercept.)
@@ -445,7 +445,7 @@ Expected: **10 passing** (8 value/revert tests plus 2 fuzz runs).
 forge test
 ```
 
-Expected: **344 passed, 0 failed, 34 skipped, 378 total** — the 334 baseline plus 10.
+Expected: **344 passed, 0 failed, 34 skipped, 378 total**, the 334 baseline plus 10.
 
 - [ ] **Step 6: Commit**
 
@@ -640,8 +640,8 @@ contract UniswapV3TwapAdapterUnitTest is Test {
 }
 ```
 
-`test/mocks/MockERC20.sol` already exists with exactly this constructor —
-`(string memory name_, string memory symbol_, uint8 decimals_)` and a `decimals()` override —
+`test/mocks/MockERC20.sol` already exists with exactly this constructor,
+`(string memory name_, string memory symbol_, uint8 decimals_)` and a `decimals()` override,
 so it is reused rather than duplicated.
 
 - [ ] **Step 2: Run it and confirm it fails**
@@ -657,13 +657,13 @@ Expected: compilation failure, `Source "src/oracle/UniswapV3TwapAdapter.sol" not
 Create `test/mocks/MockUniswapV3Pool.sol`. Beyond the listing below it needs three things
 Task 5 depends on, and which are easiest to build now:
 
-- `setObservationAgeAt(uint256 index, uint32 age)` — a per-slot age override, falling back to
+- `setObservationAgeAt(uint256 index, uint32 age)`, a per-slot age override, falling back to
   the global `observationAge`. **Without this, `observations()` serves every slot the same
   value, an off-by-one in `(index + 1) % cardinality` returns the right answer for the wrong
   reason, and Task 5's buffer-depth test passes vacuously.**
-- `setObservationUninitialized(uint256 index, bool)` — so the unfilled-ring fallback path is
+- `setObservationUninitialized(uint256 index, bool)`, so the unfilled-ring fallback path is
   reachable.
-- `setCumulativeSeries(int56[] calldata)` — return these cumulatives verbatim from `observe`
+- `setCumulativeSeries(int56[] calldata)`, return these cumulatives verbatim from `observe`
   instead of interpolating between two endpoints, so a test can make the price MOVE across
   the span. Interpolation alone cannot reveal a reversed series, because every point is equal.
 
@@ -954,7 +954,7 @@ git commit -m "feat(oracle): TWAP adapter constructor asserts pool token orderin
 **Interfaces:**
 - Consumes: `TickMath.getSqrtRatioAtTick`, `Math.mulDiv`, `IUniswapV3PoolMinimal.observe`.
 - Produces:
-  - `function answerAtTick(int24 tick) public view returns (uint256)` — public so tests and
+  - `function answerAtTick(int24 tick) public view returns (uint256)`, public so tests and
     the fork test can compare against an independently computed value
   - `function meanTick() public view returns (int24)`
   - a working `latestRoundData()` returning `(1, answer, block.timestamp, block.timestamp, 1)`
@@ -1246,7 +1246,7 @@ git commit -m "feat(oracle): TWAP price arithmetic, quote per whole base at 1e8"
 
 ## Task 4: The five guards
 
-Each guard must revert on its own trigger **and only on its own trigger** — a guard that
+Each guard must revert on its own trigger **and only on its own trigger**, a guard that
 fires for a neighbour's reason sends an operator to fix the wrong thing.
 
 **Files:**
@@ -1412,7 +1412,7 @@ Append to `test/oracle/UniswapV3TwapAdapterUnit.t.sol`:
 forge test --match-path 'test/oracle/UniswapV3TwapAdapterUnit.t.sol' -vv
 ```
 
-Expected: the cardinality, liquidity, age and divergence tests fail — the guards do not
+Expected: the cardinality, liquidity, age and divergence tests fail, the guards do not
 exist yet, so `latestRoundData` returns an answer where a revert was expected.
 
 - [ ] **Step 3: Implement**
@@ -1520,7 +1520,7 @@ The terminal needs a price series. Reading it from the adapter rather than reimp
 NAV agree by construction rather than by coincidence.
 
 Measured 6 September 2026: the pool's ring buffer holds observations reaching back roughly
-55 hours, so a 24-hour chart is available from pool state alone — no indexer, no archive node.
+55 hours, so a 24-hour chart is available from pool state alone, no indexer, no archive node.
 
 **Files:**
 - Modify: `sidequest-protocol/contracts/src/oracle/UniswapV3TwapAdapter.sol`
@@ -1530,7 +1530,7 @@ Measured 6 September 2026: the pool's ring buffer holds observations reaching ba
 - Consumes: `answerAtTick`, `pool.observe`, `pool.slot0`, `pool.observations`.
 - Produces:
   - `function answersOverWindows(uint32[] calldata secondsAgos) external view returns (uint256[] memory answers)`
-    — `secondsAgos` strictly decreasing and ending at 0; returns `secondsAgos.length - 1`
+   , `secondsAgos` strictly decreasing and ending at 0; returns `secondsAgos.length - 1`
     answers, each the mean price over one interval. **Ungated on purpose.**
   - `function oldestObservationSecondsAgo() external view returns (uint32)`
   - `error BadWindowSeries()`
@@ -1989,7 +1989,7 @@ RH_MAINNET_RPC_URL=https://rpc.mainnet.chain.robinhood.com \
 ```
 
 Expected: **7 passing**. If `test_LivePoolClearsEveryGuardWithHeadroom` fails on liquidity,
-**stop and report** — the floor of 1.2e19 was set against 5.0993e19 measured 6 September and
+**stop and report**, the floor of 1.2e19 was set against 5.0993e19 measured 6 September and
 in-range liquidity had already fallen to 2.7237e19 by that evening. A floor the live pool
 cannot clear is a vault that can never rebalance, and that is a decision for the spec, not
 for the implementer.
@@ -2187,7 +2187,7 @@ RH_MAINNET_RPC_URL=https://rpc.mainnet.chain.robinhood.com \
 Expected: 10 passing.
 
 If `test_Manipulation_PushingSpotBlocksTheRebalance` does **not** revert, the $3M push was
-not enough to move spot 200bps — the pool is deeper than it was on 6 September. Raise `push`
+not enough to move spot 200bps, the pool is deeper than it was on 6 September. Raise `push`
 until the guard trips and record the figure it took in a comment; that number is the
 measured cost of defeating this vault's price and is worth writing down.
 
@@ -2355,7 +2355,7 @@ git commit -m "feat(script): deploy the oracle-free NVDA long/flat vault"
 - [ ] **Step 5: STOP. Broadcasting is a human decision.**
 
 Do not broadcast as part of executing this plan. Present the dry-run output and the gas
-estimate, and let the operator decide. When they do broadcast, record the three addresses —
+estimate, and let the operator decide. When they do broadcast, record the three addresses,
 Tasks 9, 11 and 12 all need them.
 
 ---
@@ -2399,7 +2399,7 @@ for f in .calldata/*.hex; do echo "$f  $(wc -c < "$f") chars"; done
 ```
 
 Every file must be 139 characters for a `(bytes32,address)` call (`0x` + 8 + 64 + 64 + a
-newline) and 75 for `setSwapAdapter`. A short file is a truncated argument — a previous
+newline) and 75 for `setSwapAdapter`. A short file is a truncated argument, a previous
 batch shipped 353 bytes where 356 belonged, from exactly this.
 
 - [ ] **Step 2: Assemble the batch**
@@ -2471,7 +2471,7 @@ signatures.
 ## Task 10: Register the vault for the indexer and the portal
 
 The indexer reads its vault list from the `vaults` table, not from an env var. An unregistered
-vault emits `Rebalanced` events that nothing copies into the receipts feed — the track record
+vault emits `Rebalanced` events that nothing copies into the receipts feed, the track record
 would simply not exist.
 
 **Files:**
@@ -2591,7 +2591,7 @@ it is the site describing a protocol that no longer exists.
 - [ ] **Step 1: Write the failing test**
 
 `zorpha-web/lib/contracts.test.ts` already exists and already pins this behaviour the other
-way round. It uses **`node:test` and `node:assert/strict`** — not vitest, not jest — and it
+way round. It uses **`node:test` and `node:assert/strict`** (not vitest, not jest) and it
 carries a `BY_DESIGN` array listing `'oracle'` and `'spotVault'`. So this is an edit to an
 existing assertion, not a new one appended beside it. Leaving the old array in place would
 have the suite assert both claims at once.
@@ -2641,7 +2641,7 @@ when they leave `BY_DESIGN`.
 cd zorpha-web && npm test
 ```
 
-Expected: the new test fails — both calls still return `true`.
+Expected: the new test fails, both calls still return `true`.
 
 - [ ] **Step 3: Edit the switch**
 
@@ -2682,7 +2682,7 @@ export const NOT_ON_MAINNET: { name: string; note: string }[] = [
 `MedianOracle` leaves the list entirely: it is not deferred, it is not wanted. Running one
 would mean a keeper holding a live signing key forever, and the TWAP adapter removes the
 need. If the surrounding page implies the list means "coming later", adjust that sentence
-too — check `grep -rn "NOT_ON_MAINNET" zorpha-web/app zorpha-web/components`.
+too, check `grep -rn "NOT_ON_MAINNET" zorpha-web/app zorpha-web/components`.
 
 - [ ] **Step 5: Set the addresses**
 
@@ -2695,7 +2695,7 @@ grep -E 'ORACLE_ADDRESS|SPOT_VAULT_ADDRESS' .env.local
 ```
 
 Production reads from Vercel, not from this file. Set both in the Vercel project's
-Environment Variables for Production **and redeploy** — `NEXT_PUBLIC_*` values are inlined
+Environment Variables for Production **and redeploy**, `NEXT_PUBLIC_*` values are inlined
 at build time, so an env change with no rebuild changes nothing.
 
 - [ ] **Step 6: Run the tests and confirm they pass**
@@ -3021,7 +3021,7 @@ import { StockPrice } from '@/components/portal/StockPrice';
 {vaultOracle ? <StockPrice oracleAddress={vaultOracle} symbol={assetSymbol} /> : null}
 ```
 
-Find the existing name for the oracle read in that file before wiring it — do not add a
+Find the existing name for the oracle read in that file before wiring it, do not add a
 second read of the same value.
 
 - [ ] **Step 4: Verify it in the browser**
@@ -3078,12 +3078,12 @@ voice. Do not invent a second format.
 
 On `/protocol`, in the same table that carries the adapter exception, add:
 
-> **Rebalances** — Immediate. `KEEPER_ROLE` on the stock vault is held by the 2-of-2 Safe,
+> **Rebalances**, Immediate. `KEEPER_ROLE` on the stock vault is held by the 2-of-2 Safe,
 > not by the Timelock. A manager decision takes effect as soon as both signers approve it;
-> everything about the vault's configuration — its fees, its roles, the venue it trades
-> through — does not, and stays behind the 48-hour Timelock.
+> everything about the vault's configuration, its fees, its roles, the venue it trades
+> through, does not, and stays behind the 48-hour Timelock.
 >
-> **Circuit breaker** — Immediate, and for the same reason. `RISK_COUNCIL_ROLE` is held by
+> **Circuit breaker**, Immediate, and for the same reason. `RISK_COUNCIL_ROLE` is held by
 > the Safe, so deposits can be halted at once. A brake that takes two days to pull is not a
 > brake.
 
@@ -3142,7 +3142,7 @@ central claim. Two unverified contracts holding the price of a live vault would 
 - [ ] **Step 1: Verify both new contracts**
 
 The verify button in the Blockscout UI does nothing on this chain; the CLI path works but
-needs retrying until it returns 200. `script/verify-mainnet.sh` already carries that loop —
+needs retrying until it returns 200. `script/verify-mainnet.sh` already carries that loop,
 read it and follow the same pattern:
 
 ```bash
@@ -3218,8 +3218,8 @@ Run against the spec with fresh eyes.
 | `SpotVaultMinimal` unmodified | Global Constraints; no task edits it |
 
 Two gaps found and closed while reviewing: the spec never says the vault must be **registered
-with the indexer**, without which the receipts feed and the track record — the whole point of
-slice 1 — stay empty (Task 10); and it never says the site's standing claim that the spot
+with the indexer**, without which the receipts feed and the track record, the whole point of
+slice 1, stay empty (Task 10); and it never says the site's standing claim that the spot
 vault is deliberately absent from mainnet has to be **retracted** (Task 11). Both are now
 tasks.
 
@@ -3241,17 +3241,17 @@ footer says a row at the zero address is worse than no row.
 
 **3. Type consistency**
 
-- `answerAtTick(int24) returns (uint256)` — declared Task 3, used in Tasks 4, 5, 6.
-- `meanTick() returns (int24)` — declared Task 3, used in Tasks 4, 6.
-- `answersOverWindows(uint32[]) returns (uint256[])` — declared Task 5, ABI in Task 12
+- `answerAtTick(int24) returns (uint256)`, declared Task 3, used in Tasks 4, 5, 6.
+- `meanTick() returns (int24)`, declared Task 3, used in Tasks 4, 6.
+- `answersOverWindows(uint32[]) returns (uint256[])`, declared Task 5, ABI in Task 12
   matches (`uint32[]` in, `uint256[]` out).
-- `oldestObservationSecondsAgo() returns (uint32)` — declared Task 5, ABI and component in
+- `oldestObservationSecondsAgo() returns (uint32)`, declared Task 5, ABI and component in
   Task 12 match.
 - `baseIsToken0` is `bool` throughout; `minLiquidity` is `uint128` in the constructor, in the
   error, and in the test's `MIN_LIQUIDITY` constant.
-- `MockUniswapV3Pool.setMeanTick(int24, uint32)` — defined Task 2, used in Tasks 3, 4, 5.
+- `MockUniswapV3Pool.setMeanTick(int24, uint32)`, defined Task 2, used in Tasks 3, 4, 5.
 - `InvalidAnswer` is declared once, in Task 3, and reused in Task 4 rather than redeclared.
-- `StockPrice({ oracleAddress, symbol })` — declared Task 12, mounted with those exact prop
+- `StockPrice({ oracleAddress, symbol })`, declared Task 12, mounted with those exact prop
   names in the same task.
 
 **4. The liquidity floor was wrong, and is now 5e18**
@@ -3263,7 +3263,7 @@ would have refused to rebalance after any $250k trade by anybody.
 
 It is **5e18** now, and the choice is bounded on both sides. Ordinary flow up to $500k
 leaves 7.784e18 and keeps working. A $1M push drains depth to 4.149e18 while moving spot
-only 177 bps — INSIDE the 200 bps divergence tolerance — so the liquidity floor is the only
+only 177 bps (INSIDE the 200 bps divergence tolerance) so the liquidity floor is the only
 guard that catches that size, and anything below ~4.2e18 would neuter it. Full table in the
 spec under "The liquidity floor, revised".
 

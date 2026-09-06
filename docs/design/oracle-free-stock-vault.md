@@ -15,7 +15,7 @@ Robinhood Chain is a tokenized-equity chain. Measured 6 September 2026:
     amc  / USDG    $1,850,079
 
 Zorpha shipped a yield vault into that and nothing else. `SpotVaultMinimal` and
-`RWRotationVault` — long/flat on an equity, and rotating baskets of equities —
+`RWRotationVault`, long/flat on an equity, and rotating baskets of equities,
 have been written and tested since before launch and were left off mainnet. The
 whole distinguishing feature of the chain is unexploited.
 
@@ -79,7 +79,7 @@ each way.
 Someone else grew those. NVDA at 6000 is the deepest pool AND the longest
 history, which is why it is first.
 
-Note SPY's deepest pool ($10.4M) is not a Uniswap V3 pool — its identifier is 32
+Note SPY's deepest pool ($10.4M) is not a Uniswap V3 pool, its identifier is 32
 bytes, so it belongs to another DEX and cannot be read with `observe`. SPY's V3
 pools are thinner. That is why the first vault is NVDA and not the more natural
 index.
@@ -137,7 +137,7 @@ assumes and `RWRotationVault` documents.
 
 **`maxStaleness()` is deliberately NOT implemented.** `OracleWindow.requireNotTighterThan`
 probes for it by staticcall and treats its absence as "not one of ours, invariant
-unenforceable" — the same path a real Chainlink feed takes. That is the correct
+unenforceable", the same path a real Chainlink feed takes. That is the correct
 classification: the vault-tighter-than-oracle bug that library exists to prevent
 is a property of multi-reporter median freshness and has no analogue here.
 
@@ -177,7 +177,7 @@ why.
 
 `KEEPER_ROLE` on the Safe rather than the Timelock is the deliberate difference
 from zsUSDG: `rebalanceTo` is the manager's actual job and cannot wait 48 hours.
-Admin — fees, roles, the circuit breaker — stays timelocked.
+Admin (fees, roles, the circuit breaker) stays timelocked.
 
 **This must be disclosed on the site the way the adapter exception was**, and in
 the same words: a manager decision takes effect immediately; everything about the
@@ -199,7 +199,7 @@ anyone wants to manage a fund here.
 
 The manager acts by setting a target weight. `rebalanceTo(uint16)` is what the
 contract offers and it is the right shape: one action, one number, one receipt
-that reads *"on 6 September this manager moved to 100% NVDA"* — which a stranger
+that reads *"on 6 September this manager moved to 100% NVDA"*, which a stranger
 can score against NVDA's chart without trusting anybody.
 
 ## 24/7 trading
@@ -274,7 +274,7 @@ Two things follow.
 
 **A $50,000 trade cuts in-range liquidity by 65%**, from `3.85e19` to `1.342e19`.
 That is ordinary flow on a pool with $7M of depth, not an attack. At `1.2e19`
-the vault would have stopped rebalancing after any $250k trade by anybody —
+the vault would have stopped rebalancing after any $250k trade by anybody,
 availability given up for no safety gain, since the price was still sound.
 
 **The divergence guard never fires on a single trade.** Even a $1M push moves
@@ -284,7 +284,7 @@ first. The liquidity floor is doing the work the spec attributed to divergence.
 The floor is therefore `5e18`, chosen so that:
 
 - ordinary flow up to $500k leaves the vault able to rebalance (`7.784e18`);
-- the $1M case, which drains depth to `4.149e18`, is still refused — and that
+- the $1M case, which drains depth to `4.149e18`, is still refused, and that
   size matters specifically, because at 177 bps it is the largest push the
   divergence guard would let through.
 
