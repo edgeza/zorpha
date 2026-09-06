@@ -17,7 +17,7 @@ export const BRAND_GRAPHIC = {
   /** Brightest logo violet. */
   bright: '#8700f9',
   /** Mid-range logo violet. Mirrors `--zor-graphic-accent`; not consumed by
-   *  any component today — kept as a record of the measured graphic-tier
+   *  any component today, kept as a record of the measured graphic-tier
    *  value. */
   accent: '#7a3cff',
   /** Prism body tint. Replaces the previous pure white, which caused the wash-out. */

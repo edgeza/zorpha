@@ -20,7 +20,7 @@ import {
 
 const TESTNET_CHAIN_ID = 46630;
 
-/** Absent on 4663 by decision — lib/deployment.ts NOT_ON_MAINNET. */
+/** Absent on 4663 by decision; see lib/deployment.ts NOT_ON_MAINNET. */
 const BY_DESIGN: ContractKey[] = [
   'oracle',
   'strategyExecutor',

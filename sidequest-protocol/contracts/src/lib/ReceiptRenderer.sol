@@ -48,7 +48,7 @@ library ReceiptRenderer {
     ///         takes one `targetBps` and one `cashLeg`. `RWRotationVault`
     ///         previously squeezed itself into that shape by passing
     ///         `rebalanceCount % 65536` as the target weight and the constant
-    ///         10000 (the weight checksum) as the cash leg — so the resulting
+    ///         10000 (the weight checksum) as the cash leg, so the resulting
     ///         hash bound neither the basket weights nor the per-token legs.
     ///         Those are precisely the fields a rotation receipt exists to
     ///         attest, which made the commitment unverifiable for the one vault

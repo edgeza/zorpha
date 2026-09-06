@@ -39,7 +39,7 @@ export const LIVE_VAULTS: { name: string; address: string; role: string }[] = [
 ];
 
 /**
- * Written, tested, and deployed on testnet — but NOT on mainnet. The
+ * Written, tested, and deployed on testnet, but NOT on mainnet. The
  * whitepaper describes these in the present tense because they exist as code;
  * this list is what stops that reading as a claim about 4663.
  */
