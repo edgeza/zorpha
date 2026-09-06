@@ -44,24 +44,11 @@ export const ON_CHAIN_CUSTODY: {
     address: '0x81613D9914F7b4c02c897941757a99BC191De88e',
   },
   {
-    /**
-     * Claimed out of the distributor, NOT distributed.
-     *
-     * The deployed Merkle tree had one leaf naming the governance Safe, so the
-     * whole tranche was claimable by governance and nobody else. Claiming moved
-     * custody from the distributor to the Safe and changed nothing about who
-     * the tokens are for.
-     *
-     * It stays its own line rather than folding into Circulating. The Safe
-     * holds it earmarked for Season 1, and counting earmarked tokens as
-     * circulating would overstate the float by 8% of supply -- which is the
-     * number a reader is most likely to act on.
-     */
-    label: 'Season 1 airdrop, held by governance',
+    label: 'Airdrop, unclaimed',
     tokens: 80_000_000,
     note:
-      'Claimed from the Merkle distributor by the governance Safe, its sole eligible claimant. Not yet distributed: per-wallet Season 1 criteria are unpublished, and paying them out needs a second distributor built from a real recipient list.',
-    address: '0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4',
+      'Held by the Merkle distributor. The deployed tree names the governance Safe as its sole claimant; per-wallet Season 1 criteria are not published yet.',
+    address: '0x1045AeCaCad091eC791815Be8c28DA12Ed94D4E3',
   },
   {
     label: 'Insurance fund',
