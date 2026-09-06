@@ -1,0 +1,141 @@
+name: deploy
+
+# Production deploys, run from CI rather than by Vercel's git integration.
+#
+# Why this exists: on 6 September the repository was deleted and recreated,
+# which gave it a new numeric id. Vercel matches incoming git events by that
+# id, and its stored binding still pointed at the old one. The project page
+# went on showing a healthy `edgeza/zorpha` link the whole time, so nothing
+# anywhere reported a problem. Four merges landed on main, every check went
+# green, and production served the 09:00 build for three hours.
+#
+# The failure was silent in the way that matters: not one signal turned red.
+# CI passed, pull requests merged clean, the dashboard looked connected. The
+# only way to notice was to fetch the live page and compare it against what
+# had been merged.
+#
+# So the deploy stops being something that happens elsewhere and becomes a
+# step in a pipeline that can fail visibly. If a deploy does not happen, this
+# job goes red and says so.
+#
+# This is safe to keep even after the git integration is repaired. Two
+# deployments of the same commit are idempotent, and the second is nearly free
+# because Vercel reuses the build cache. If you would rather not have both,
+# disable auto-deploys in the Vercel project rather than deleting this file,
+# so the visible-failure property survives.
+#
+# REQUIRES a repository secret named VERCEL_TOKEN: a Vercel access token from
+# https://vercel.com/account/tokens, scoped to the Movimentum team.
+#
+# The project and org ids are inlined below rather than read from
+# zorpha-web/.vercel/project.json, because that file is gitignored and so is
+# not in the checkout. They are not secrets: both appear in the URL of every
+# deployment inspector page. If the project is ever re-linked or recreated,
+# these two lines are what needs updating.
+#
+# `push: branches: [main]` with no `paths:` filter on purpose. A web-only
+# filter would be right for a build, but a deploy should follow every commit
+# that reaches main: `vercel build` runs from the repository root and a change
+# outside zorpha-web can still alter what gets published.
+
+on:
+  push:
+    branches: [main]
+  # Runnable on demand, so a failed or missed deploy can be retried without
+  # pushing an empty commit.
+  workflow_dispatch:
+
+# Deploys are not cancelled mid-flight the way a build can be: cancelling one
+# can leave the alias pointing at a half-finished deployment. Queue instead.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy (production)
+    runs-on: ubuntu-latest
+    # Guards forks, not the token: a fork has no VERCEL_TOKEN and no business
+    # deploying this project, and without the guard every fork's first push to
+    # its own main would go red for a reason that is not its problem.
+    #
+    # A MISSING TOKEN ON THIS REPOSITORY FAILS LOUDLY, on purpose, in the first
+    # step below. Skipping quietly is what produced the outage this file exists
+    # to prevent: a deploy that does not happen and does not say so.
+    if: ${{ github.repository == 'edgeza/zorpha' }}
+    env:
+      VERCEL_PROJECT_ID: prj_yz0nv0ns9LgEvzAJrKZhJZiA60ft
+      VERCEL_ORG_ID: team_9lVVqBMuXJ8mjihBxrftc0L6
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: zorpha-web/package-lock.json
+
+      - name: Check the token is present
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::error::VERCEL_TOKEN is not set. Add it under Settings > Secrets and variables > Actions."
+            echo "Without it this workflow cannot deploy, and production will silently fall behind main."
+            exit 1
+          fi
+
+      - name: Install the Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull the production environment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        # NEXT_PUBLIC_* are inlined at build time, so the build has to happen
+        # against the same environment the project would use. Building without
+        # this produces a bundle whose contract addresses are all the zero
+        # address, which renders perfectly and reads nothing.
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed to $url"
+
+      # A green deploy step means Vercel accepted the upload, not that the
+      # site changed. That distinction is the whole reason this file exists,
+      # so the last thing the job does is fetch the live domain and check it
+      # answers.
+      - name: Verify the live site responds
+        run: |
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://www.zorpha.xyz/ || true)
+            if [ "$code" = "200" ]; then
+              echo "https://www.zorpha.xyz/ -> 200"
+              exit 0
+            fi
+            echo "attempt $i: HTTP ${code:-no response}"
+            sleep 10
+          done
+          echo "::error::www.zorpha.xyz did not return 200 after the deploy."
+          exit 1
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Production deploy"
+            echo ""
+            echo "- commit: \`${{ github.sha }}\`"
+            echo "- deployment: ${{ steps.deploy.outputs.url }}"
+            echo "- live: https://www.zorpha.xyz/"
+          } >> "$GITHUB_STEP_SUMMARY"
