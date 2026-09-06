@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { balanceIntervals, type ShareTransfer, allocationFor, SEASON_1_TIERS, type BalanceInterval } from './season-eligibility.js';
+import { balanceIntervals, type ShareTransfer, allocationFor, SEASON_1_TIERS, type BalanceInterval, clusterOf, type Funding } from './season-eligibility.js';
 
 const ZERO = '0x0000000000000000000000000000000000000000' as const;
 const ALICE = '0x1111111111111111111111111111111111111111' as const;
@@ -103,4 +103,41 @@ test('topping up without dropping below the threshold preserves continuity', () 
     { balance: 30_000_000n * 1_000_000n, start: 15 * DAY, end: 31 * DAY },
   ];
   assert.equal(allocationFor(spans, flat, SEASON_1_TIERS), 15_000n * 10n ** 18n);
+});
+
+const A = '0xaaaa000000000000000000000000000000000000';
+const B = '0xbbbb000000000000000000000000000000000000';
+const C = '0xcccc000000000000000000000000000000000000';
+const FUNDER = '0xffff000000000000000000000000000000000000';
+
+test('wallets funded by a common source share a cluster', () => {
+  const f: Funding[] = [
+    { from: FUNDER, to: A, timestamp: 10 },
+    { from: FUNDER, to: B, timestamp: 20 },
+  ];
+  const c = clusterOf(f);
+  assert.equal(c.get(A), c.get(B));
+});
+
+test('an unrelated wallet is in its own cluster', () => {
+  const f: Funding[] = [
+    { from: FUNDER, to: A, timestamp: 10 },
+    { from: C, to: C, timestamp: 20 },
+  ];
+  const c = clusterOf(f);
+  assert.notEqual(c.get(A), c.get(C));
+});
+
+test('a funding chain is one cluster, not two', () => {
+  const f: Funding[] = [
+    { from: FUNDER, to: A, timestamp: 10 },
+    { from: A, to: B, timestamp: 20 },
+    { from: B, to: C, timestamp: 30 },
+  ];
+  const c = clusterOf(f);
+  assert.equal(c.get(A), c.get(C));
+});
+
+test('an address with no funding edge is absent rather than crashing', () => {
+  assert.equal(clusterOf([]).size, 0);
 });

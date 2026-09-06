@@ -106,3 +106,43 @@ export function allocationFor(
   }
   return 0n;
 }
+
+/** "from funded to", at `timestamp`. Native or USDG, the caller decides. */
+export interface Funding {
+  from: string;
+  to: string;
+  timestamp: number;
+}
+
+/**
+ * Union find over funding edges. Returns address to cluster root.
+ *
+ * Sharing a funder is evidence, not proof: an exchange hot wallet funds
+ * thousands of unrelated people. The caller decides what to do with a cluster;
+ * this only reports the grouping.
+ */
+export function clusterOf(fundings: Funding[]): Map<string, string> {
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    const p = parent.get(x);
+    if (p === undefined || p === x) return x;
+    const root = find(p);
+    parent.set(x, root);
+    return root;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  for (const f of fundings) {
+    const from = f.from.toLowerCase();
+    const to = f.to.toLowerCase();
+    if (!parent.has(from)) parent.set(from, from);
+    if (!parent.has(to)) parent.set(to, to);
+    union(from, to);
+  }
+  const out = new Map<string, string>();
+  for (const a of parent.keys()) out.set(a, find(a));
+  return out;
+}
