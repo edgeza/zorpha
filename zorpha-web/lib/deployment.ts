@@ -24,7 +24,7 @@ export const DEPLOYED_ON_MAINNET: { name: string; address: string; role: string 
   { name: 'ProtocolTreasury', address: '0x3D9FE37DC0D08BeD0CD48c74Cb344064df9fB3C6', role: 'Splits fees 50/50 to buyback and operations' },
   { name: 'ZorphaBuyback', address: '0x91991311d353B530c497eC452B91C90CF6996c17', role: 'Buys $ZOR on the open market and burns it' },
   { name: 'InsuranceFund', address: '0x9D3B787a3492b4fe6D2a2C12062a4164263522Fd', role: '40,000,000, governance release only' },
-  { name: 'MerkleDistributor', address: '0x1045AeCaCad091eC791815Be8c28DA12Ed94D4E3', role: 'Season 1 airdrop, 80,000,000' },
+  { name: 'MerkleDistributor', address: '0x1045AeCaCad091eC791815Be8c28DA12Ed94D4E3', role: 'Season 1 airdrop. Emptied 6 Sep 2026 when governance claimed the tranche' },
   { name: 'VaultFactory', address: '0xAc444502A16602EAadF8720Fa6fD8A8A092e8A3D', role: 'Deterministic vault deployment' },
   { name: 'VaultLauncher', address: '0x9eD12842A222aeD986E768b3D50aDCf89691159A', role: 'Gated launch, leader bond and first-loss escrow' },
 ];
