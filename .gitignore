@@ -43,6 +43,7 @@ Thumbs.db
 tsconfig.tsbuildinfo
 *.tsbuildinfo
 
+# Local editor and tool state. Machine specific, never project content.
 .claude/
 .cursor/
 .agents/
