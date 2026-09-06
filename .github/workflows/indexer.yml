@@ -33,6 +33,10 @@ on:
     paths:
       - 'sidequest-protocol/indexer/**'
       - '.github/workflows/indexer.yml'
+  # Runnable on demand. The paths filter above means this almost never
+  # fires by itself, so without this there is no way to run it against
+  # main other than pushing an empty commit that touches the filter.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
