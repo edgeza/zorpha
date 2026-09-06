@@ -14,7 +14,7 @@ named in a banner in the portal; unconfigured indexer means empty states. Neithe
 
 ## Routes
 
-**Marketing** — static, indexed, no wallet required.
+**Marketing**, static, indexed, no wallet required.
 
 | Route | Purpose |
 |---|---|
@@ -24,9 +24,9 @@ named in a banner in the portal; unconfigured indexer means empty states. Neithe
 | `/security` | Full internal audit output, including open findings, plus the trust model |
 | `/roadmap` | Phases ordered by dependency, each with its gate |
 | `/faq` | Product, token, governance and risk questions |
-| `/legal/{terms,privacy,disclaimer}` | Templates — **replace with counsel-reviewed text before launch** |
+| `/legal/{terms,privacy,disclaimer}` | Templates, **replace with counsel-reviewed text before launch** |
 
-**Portal** — `noindex`, wallet-gated where it needs to be.
+**Portal**, `noindex`, wallet-gated where it needs to be.
 
 | Route | Purpose |
 |---|---|
@@ -50,7 +50,7 @@ chart.
 `docs/AUDIT-TOKEN-V1.md` cannot drift.
 
 `lib/contracts.ts` reads every address as a **literal** `process.env.NEXT_PUBLIC_X`. This is
-load-bearing — see the comment at the top of the file, and audit finding M-01.
+load-bearing, see the comment at the top of the file, and audit finding M-01.
 
 `lib/wagmi.ts` imports `injected` from `@wagmi/core`, not from the `wagmi/connectors` barrel. The
 barrel statically pulls in the Base/Coinbase connector and its optional `@x402/*` peers, which
@@ -68,8 +68,8 @@ npm run build        # also typechecks
 
 - **Vault deposits are gated** by `NEXT_PUBLIC_ENABLE_VAULT_DEPOSITS`, which defaults to enabled
   and exists as an incident kill switch. It is not a workaround for an open bug: audit finding
-  V-01 — the yield vault priced shares against an adapter balance it never funded, so a redeemer
-  received nothing — is fixed, and recorded as `fixed` in `lib/audit.ts`. `YieldVault` overrides
+  V-01; the yield vault priced shares against an adapter balance it never funded, so a redeemer
+  received nothing, is fixed, and recorded as `fixed` in `lib/audit.ts`. `YieldVault` overrides
   the ERC-4626 deposit and withdraw hooks, so a deposit is forwarded to the adapter and a
   redemption recalls from it within the same transaction.
 - The legal pages are engineer-written templates and are labelled as such on the page.

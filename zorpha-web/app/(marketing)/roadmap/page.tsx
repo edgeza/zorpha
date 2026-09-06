@@ -79,8 +79,8 @@ const PHASES: Phase[] = [
     items: [
       'Governor contract wired to the existing timestamp-keyed checkpoints',
       'Season-by-season ecosystem emissions voted rather than assumed',
-      'Manager bonding — live on testnet ahead of schedule as the vault launcher: a 10,000 $ZOR bond plus first-loss capital that absorbs losses before any depositor',
-      'Permissionless yield-vault creation behind that bond — live on testnet; spot and rotation vaults stay governance-gated for now',
+      'Manager bonding, live on testnet ahead of schedule as the vault launcher: a 10,000 $ZOR bond plus first-loss capital that absorbs losses before any depositor',
+      'Permissionless yield-vault creation behind that bond, live on testnet; spot and rotation vaults stay governance-gated for now',
       'ERC-7540 asynchronous deposits for strategies that cannot settle instantly',
     ],
   },

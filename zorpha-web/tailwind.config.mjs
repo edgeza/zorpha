@@ -25,7 +25,7 @@ export default {
           700: '#5734c4',
           900: '#2a1a63',
         },
-        // "Verified" state — receipts, proofs, passing checks.
+        // "Verified" state, receipts, proofs, passing checks.
         verified: {
           400: '#c8ff5e',
           500: '#a8ee2b',

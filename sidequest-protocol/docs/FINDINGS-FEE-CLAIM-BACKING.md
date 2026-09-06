@@ -6,14 +6,14 @@ Originally reproduced in
 `test/vaults/SpotVaultMinimal.t.sol::test_UnclaimedFee_DilutesTheNextDepositor`,
 which passes and therefore pins the behaviour as it currently stands.
 **Contracts:** `src/vaults/SpotVaultMinimal.sol` and `src/vaults/YieldVault.sol`.
-Both. See **It is in the yield vault too** below — I guessed the yield vault
+Both. See **It is in the yield vault too** below, I guessed the yield vault
 was safe and the guess was wrong.
 **Severity:** a depositor loses value on entry with no warning and no
 counterparty who did anything wrong. **10%** of the deposit in the spot
 reproduction, **9%** in the yield one, both instant and both silent.
 
 Found while fixing [FINDINGS-EQUALISATION.md](FINDINGS-EQUALISATION.md) in the
-spot vault — the equalisation test reported an entry NAV of 0.9 where 1.0 was
+spot vault; the equalisation test reported an entry NAV of 0.9 where 1.0 was
 expected, and the 0.1 turned out to be a second, unrelated defect.
 
 ---
@@ -56,13 +56,13 @@ But the 2 was struck at $25,000 and held as cash. At $50,000 that cash is worth
 than reporting it.
 
 Bob deposits 10 and holds 9. His loss is exactly the uncovered part of Alice's
-fee — asserted to within 2 base units in the test. He was given no signal: the
+fee, asserted to within 2 base units in the test. He was given no signal: the
 vault reported `totalAssets() == 0`, which is indistinguishable from an ordinary
 empty vault.
 
 ## It is in the yield vault too
 
-I first wrote that the yield vault was "likely unreachable — it holds a single
+I first wrote that the yield vault was "likely unreachable; it holds a single
 leg, so the claim and the backing cannot diverge on a price move". The reasoning
 was sound and the conclusion was wrong. A price move is not the only thing that
 can separate a claim from its backing. **A venue loss does it just as well.**
@@ -74,7 +74,7 @@ fee vault:
 | --- | --- |
 | Alice deposits | 1,000 |
 | Venue doubles, fee struck | 100 |
-| Alice redeems out | vault empty, 100 held against a 100 claim — exactly covered |
+| Alice redeems out | vault empty, 100 held against a 100 claim, exactly covered |
 | **Venue loses 90% of what remains** | backing 10, claim **100** |
 | Bob deposits | 1,000 |
 | **Bob holds** | **910** |
@@ -108,7 +108,7 @@ and it would have been both of them on the first pass.
 ### It is silent by construction
 
 `totalAssets()` clamps at zero. That clamp is the right defensive choice for
-arithmetic — an unsigned underflow would be worse — but it means the one number
+arithmetic; an unsigned underflow would be worse; but it means the one number
 that could reveal the shortfall is the number that hides it. There is no view
 function that reports the claim against its backing.
 
@@ -123,7 +123,7 @@ require(paid > 0, "SpotVaultMinimal: no underlying liquidity");
 `claimFees` pays from the **asset leg only**. In the state above the vault holds
 nothing but cash, so `claimFees` reverts. The claim is simultaneously
 uncollectable by its beneficiary and costly to the next depositor: it can only be
-resolved by someone depositing the asset — which is to say, by the victim.
+resolved by someone depositing the asset; which is to say, by the victim.
 
 ### The only lever is silent too
 
@@ -153,7 +153,7 @@ uint256 available = adapter.totalAssets();
 adapter.withdraw(needed < available ? needed : available);
 ```
 
-So `claimFees` reverts on the empty vault — and then succeeds the moment a new
+So `claimFees` reverts on the empty vault; and then succeeds the moment a new
 depositor tops the adapter up. Pinned at the end of
 `test_UnclaimedFee_AgainstAVenueLoss`: the recipient is paid the **full 100**,
 of which **90 was Bob's principal**, and `performanceFeeAccrued` returns to zero
@@ -174,7 +174,7 @@ the contract.
 ## How reachable is it
 
 More reachable than the equalisation case, because it needs no dust and no
-unusual sequence — only that a fee be struck while the vault is in one leg and
+unusual sequence, only that a fee be struck while the vault is in one leg and
 the price then move against that leg. For a long/flat vault, going flat is the
 *point*: it is what the strategy does in a drawdown, which is also when fees
 crystallise. The precondition is the intended behaviour.
@@ -186,7 +186,7 @@ what made it visible.
 ## What is not wrong with it
 
 The fee itself. Alice's charge was correct on her own gain, and the high-water
-mark did its job. This is not an overcharge — the protocol is owed 2. The defect
+mark did its job. This is not an overcharge; the protocol is owed 2. The defect
 is that the debt is carried in units the vault may not hold, with no mechanism to
 reconcile the two and no disclosure that it is outstanding.
 
@@ -212,7 +212,7 @@ depositor buys at already reflects it. They pay a depressed price for a depresse
 share. Nothing is hidden and nothing is transferred.
 
 Once the vault empties, `getNavPerShare()` falls back to a `10 ** decimals()`
-sentinel. That sentinel cannot carry the encumbrance — there are no shares to
+sentinel. That sentinel cannot carry the encumbrance; there are no shares to
 price it into, and `totalAssets()` has floored to zero. **The floor is where the
 information is lost, and the empty vault is the only place the floor is
 reachable with a claim outstanding.** So capping there closes the harm rather
@@ -226,7 +226,7 @@ and the claim untouched. That is unfair.
 
 It is also a dilution among parties who were **present when the fee was struck**,
 visible in the share price throughout, and correcting it means denominating the
-claim in shares — a change to what the fee recipient owns. Not mine to make.
+claim in shares; a change to what the fee recipient owns. Not mine to make.
 `test_UnclaimedFee_CapDoesNotFireWhileHeld` pins that the cap does *not* reach
 this case, so the boundary is asserted rather than assumed.
 
@@ -236,7 +236,7 @@ were.** The first is a bug. The second is a fee policy.
 
 ## Options
 
-Not chosen — the first two are cheap, the rest are design decisions.
+Not chosen; the first two are cheap, the rest are design decisions.
 
 1. ~~**Emit an event on `writeDownAccruedFees`.**~~ **Done.**
    `AccruedFeesWrittenDown(amount, remaining)`, plus three tests covering the

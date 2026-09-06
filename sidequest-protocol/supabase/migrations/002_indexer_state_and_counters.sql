@@ -1,4 +1,4 @@
--- Zorpha — indexer state, atomic counters, and dispute tracking.
+-- Zorpha, indexer state, atomic counters, and dispute tracking.
 --
 -- Closes four gaps that 001 left, each of which breaks something user-visible:
 --
@@ -9,13 +9,13 @@
 --
 --   2. There was no indexer cursor. Resume position was derived from
 --      max(block_number) in `rebalances`, so a vault with no rebalances yet
---      re-scanned its entire history on every poll cycle — a full-range
+--      re-scanned its entire history on every poll cycle; a full-range
 --      getLogs every 12 seconds, which any RPC provider will rate-limit.
 --
 --   3. Reputation disputes had nowhere to land. The registry emits
 --      StatsChallenged / StatsUpheld / StatsOverturned, but nothing recorded
 --      them, so `challenged` stayed false and the portal showed a disputed
---      commitment as unchallenged — the same class of failure as audit finding
+--      commitment as unchallenged; the same class of failure as audit finding
 --      V-03, on the indexer side of the seam.
 --
 --   4. `rebalances.manager` was the vault's configured manager, not the address
@@ -65,7 +65,7 @@ revoke execute on function public.bump_manager(text, timestamptz) from authentic
 -- ─── 2. Indexer cursor ──────────────────────────────────────────────────────
 --
 -- One row per (source_kind, source_address). `last_block` is the highest block
--- fully scanned — the next scan starts at last_block + 1.
+-- fully scanned; the next scan starts at last_block + 1.
 create table if not exists public.indexer_cursor (
   source_kind    text        not null check (source_kind in ('vault', 'registry')),
   source_address text        not null,
@@ -134,7 +134,7 @@ alter table public.reputation_publishes
 
 comment on column public.reputation_publishes.upheld is
   'NULL until a governance arbiter resolves an open dispute. A challenged '
-  'commitment is disputed-and-unresolved, not "overturned" — see audit finding '
+  'commitment is disputed-and-unresolved, not "overturned", see audit finding '
   'V-06, where a matching self-challenge could mint a false "upheld".';
 
 -- Index for the dispute-status filter the manager page uses.
@@ -146,7 +146,7 @@ create index if not exists reputation_publishes_challenged_idx
 --
 -- `manager` stays the vault's configured manager, which is what the vault
 -- actually enforces through KEEPER_ROLE. `submitter` is the EOA that landed the
--- transaction — permissionless, so frequently not the manager at all. Keeping
+-- transaction, permissionless, so frequently not the manager at all. Keeping
 -- both means the record does not quietly imply the submitter authored the trade.
 alter table public.rebalances
   add column if not exists submitter text;
@@ -183,7 +183,7 @@ create policy "read keeper heartbeat"
 -- ─── 6. Indexes the portal's actual queries need ────────────────────────────
 --
 -- The receipts feed orders by block_timestamp desc across ALL vaults, which 001
--- had no index for — only per-vault and per-manager composites.
+-- had no index for, only per-vault and per-manager composites.
 create index if not exists rebalances_recent_idx
   on public.rebalances (block_timestamp desc);
 

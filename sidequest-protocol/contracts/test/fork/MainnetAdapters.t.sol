@@ -13,7 +13,7 @@ import {YieldVault} from "../../src/vaults/YieldVault.sol";
 ///         Chain mainnet.
 ///
 ///         This matters more than a testnet run. Testnet (46630) is a bare
-///         chain: no USDG, no Morpho vaults, no Uniswap pools — every mainnet
+///         chain: no USDG, no Morpho vaults, no Uniswap pools; every mainnet
 ///         address returns no code there. So testnet can prove the protocol's
 ///         own accounting and nothing about whether it talks to the venues
 ///         correctly. That is exactly the class of bug that was sitting in the

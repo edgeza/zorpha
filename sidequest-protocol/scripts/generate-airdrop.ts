@@ -20,8 +20,8 @@
  * makes second-preimage attacks against internal nodes infeasible. Sibling
  * pairs are sorted before hashing, matching `MerkleProof.verify`.
  *
- * The generated proofs are PUBLIC data — a proof only ever lets the committed
- * recipient claim the committed amount — so serving them from a static
+ * The generated proofs are PUBLIC data; a proof only ever lets the committed
+ * recipient claim the committed amount; so serving them from a static
  * directory is safe.
  */
 
@@ -71,7 +71,7 @@ async function readSnapshot(file: string): Promise<Entry[]> {
     }
 
     // Checksum the address so the leaf encoding is canonical, but dedupe on the
-    // lowercase form — the same wallet in two cases is still the same wallet,
+    // lowercase form; the same wallet in two cases is still the same wallet,
     // and a duplicate would silently create two claimable entries.
     const address = getAddress(rawAddr);
     const key = address.toLowerCase();
@@ -79,7 +79,7 @@ async function readSnapshot(file: string): Promise<Entry[]> {
     if (prior !== undefined) {
       throw new Error(
         `line ${lineNo + 1}: ${address} already appears at line ${prior}. ` +
-          'Merge duplicate rows before generating — two entries for one wallet ' +
+          'Merge duplicate rows before generating; two entries for one wallet ' +
           'means two claims.',
       );
     }

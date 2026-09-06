@@ -15,7 +15,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title DeployZorphaToken
 /// @notice Token-layer deployment for $ZOR: token, timelock, treasury, buyback,
-///         insurance fund, airdrop distributor and vesting vault — followed by
+///         insurance fund, airdrop distributor and vesting vault, followed by
 ///         an ATOMIC distribution of the entire 1,000,000,000 supply and a full
 ///         handover of every privileged role to the governance Safe.
 ///

@@ -1,4 +1,4 @@
--- 012 — chain-scope the vault list and the indexer cursors.
+-- 012, chain-scope the vault list and the indexer cursors.
 --
 -- 011 gave `rebalances`, `managers` and `reputation_publishes` a chain. It did
 -- not give one to the two tables that decide WHAT gets indexed and FROM WHERE,
@@ -39,7 +39,7 @@ alter table public.vaults
 --   eth_getCode  0x3829bC787d4eB15Ec855A6cA33e1492a9103d130  -> 10,985 bytes
 --   name()       "Zorpha Steakhouse USDG"
 --   symbol()     "zsUSDG"
---   asset()      0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168  (USDG, 6dp)
+--   asset()      0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168 (USDG, 6dp)
 --   first log    block 55,038,004
 --
 -- Every other row is testnet and keeps the default.

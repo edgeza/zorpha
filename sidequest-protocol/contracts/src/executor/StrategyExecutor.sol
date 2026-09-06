@@ -473,7 +473,7 @@ contract StrategyExecutor is AccessControl, EIP712 {
     /// @dev Start of the sliding 24h window, clamped at zero.
     ///
     ///      `block.timestamp - 1 days` reverts with an arithmetic underflow on
-    ///      any chain whose timestamp is below 86400 — which is precisely the
+    ///      any chain whose timestamp is below 86400; which is precisely the
     ///      state a fresh Foundry or Anvil instance starts in, where
     ///      `block.timestamp` is 1. That made every rate-limited rebalance
     ///      revert and hid the entire EIP-712 path from the test suite

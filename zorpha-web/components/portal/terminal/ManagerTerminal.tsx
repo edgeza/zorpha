@@ -41,7 +41,7 @@ import { VaultBook } from './VaultBook';
  * The manager terminal.
  *
  * Everything a vault operator is permitted to do, in one place, with the state
- * needed to choose between those things — and an honest account of the things
+ * needed to choose between those things; and an honest account of the things
  * they are not permitted to do, because on this protocol that list is longer
  * than people expect and silence about it reads as a bug.
  *
@@ -459,7 +459,7 @@ export function ManagerTerminal() {
   const reasonCannotKeep = roles.keeper
     ? null
     : isLeaderVault
-      ? 'Launching a vault does not grant a role on it. The launcher gives DEFAULT_ADMIN, KEEPER_ROLE and RISK_COUNCIL_ROLE to governance at launch — which is why a leader cannot move depositor funds. Your powers over this vault are reallocate and reclaimBond.'
+      ? 'Launching a vault does not grant a role on it. The launcher gives DEFAULT_ADMIN, KEEPER_ROLE and RISK_COUNCIL_ROLE to governance at launch; which is why a leader cannot move depositor funds. Your powers over this vault are reallocate and reclaimBond.'
       : 'This address does not hold KEEPER_ROLE on this vault.';
 
   return (
@@ -478,7 +478,7 @@ export function ManagerTerminal() {
         <Callout tone="warn" title="No vault is configured in this build">
           <p>
             The terminal lists vaults from the addresses baked into the build, and this one has
-            none. That is a deployment setting rather than anything about your wallet — the
+            none. That is a deployment setting rather than anything about your wallet; the
             banner at the top of the portal names exactly which addresses are missing.
           </p>
         </Callout>
@@ -504,37 +504,37 @@ export function ManagerTerminal() {
             <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
               <Stat
                 label="NAV / share"
-                value={navPerShare === undefined ? '—' : Number(formatUnits(navPerShare, navDecimals)).toFixed(6)}
+                value={navPerShare === undefined ? ', ' : Number(formatUnits(navPerShare, navDecimals)).toFixed(6)}
               />
               <Stat
                 label="Total assets"
                 value={
                   totalAssets === undefined
-                    ? '—'
+                    ? ', '
                     : `${Number(formatUnits(totalAssets, assetDecimals)).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${assetSymbol}`
                 }
               />
               <Stat
                 label="Shares"
-                value={totalSupply === undefined ? '—' : Number(formatUnits(totalSupply, shareDecimals)).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                value={totalSupply === undefined ? ', ' : Number(formatUnits(totalSupply, shareDecimals)).toLocaleString('en-US', { maximumFractionDigits: 2 })}
               />
-              <Stat label="Rebalances" value={rebalanceCount?.toString() ?? '—'} />
+              <Stat label="Rebalances" value={rebalanceCount?.toString() ?? ', '} />
               <Stat
                 label="Performance fee"
-                value={performanceFee === undefined ? '—' : `${Number(performanceFee) / 100}%`}
+                value={performanceFee === undefined ? ', ' : `${Number(performanceFee) / 100}%`}
                 hint="Charged only above the high-water mark."
               />
               <Stat
                 label="Fee accrued"
                 value={
                   feeAccrued === undefined
-                    ? '—'
+                    ? ', '
                     : `${Number(formatUnits(feeAccrued, assetDecimals)).toLocaleString('en-US', { maximumFractionDigits: 4 })} ${assetSymbol}`
                 }
               />
               <Stat
                 label="High-water mark"
-                value={highWaterMark === undefined ? '—' : Number(formatUnits(highWaterMark, navDecimals)).toFixed(6)}
+                value={highWaterMark === undefined ? ', ' : Number(formatUnits(highWaterMark, navDecimals)).toFixed(6)}
               />
               <Stat
                 label="Deposits"
@@ -570,7 +570,7 @@ export function ManagerTerminal() {
                 label="Oracle"
                 value={
                   oracle.status === 'unknown'
-                    ? '—'
+                    ? ', '
                     : oracle.status === 'stale'
                       ? 'Stale'
                       : `Fresh, ${humanDuration(oracle.expiresInSeconds)} left`
@@ -579,7 +579,7 @@ export function ManagerTerminal() {
                   oracle.status === 'stale'
                     ? 'Every rebalance reverts until the next report.'
                     : oracle.status === 'expiring'
-                      ? 'Close to expiry — start now or wait for the next report.'
+                      ? 'Close to expiry, start now or wait for the next report.'
                       : undefined
                 }
               />
@@ -591,7 +591,7 @@ export function ManagerTerminal() {
                       {feeRecipient.slice(0, 6)}…{feeRecipient.slice(-4)}
                     </a>
                   ) : (
-                    '—'
+                    ', '
                   )
                 }
               />
@@ -741,7 +741,7 @@ export function ManagerTerminal() {
               <Callout tone="info" title="No roles on this vault">
                 <p>
                   {isLeaderVault
-                    ? 'You launched this vault, which does not grant a role on it. The launcher hands DEFAULT_ADMIN, KEEPER_ROLE and RISK_COUNCIL_ROLE to governance so that a leader cannot move depositor funds. What you keep is reallocate — moving between approved venues — and reclaimBond once the vault is empty.'
+                    ? 'You launched this vault, which does not grant a role on it. The launcher hands DEFAULT_ADMIN, KEEPER_ROLE and RISK_COUNCIL_ROLE to governance so that a leader cannot move depositor funds. What you keep is reallocate, moving between approved venues; and reclaimBond once the vault is empty.'
                     : 'This address holds no role on this vault, so every action above is disabled. That is the expected state for a depositor.'}
                 </p>
               </Callout>

@@ -2,7 +2,7 @@ This is a copy of a shared ChatGPT chat. It won't be added to memory.
 
 Report conversation
 
-Yes — but not currently in the same mature, native form as Hyperliquid Vaults.
+Yes; but not currently in the same mature, native form as Hyperliquid Vaults.
 
 Robinhood Chain is now live and has a growing DeFi ecosystem, including lending and perpetuals. Its official ecosystem currently lists Lighter and Arcus for perpetuals, Morpho for lending, and Uniswap/Rialto for trading.
 
@@ -22,11 +22,11 @@ There are, however, pieces of the infrastructure emerging.
 
 What exists on Robinhood Chain now
 
-1. Lighter — closest to the Hyperliquid-perps side
+1. Lighter, closest to the Hyperliquid-perps side
 
 Robinhood Wallet now integrates Lighter for decentralized perpetual futures. Users deposit USDG into a smart contract, trade perps, and positions settle onchain.
 
-2. Arrow Finance — vault infrastructure
+2. Arrow Finance, vault infrastructure
 
 Arrow is particularly interesting. It already has a vault architecture on Robinhood Chain, although its current vaults are primarily collateral/debt vaults, not Hyperliquid-style trader-performance vaults. It describes its goal as becoming a DeFi hub for trading, earning, borrowing and managing portfolios.
 
@@ -75,12 +75,12 @@ The big difference is that you'd be building the vault-management layer yourself
 
 And because Robinhood Chain is EVM-compatible, Solidity/Foundry/Hardhat/ethers/viem/Wagmi tooling works directly.
 
-If you're considering actually building this, I can research the Robinhood Chain + Lighter architecture in depth and map out exactly how to build a Hyperliquid Vault clone — including whether Lighter's contracts/API actually permit third-party managed vaults, custody architecture, fees, liquidation handling, copy trading, and what you'd need to launch it.
+If you're considering actually building this, I can research the Robinhood Chain + Lighter architecture in depth and map out exactly how to build a Hyperliquid Vault clone, including whether Lighter's contracts/API actually permit third-party managed vaults, custody architecture, fees, liquidation handling, copy trading, and what you'd need to launch it.
 
 Sources
 Scan documentstion for robinhood chain. Can we build a token that does what hyperliquid vaults does, but on robinhood chain for crypto and stocks?
 
-Yes — technically, we can build something very close to Hyperliquid Vaults on Robinhood Chain, and the documentation makes the idea considerably more viable than I initially thought.
+Yes, technically, we can build something very close to Hyperliquid Vaults on Robinhood Chain, and the documentation makes the idea considerably more viable than I initially thought.
 
 But there is an important distinction:
 
@@ -184,7 +184,7 @@ Robinhood's own documentation confirms that Lighter perps on Robinhood Chain use
 
 So we'd probably build the system as:
 
-Layer 1 — Vault
+Layer 1, Vault
 
 Our Solidity contracts.
 
@@ -195,7 +195,7 @@ USDG
 Vault Contract
    ↓
 Vault shares
-Layer 2 — Strategy account
+Layer 2, Strategy account
 
 A dedicated Lighter account/subaccount.
 
@@ -204,7 +204,7 @@ Vault Strategy
 Lighter account
       ↓
 BTC / ETH / SOL / RWA perps
-Layer 3 — Strategy engine
+Layer 3, Strategy engine
 
 The manager/AI/bot sends signed orders through Lighter's API.
 
@@ -409,12 +409,12 @@ So yes: I think this is technically a real project, not a theoretical idea.
 
 The next thing I'd do before writing a single line of Solidity is map the entire Lighter account/deposit/order/withdrawal architecture against a Solidity vault and determine exactly how we can make the manager trade without giving the manager a key that can steal the vault.
 
-If that works, we can design the actual protocol architecture — contracts, tokenomics, vault mechanics, Lighter integration, Stock Token integration, AI/strategy engine, fees, security model and MVP — and then determine the cheapest way to launch it.
+If that works, we can design the actual protocol architecture, contracts, tokenomics, vault mechanics, Lighter integration, Stock Token integration, AI/strategy engine, fees, security model and MVP; and then determine the cheapest way to launch it.
 
 Sources
 So we must us elighter? We want to try be unoque as we can to ensure success and attraction on robinhood
 
-No — I would not make Lighter the core of the product. If your goal is to be genuinely distinctive and attract users/builders on Robinhood Chain, I think we should design something Robinhood-native first, and treat Lighter as just one possible execution venue.
+No, I would not make Lighter the core of the product. If your goal is to be genuinely distinctive and attract users/builders on Robinhood Chain, I think we should design something Robinhood-native first, and treat Lighter as just one possible execution venue.
 
 I checked the current Robinhood Chain documentation and Robinhood's latest product announcements. The chain is explicitly positioning itself as an open, permissionless financial L2 for crypto + tokenized real-world assets, with Stock Tokens, lending, trading and AI-agent applications.
 

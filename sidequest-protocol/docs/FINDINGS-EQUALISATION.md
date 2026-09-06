@@ -1,14 +1,14 @@
 # Finding: a depositor can be charged a performance fee on gains earned before they arrived
 
 **Status:** fixed, pending auditor review. Found on testnet 46630, 2026-09-02,
-by `contracts/script/testnet-yield-drill.sh`. Remediated the same day — see
+by `contracts/script/testnet-yield-drill.sh`. Remediated the same day, see
 **Fix** below. The fix changes fee behaviour, so it must not reach mainnet
 without the external auditor having looked at it.
 **Contracts:** `src/vaults/YieldVault.sol` (found here), and
-`src/vaults/SpotVaultMinimal.sol` (the same defect, found later by inspection —
+`src/vaults/SpotVaultMinimal.sol` (the same defect, found later by inspection , 
 see **The spot vault had it too** below).
 **Severity:** low in isolation, and it should be on the external audit's list
-regardless — it is a fee-accounting design gap, not a coding error, and those
+regardless; it is a fee-accounting design gap, not a coding error, and those
 are the ones an author reviewing their own work is least likely to see.
 
 ---
@@ -47,7 +47,7 @@ little, and is worth stating because it was not obvious.
 
 **A clean full redemption self-corrects.** The residue a redemption leaves is
 almost exactly `multiple - 1` base units, which the 1e6 offset turns back into
-`multiple * 1e6` — the old NAV. So the next depositor's entry lands *exactly
+`multiple * 1e6`; the old NAV. So the next depositor's entry lands *exactly
 on* the old mark: not above it, not below. No overcharge.
 
 The unit test could not reach "entry above the mark" through a single cycle for
@@ -77,7 +77,7 @@ and it opens with
 if (totalSupply() == 0) return;
 ```
 
-That early return is deliberate and load-bearing — the comment above it explains
+That early return is deliberate and load-bearing; the comment above it explains
 that letting an empty vault's sentinel NAV reach `highWaterMark` would ratchet
 the mark to a level the vault can never exceed and disable performance fees for
 the life of the contract. That reasoning is correct.
@@ -92,7 +92,7 @@ Sequence, as observed:
 
 1. Vault empty. `totalSupply` 0, `highWaterMark` 4,500,000, `rawAssets` 4 (dust).
 2. `deposit()` → `_evaluateFees()` sees supply 0, returns. Mark stays 4,500,000.
-3. `super.deposit()` mints. Entry NAV is **5,000,000** — the dust and the
+3. `super.deposit()` mints. Entry NAV is **5,000,000**; the dust and the
    1e6 offset, not a gain anyone made.
 4. Venue earns. NAV → 7,500,000.
 5. `redeem()` → `_evaluateFees()` charges on 7,500,000 − 4,500,000.
@@ -104,10 +104,10 @@ The depositor pays for the 500,000 of NAV that existed before step 3.
 Pooled funds that charge a performance fee against a single shared high-water
 mark have this in both directions:
 
-- **Entry below the mark** — the depositor rides free until the old peak is
+- **Entry below the mark**; the depositor rides free until the old peak is
   beaten, and the leader earns nothing on real gains. Well known, usually
   accepted, costs the manager.
-- **Entry above the mark** — the depositor pays for appreciation they did not
+- **Entry above the mark**; the depositor pays for appreciation they did not
   receive. This one. Costs the depositor.
 
 Real funds solve it with equalisation accounting: a per-subscription mark, or
@@ -119,7 +119,7 @@ It needs NAV to sit above the mark at the moment someone deposits, which needs
 the vault to hold assets while `totalSupply` is 0. Sources, weakest first:
 
 1. **Rounding dust.** What produced it here, over repeated drills. The dust
-   itself is tiny — nine base units after four cycles — but do not read that as
+   itself is tiny, nine base units after four cycles; but do not read that as
    a small effect. The ERC-4626 offset is 1e6, so *each unit of dust moves the
    entry NAV by a million*, and the mark always lags a cycle behind. That is
    why a nine-unit residue produced a 12–20% overcharge. The precondition is
@@ -142,7 +142,7 @@ the incentive points the wrong way, which is the part worth recording.
 
 ## What it is not
 
-Not a rounding artefact. Rounding in this path is at most five base units — one
+Not a rounding artefact. Rounding in this path is at most five base units; one
 per conversion in a deposit/redeem round trip. This was ten million.
 
 Not a bug in the fee formula. The formula computes what it says it computes,
@@ -153,7 +153,7 @@ to the unit.
 Option 1 of the four below, implemented in `YieldVault._markFirstEntry()`.
 
 `deposit` and `mint` record whether the vault was empty, and if it was, set
-`highWaterMark` to `getNavPerShare()` *after* minting — the price the incoming
+`highWaterMark` to `getNavPerShare()` *after* minting; the price the incoming
 depositor actually paid. Reading the NAV there is safe where it is not inside
 `_evaluateFees`: supply is non-zero by that point, so it returns a real price
 rather than the `10 ** decimals()` sentinel whose ratcheting the early return
@@ -169,14 +169,14 @@ stops, which is the finding. But entry *below* a stale mark also stops riding
 free: a depositor entering after a drawdown-and-exit now pays a fee on gains
 between their entry and the old peak, where previously the leader earned nothing
 until the peak was beaten. That is the conventional treatment and it favours the
-leader. It should be an explicit choice rather than a side effect — flagging it
+leader. It should be an explicit choice rather than a side effect, flagging it
 here so it is not discovered later.
 
 Three regression tests in `test/vaults/YieldVault.t.sol`:
 
-- `test_FirstDepositorIntoADustyVaultPaysOnlyForTheirOwnGain` — the finding.
-- `test_FirstDepositorBelowAStaleMarkStillPaysOnTheirGain` — the mirror case.
-- `test_MarkNeverTakesTheEmptyVaultSentinel` — the regression the early return
+- `test_FirstDepositorIntoADustyVaultPaysOnlyForTheirOwnGain`; the finding.
+- `test_FirstDepositorBelowAStaleMarkStillPaysOnTheirGain`; the mirror case.
+- `test_MarkNeverTakesTheEmptyVaultSentinel`; the regression the early return
   guards against.
 
 Full suite green: 152 tests, up from 149, zero failures, both invariant suites
@@ -187,7 +187,7 @@ included.
 Found afterwards, by reading `SpotVaultMinimal._evaluateFees` with this finding
 already in hand. Same two preconditions, so the same conclusion had to follow:
 
-- `highWaterMark` only ratchets up — line 327's `if (nav <= highWaterMark) return`
+- `highWaterMark` only ratchets up, line 327's `if (nav <= highWaterMark) return`
   means the assignment below it is unreachable on a fall.
 - `getNavPerShare()` returns the `10 ** _assetDec` sentinel once supply is zero.
 
@@ -196,20 +196,20 @@ seeds `highWaterMark = 10 ** _assetDec` in its constructor, the same value the
 sentinel returns, so a genuinely first depositor is marked correctly. The gap
 opens only after a profitable depositor leaves: the mark stays at their high
 point, and the next depositor pays nothing until they have re-earned somebody
-else's gain. Lost revenue rather than an overcharge — which is why no drill
+else's gain. Lost revenue rather than an overcharge; which is why no drill
 caught it. Nothing reverts and nobody complains.
 
 Measured in `test_FeeAccrual_AfterEmptying_ChargesTheNextDepositor`: the mark
 stood at **2.0** while the incoming depositor had bought in at **0.9**. A 122%
 gain, entirely free.
 
-Fixed identically — `_markFirstEntry()` on `deposit` and `mint`, plus a
+Fixed identically, `_markFirstEntry()` on `deposit` and `mint`, plus a
 `HighWaterMarkReset` event the spot vault did not have.
 
 ### The fee had no real coverage at all
 
 Worth recording separately, because it is why this survived. The spot suite's
-`test_FeeAccrual_BelowHWM_NoAccrual` asserts `performanceFeeAccrued() == 0` — on
+`test_FeeAccrual_BelowHWM_NoAccrual` asserts `performanceFeeAccrued() == 0`, on
 a vault built with `performanceFeeBps = 0`. It cannot fail. **No test anywhere
 proved the spot vault ever charges a performance fee**, so the whole mechanism
 was unverified while reading as covered. The new `SpotVaultFeeTest` contract adds

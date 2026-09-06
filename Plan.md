@@ -44,7 +44,7 @@ isProject: false
 
 **Product**: Permissionless active asset-management marketplace on Robinhood Chain
 **Architecture**: ERC-7575 (multi-asset vaults) + ERC-7540 (async deposits/redemptions) + EIP-712 signed rebalances + AI-agent compatible
-**Token**: `$ZENT` (existing) — expanded utility, not a new launch
+**Token**: `$ZENT` (existing), expanded utility, not a new launch
 **Why this fits**: deepest real technology in your research, naturally meme-able through manager leaderboards, no community needed because the technology attracts builders and managers first, structurally anti-rugpull.
 
 ---
@@ -65,7 +65,7 @@ isProject: false
                           │
                           ▼
                ┌─────────────────────┐
-               │   Vault Factory     │  (ERC-7575 multi-asset)
+               │   Vault Factory     │ (ERC-7575 multi-asset)
                └──────────┬──────────┘
                           │
             ┌─────────────┼─────────────┐
@@ -133,12 +133,12 @@ isProject: false
 
 The product itself produces the content:
 
-- **Manager leaderboards** — verifiable, public, denominated in benchmark-alpha (the rare honest metric).
-- **AI vs Human seasons** — periodic competitions with verifiable P&L.
-- **Manager reputation as a brand** — top managers can build followings on verifiable track records.
-- **Drawdown "callouts"** — every major loss is a public receipt of the manager's record.
+- **Manager leaderboards**, verifiable, public, denominated in benchmark-alpha (the rare honest metric).
+- **AI vs Human seasons**, periodic competitions with verifiable P&L.
+- **Manager reputation as a brand**, top managers can build followings on verifiable track records.
+- **Drawdown "callouts"**; every major loss is a public receipt of the manager's record.
 - **"Show me your onchain track record"** becomes a natural reply to any yield claim.
-- **First-mover category ownership** — there is currently no permissionless active-RWA-manager marketplace on Robinhood Chain.
+- **First-mover category ownership**; there is currently no permissionless active-RWA-manager marketplace on Robinhood Chain.
 
 ---
 
@@ -163,33 +163,33 @@ ZENT becomes the network token, not a speculative asset launching before the pro
 
 ## Launch sequence (no timeline pressure)
 
-### Phase 0 — Spec & legal
+### Phase 0, Spec & legal
 - Finalize vault spec (ERC-7575 + ERC-7540 conformance)
 - Jurisdiction review (FSCA, US/UK/Canada restrictions on Stock Tokens)
 - Trademark + brand clearance for `$ZENT` if extended
 
-### Phase 1 — Audited V1 contracts
+### Phase 1, Audited V1 contracts
 - Vault Factory, Policy Controller, Performance Engine, Reputation Registry
 - Single-asset (USDG) vaults only initially
 - Manager = multisig (no permissionless manager creation yet)
 - Independent audit
 
-### Phase 2 — Curated vaults live
+### Phase 2, Curated vaults live
 - 3 curated vaults: long/flat drawdown defense, RWA momentum rotation, Morpho USDG yield allocator
 - Public manager profile + verified track record
 - Public dashboards
 
-### Phase 3 — AI-agent compatibility
+### Phase 3, AI-agent compatibility
 - EIP-712 signed rebalances from agent wallets
 - "AI Hedge Vault" as flagship
 - First HUMANITY vs MACHINE season
 
-### Phase 4 — Permissionless manager creation
+### Phase 4, Permissionless manager creation
 - Open vault factory with manager bonding
 - Manager reputation marketplace
 - Meta-vaults (allocators selecting top underlying managers)
 
-### Phase 5 — ZENT network expansion
+### Phase 5, ZENT network expansion
 - ZENT manager bond, dispute bonds, governance
 - Fee discounts, premium analytics
 - Only after organic TVL + fees + repeat depositors
@@ -200,16 +200,16 @@ ZENT becomes the network token, not a speculative asset launching before the pro
 
 | Why not | Reason |
 |---|---|
-| Twofold clone | Staking APR was operator-funded, not protocol revenue — proven unsustainable meme |
+| Twofold clone | Staking APR was operator-funded, not protocol revenue, proven unsustainable meme |
 | HOOD10 | 5% tax reflexively dependent on volume; rewards collapse without trading |
 | Marble | Wagering + prizes = regulatory surface |
 | Generic RH mascot | No technology floor; commoditized |
 | Pure memecoin | No technology to retain users after the chart |
 | RECEIPTS | Great meme, but the *tech* doesn't attract users without culture first |
-| IF/THEN | Solid, but a single-feature product — narrower ceiling than an asset-management layer |
+| IF/THEN | Solid, but a single-feature product, narrower ceiling than an asset-management layer |
 | Sidebag | Cute, but a thin wrapper around a swap; limited long-term defensibility |
-| GapSafe | Real tech, but infrastructure-only ceiling — needs partnerships to reach users |
-| Move Zentory to RH *now* | Wrong — Zentory needs its HyperEVM track record to establish reputation before re-platforming |
+| GapSafe | Real tech, but infrastructure-only ceiling, needs partnerships to reach users |
+| Move Zentory to RH *now* | Wrong, Zentory needs its HyperEVM track record to establish reputation before re-platforming |
 
 ---
 

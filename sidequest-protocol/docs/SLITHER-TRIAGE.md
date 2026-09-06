@@ -1,6 +1,6 @@
 # Slither triage
 
-Slither 0.11.5, 84 contracts, 96 detectors. `contracts/` only — `lib/`,
+Slither 0.11.5, 84 contracts, 96 detectors. `contracts/` only, `lib/`,
 `test/`, `script/` and `node_modules/` are filtered out by
 `slither.config.json`.
 
@@ -25,7 +25,7 @@ deploy script reported that fact as a clean-ish security failure. Three
 separate faults stacked up:
 
 1. The script passed `--fail-high --fail-medium`. Those are mutually exclusive
-   in argparse — `--fail-medium` already means *medium or greater* — so Slither
+   in argparse, `--fail-medium` already means *medium or greater*; so Slither
    exited on a usage error without analysing anything.
 2. Slither shells out to `forge` through the OS process API. On Windows that
    resolves against the **system** PATH, and `foundryup` installs into
@@ -54,7 +54,7 @@ This document is the first run that actually happened.
 
 Two detector families are excluded wholesale in `slither.config.json`. Every
 other suppression is a `// slither-disable-next-line` on the exact line it
-concerns, with its reasoning beside it — so the detector stays live for code
+concerns, with its reasoning beside it; so the detector stays live for code
 written later.
 
 ### Excluded in config
@@ -72,8 +72,8 @@ Both are re-reviewable by deleting them from `detectors_to_exclude`.
 | --- | --- | --- |
 | `ZorphaBuyback.execute` | `reentrancy-balance` ×2 (**High**), `unused-return` | The balance snapshots either side of the swap *are* the defence. `execute()` is `nonReentrant`, every other entrypoint is Timelock-only, and the router is Timelock-set, so no swap callee can re-enter to move them. Both legs are floored by the post-call balance, so a router donating tokens mid-swap can only revert the call, never inflate a burn. The ignored `swap()` return is deliberate and commented in the source: trusting it is exactly how a lying router would over-report a fill. Covered by `test_LyingRouterCannotFakeABurn`. |
 | `YieldVault.setAdapter` | `reentrancy-no-eth` | Requires the *currently installed* adapter to be hostile, and installing one is `ADAPTER_SETTER_ROLE`. The guard blocks re-entry into every state-changing path; what remains reachable is `rawAssets()`, a view, which such an adapter could only mislead itself with. |
-| `YieldVault._withdraw` | `unused-return` | `absorb()`'s return is ignored on purpose. A buffer that cannot cover the full shortfall pays what it has and the depositor takes the rest — the designed waterfall. `super._withdraw` transfers against the real balance, so an underpaying escrow reverts there rather than silently shorting anyone. Covered by `test_DepositorTakesTheLossOnlyAfterTheBufferIsGone` and `testFuzz_DepositorNeverLosesMoreThanTheUncoveredShortfall`. |
-| `ERC4626YieldAdapter.withdraw` | `unused-return` ×3 | What actually arrived is measured by balance delta afterwards — the one number a miscounting target cannot lie about. Redeeming by share count on full exit is the fix for the rounding trap in `test_FullExitSurvivesShareRounding`. |
+| `YieldVault._withdraw` | `unused-return` | `absorb()`'s return is ignored on purpose. A buffer that cannot cover the full shortfall pays what it has and the depositor takes the rest; the designed waterfall. `super._withdraw` transfers against the real balance, so an underpaying escrow reverts there rather than silently shorting anyone. Covered by `test_DepositorTakesTheLossOnlyAfterTheBufferIsGone` and `testFuzz_DepositorNeverLosesMoreThanTheUncoveredShortfall`. |
+| `ERC4626YieldAdapter.withdraw` | `unused-return` ×3 | What actually arrived is measured by balance delta afterwards; the one number a miscounting target cannot lie about. Redeeming by share count on full exit is the fix for the rounding trap in `test_FullExitSurvivesShareRounding`. |
 | `RWRotationVault._readPrice`, `SpotVaultMinimal._oraclePrice` | `unused-return` | Partially destructured `latestRoundData()`. Only `startedAt` is dropped; `roundId`, `answer`, `updatedAt` and `answeredInRound` are all checked on the following three lines. |
 
 ---
@@ -89,7 +89,7 @@ Both are re-reviewable by deleting them from `detectors_to_exclude`.
 | Informational | `too-many-digits`, `missing-inheritance`, `assembly`, `costly-loop`, `cyclomatic-complexity` | 12 | Style. `assembly` is the ECDSA split in `StrategyExecutor`. |
 | Optimization | `cache-array-length`, `immutable-states` | 4 | Gas. `performanceFee` could be `immutable` in two vaults. |
 
-None of these block a deploy, and none are dismissed as wrong — they are
+None of these block a deploy, and none are dismissed as wrong; they are
 accepted at their stated severity.
 
 ---
@@ -97,6 +97,6 @@ accepted at their stated severity.
 ## Still outstanding
 
 Slither is a linter, not an audit. **No third-party audit has been performed.**
-The first-loss waterfall in `FirstLossEscrow` — the mechanism the whole product
-rests on — has been reviewed only by its author. That remains the gate before
+The first-loss waterfall in `FirstLossEscrow`; the mechanism the whole product
+rests on, has been reviewed only by its author. That remains the gate before
 mainnet, and static analysis passing does not move it.

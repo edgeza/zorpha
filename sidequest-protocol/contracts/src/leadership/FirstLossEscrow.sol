@@ -177,8 +177,8 @@ contract FirstLossEscrow is ReentrancyGuard {
         // Split the WHOLE fee first, then take retention out of the leader's
         // half alone.
         //
-        // Doing it the other way round — retaining, then splitting whatever
-        // survived — silently charges the protocol for the leader's drawdown.
+        // Doing it the other way round, retaining, then splitting whatever
+        // survived, silently charges the protocol for the leader's drawdown.
         // At an 80/20 split with an undercovered leader it paid the treasury
         // 20% of the remainder instead of 20% of the fee, which on a measured
         // case was $40 where $200 was owed. Half of the protocol's cut funds

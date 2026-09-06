@@ -6,7 +6,7 @@ The strongest gap I found is a market-hours-aware liquidity protocol for Stock T
 
 Wall Street closes. Onchain markets do not. The liquidity pool should know the difference.
 
-Working codename: GapSafe—the name and ticker still need trademark and collision checks.
+Working codename: GapSafe, the name and ticker still need trademark and collision checks.
 
 It would be a Uniswap v4 hook/router that automatically adjusts trading fees and protections when:
 
@@ -16,11 +16,11 @@ The pool price diverges materially from the reference price.
 Liquidity becomes dangerously thin.
 A dividend, split, halt, or other corporate action is pending.
 
-This is understandable in one sentence, solves a real problem, has protocol revenue, and is materially different from the projects already flooding Robinhood Chain. It cannot guarantee a large market cap—nothing honest can—but it has a better chance of generating durable attention than another reflexive token loop.
+This is understandable in one sentence, solves a real problem, has protocol revenue, and is materially different from the projects already flooding Robinhood Chain. It cannot guarantee a large market cap, nothing honest can, but it has a better chance of generating durable attention than another reflexive token loop.
 
 What the projects you sent actually are
 Project	Actual product	Why the pitch works	Why I would not copy it
-Zentory	A noncustodial ERC-4626 multi-asset strategy that rotates BTC, ETH, SOL and XRP exposure into USDC using trend and volatility signals. It is on HyperEVM testnet, with audits and mainnet safeguards still pending.	Serious quant story and real engineering	Migrating means rebuilding asset adapters, execution, data coverage and strategy validation. Robinhood Chain’s main differentiation—Stock Tokens—does not naturally improve Zentory’s original strategy.
+Zentory	A noncustodial ERC-4626 multi-asset strategy that rotates BTC, ETH, SOL and XRP exposure into USDC using trend and volatility signals. It is on HyperEVM testnet, with audits and mainnet safeguards still pending.	Serious quant story and real engineering	Migrating means rebuilding asset adapters, execution, data coverage and strategy validation. Robinhood Chain’s main differentiation, Stock Tokens, does not naturally improve Zentory’s original strategy.
 Twofold	LP capital earns swap fees while otherwise-idle liquidity is lent through allowlisted ERC-4626 vaults. Its bounded harvest skim funds TWO staking.	“Earn two yields with the same capital” is extremely easy to sell	It is not merely “stake TWO for high APR.” Its real advantage is a liquidity hook, vault integration and liquidity distribution. Copying the staking screen misses the product.
 HOOD10	A 5% transfer tax collects WETH; 4% is used to purchase the ten largest eligible ecosystem tokens and distribute them to holders.	“Hold one, receive ten” is a perfect one-line explanation	It is not a redeemable index. Rewards depend on continuing HOOD10 trading volume, making it reflexive and easy to clone.
 Marble	The live site presents a forthcoming Stock Token marble-racing/wager product with stock prizes.	Extremely visual, shareable and immediately understandable	Paid wagering introduces gambling, prize-promotion and jurisdictional complexity. It also has not yet proved live demand.

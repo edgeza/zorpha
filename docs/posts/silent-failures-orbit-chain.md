@@ -34,7 +34,7 @@ When we repointed to mainnet we set `CHAIN_ID=4663` and left `RPC_URL` on the
 testnet host. The assert fired and the service refused to start. It stayed down
 for a day and a half.
 
-That refusal is the only reason nothing was corrupted — and everything below is
+That refusal is the only reason nothing was corrupted; and everything below is
 a failure the same config would have produced *without* making a sound.
 
 ---
@@ -48,7 +48,7 @@ Ask any node for logs in a range that starts beyond its head and you do not get
 an error. You get `[]`. So the indexer would have scanned an empty window, found
 nothing, advanced its cursor, logged a successful cycle, and repeated forever.
 Health checks green. Receipts: zero. And "zero receipts" was, at that moment,
-also the *correct* answer for a vault that had never rebalanced — so the true
+also the *correct* answer for a vault that had never rebalanced; so the true
 state and the broken state were indistinguishable from the outside.
 
 The two chains' heights differ by a factor of two, which sounds obvious written
@@ -117,7 +117,7 @@ answering. It tells you nothing about what they will answer.
 This is the one that reached users.
 
 A single Postgres instance served both deployments. Tables were `vaults`,
-`rebalances`, `managers`, `reputation_publishes` — and not one of them carried a
+`rebalances`, `managers`, `reputation_publishes`; and not one of them carried a
 chain identifier. Pointing the web app at mainnet changed the RPC and the
 contract addresses in config. It did not change the data.
 
@@ -126,7 +126,7 @@ against all three on 4663 returns `0x`. Anyone who picked one and deposited
 would have been sending funds to an empty address.
 
 The fix is unglamorous: a `chain_id` column on every table, every read filtered
-on the connected chain, and natural keys widened to include it — `managers` from
+on the connected chain, and natural keys widened to include it, `managers` from
 `(address)` to `(address, chain_id)`, receipts from `(tx_hash, log_index)` to
 `(chain_id, tx_hash, log_index)`.
 
@@ -135,7 +135,7 @@ Two things about that migration are worth passing on.
 **Widening a unique constraint breaks every upsert that names the old one.**
 Postgres raises `42P10: there is no unique or exclusion constraint matching the
 ON CONFLICT specification`, which names neither the function nor the reason.
-These arbiters live in client-side strings and in SQL function bodies — a type
+These arbiters live in client-side strings and in SQL function bodies; a type
 checker cannot see a single one of them. We found five. Rather than dropping the
 retired functions, we replaced their bodies with a raise:
 
@@ -147,7 +147,7 @@ raise exception
 ```
 
 Dropping them would make the call fail as *"function does not exist"*, which
-reads like a **missing** migration — the opposite of the truth, and the thing
+reads like a **missing** migration; the opposite of the truth, and the thing
 most likely to send someone re-running the wrong one.
 
 **Cursors deserve their own paragraph.** Our indexer reads `START_BLOCK` only
@@ -160,7 +160,7 @@ const from = stored === null ? config.startBlock : stored + 1n;
 
 The stored cursors sat at testnet heights. Repoint to mainnet without touching
 them and the indexer resumes from 112,522,501 against a chain whose head is
-55.2M — failure mode #1 again, arrived at from a completely different direction,
+55.2M, failure mode #1 again, arrived at from a completely different direction,
 and this time immune to fixing `START_BLOCK` because `START_BLOCK` is never
 read. Chain-scope the cursor table, and mainnet simply has no cursor, so the
 start block applies exactly as intended.
@@ -176,7 +176,7 @@ mislabelling history is not reversible.
 Applied to production, it aborted. Two of four rows sat at `112,370,875`.
 
 The data was fine. The guard was wrong, and wrong in an instructive way:
-`START_BLOCK` had held **three** different values over the project's life — `0`,
+`START_BLOCK` had held **three** different values over the project's life, `0`,
 then `111,911,103` in a local `.env`, then `112,522,500` on the deployment host.
 Rows indexed under an earlier value legitimately sit below a later one.
 
@@ -202,7 +202,7 @@ arithmetic was only ever an argument.
 ## Two rules that came out of it
 
 **A misconfiguration and an outage are different failures and deserve different
-answers.** We added the check the indexer had and the web app lacked — the app
+answers.** We added the check the indexer had and the web app lacked; the app
 now refuses to render a chain it cannot confirm. But a naive version of that
 guard is worse than nothing:
 
@@ -218,7 +218,7 @@ guard that fires on hiccups gets disabled by the third person who is paged.
 
 **A warning that is always on is a warning nobody reads.** Our portal greeted
 every mainnet visitor with a red banner: *"7 contract addresses are unset, so
-the panels below have nothing to read"* — while the panels below read perfectly
+the panels below have nothing to read"*, while the panels below read perfectly
 well. Six of the seven were deliberate: an oracle and two priced vaults we chose
 not to deploy, a testnet-only faucet. The seventh was simply stale.
 

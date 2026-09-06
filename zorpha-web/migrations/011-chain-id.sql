@@ -1,4 +1,4 @@
--- 011 — give every row a chain, so the portal stops mixing two networks.
+-- 011, give every row a chain, so the portal stops mixing two networks.
 --
 -- One Supabase project serves both Robinhood Chain deployments and no table
 -- said which one a row belonged to. Repointing the web app at mainnet changed

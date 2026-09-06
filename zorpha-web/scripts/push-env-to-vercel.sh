@@ -7,12 +7,12 @@
 # all twelve contract addresses and both Supabase credentials. The symptom on
 # the live site:
 #
-#   CIRCULATING SUPPLY   —
-#   BURNED TO DATE       —
-#   USDG SPENT           —
-#   $ZOR BURNED          —
-#   TRIGGER THRESHOLD    —
-#   Bond                 — $ZOR      (on /portal/leaders/launch)
+#   CIRCULATING SUPPLY   , 
+#   BURNED TO DATE       , 
+#   USDG SPENT           , 
+#   $ZOR BURNED          , 
+#   TRIGGER THRESHOLD    , 
+#   Bond, $ZOR      (on /portal/leaders/launch)
 #
 # Every on-chain read is dead. And the site LOOKS healthy, because the
 # database-backed panels -- "3 vaults live", the vault list with correct
@@ -90,7 +90,7 @@ MISSING=0
 for v in "${VARS[@]}"; do
   val=$(value_of "$v")
   if [[ -z "$val" ]]; then
-    printf '  %-46s not in %s — skipping\n' "$v" "$ENV_FILE"
+    printf '  %-46s not in %s, skipping\n' "$v" "$ENV_FILE"
     MISSING=$((MISSING + 1))
     continue
   fi

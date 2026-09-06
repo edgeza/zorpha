@@ -140,7 +140,7 @@ contract ERC4626YieldAdapterTest is Test {
     ///      asset, so that sentinel is a million times any NAV a funded vault
     ///      reports. Marking fees against it once, before the first deposit,
     ///      ratcheted the high-water mark somewhere the vault could never
-    ///      reach and disabled performance fees permanently — and with them
+    ///      reach and disabled performance fees permanently; and with them
     ///      half the buyback. Anyone able to touch an empty vault could do it,
     ///      including a keeper being diligent.
     function test_EmptyVaultMarkDoesNotDisableFeesForever() public {
@@ -188,7 +188,7 @@ contract ERC4626YieldAdapterTest is Test {
 
     /// @dev The trap migration walks into. `YieldVault.setAdapter` calls
     ///      `withdraw(totalAssets())`, and asking an ERC-4626 for an exact asset
-    ///      amount rounds the share cost UP — which can demand one more share
+    ///      amount rounds the share cost UP; which can demand one more share
     ///      than exists and revert. If that happens there is no way off the
     ///      adapter, ever.
     function test_FullExitSurvivesShareRounding() public {

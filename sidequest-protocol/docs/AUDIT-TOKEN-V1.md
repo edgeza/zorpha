@@ -1,4 +1,4 @@
-# Zorpha ($ZOR) — Protocol Audit, V1
+# Zorpha ($ZOR), Protocol Audit, V1
 
 | | |
 |---|---|
@@ -16,7 +16,7 @@ Twenty-four findings were identified across two passes. All twenty-four are fixe
 regression tests.
 
 > **On the test count.** This document used to say "green at 97 of 97, including seven stateful
-> invariants" here, while its own closing checklist said 158/158 and 13 — the headline was never
+> invariants" here, while its own closing checklist said 158/158 and 13; the headline was never
 > updated after later passes. Both numbers were quoted back at us as current, because a figure in a
 > verdict reads as the state of the repo rather than the state of one audit pass.
 >
@@ -33,12 +33,12 @@ The single most important result: **before this review, the repository did not c
 
 Two findings would have caused direct, unrecoverable loss of funds if deployed as written:
 
-- **C-01** — the buyback contract performed no swap, spent no USDC, bought no tokens, and emitted an event reporting that it had. All fee revenue reaching it was permanently unrecoverable.
-- **V-01** — the USDC yield vault priced shares against an adapter balance it never funded. A depositor could burn every share and receive nothing.
+- **C-01**; the buyback contract performed no swap, spent no USDC, bought no tokens, and emitted an event reporting that it had. All fee revenue reaching it was permanently unrecoverable.
+- **V-01**; the USDC yield vault priced shares against an adapter balance it never funded. A depositor could burn every share and receive nothing.
 
 A third would have destroyed the product's core claim rather than its funds:
 
-- **V-06** — a manager could publish arbitrary performance figures, self-challenge quoting the same hash, and be recorded as `upheld` — which the portal renders as a green "Upheld" badge — while permanently blocking any genuine challenge.
+- **V-06**; a manager could publish arbitrary performance figures, self-challenge quoting the same hash, and be recorded as `upheld`; which the portal renders as a green "Upheld" badge, while permanently blocking any genuine challenge.
 
 ### Test state
 
@@ -106,7 +106,7 @@ cd sidequest-protocol/contracts && forge test
 
 # Critical
 
-## C-01 — The buyback contract never bought anything back
+## C-01; The buyback contract never bought anything back
 
 **Status:** Fixed · **Scope:** `ZorphaBuyback.sol` (was `SIDEQUESTBuyback.sol`)
 
@@ -156,16 +156,16 @@ Three distinct failures, each serious on its own.
 
 ### Regression tests
 
-`test/Zorpha.t.sol :: ZorphaBuybackTest` — nine tests, including:
+`test/Zorpha.t.sol :: ZorphaBuybackTest`, nine tests, including:
 
-- `test_ExecuteActuallyBuysAndBurns` — asserts USDC leaves, ZOR is acquired, **and `totalSupply` actually falls**.
-- `test_LyingRouterCannotFakeABurn` — drives `execute` with a `StealingRouter` that takes the USDC, delivers nothing, and returns a value claiming a full fill. The transaction must revert rather than book a phantom burn.
-- `test_EventReportsTrueAmounts` — pins the emitted numbers to the real deltas.
-- `test_UsdcCanAlwaysBeRecovered` — guards the fund-lock regression directly.
+- `test_ExecuteActuallyBuysAndBurns`, asserts USDC leaves, ZOR is acquired, **and `totalSupply` actually falls**.
+- `test_LyingRouterCannotFakeABurn`, drives `execute` with a `StealingRouter` that takes the USDC, delivers nothing, and returns a value claiming a full fill. The transaction must revert rather than book a phantom burn.
+- `test_EventReportsTrueAmounts`, pins the emitted numbers to the real deltas.
+- `test_UsdcCanAlwaysBeRecovered`, guards the fund-lock regression directly.
 
 ---
 
-## C-02 — The deploy script left the entire supply in the deploy key
+## C-02; The deploy script left the entire supply in the deploy key
 
 **Status:** Fixed · **Scope:** `script/DeployPipelineV1.s.sol`
 
@@ -178,11 +178,11 @@ r.sidequest = new SIDEQUEST();   // constructor mints 1,000,000,000 to msg.sende
 That was the last time the token appeared in the script. All 1,000,000,000 tokens remained in the deploying EOA. Additionally:
 
 - `SIDEQUESTVesting` was **never deployed** by the pipeline.
-- `MerkleDistributor` was **never deployed** by the pipeline — despite `.env.example` defining `NEXT_PUBLIC_MERKLE_DISTRIBUTOR_ADDRESS` and the app shipping an airdrop claim page against it.
+- `MerkleDistributor` was **never deployed** by the pipeline, despite `.env.example` defining `NEXT_PUBLIC_MERKLE_DISTRIBUTOR_ADDRESS` and the app shipping an airdrop claim page against it.
 
 ### Impact
 
-Launching from this script would have put 100% of supply in a single hot key, with no vesting contract, no airdrop distributor, no treasury allocation and no liquidity allocation. Every published tokenomics commitment would have been unenforced and unenforceable — sound only for as long as one private key stayed both uncompromised and honest.
+Launching from this script would have put 100% of supply in a single hot key, with no vesting contract, no airdrop distributor, no treasury allocation and no liquidity allocation. Every published tokenomics commitment would have been unenforced and unenforceable, sound only for as long as one private key stayed both uncompromised and honest.
 
 ### Fix
 
@@ -204,7 +204,7 @@ If any invariant fails, the run reverts rather than half-launching.
 
 # High
 
-## C-03 — Treasury and buyback were owned by the deploy key, contradicting the published role matrix
+## C-03, Treasury and buyback were owned by the deploy key, contradicting the published role matrix
 
 **Status:** Fixed · **Scope:** `ProtocolTreasury.sol`, `ZorphaBuyback.sol`, deploy pipeline
 
@@ -217,13 +217,13 @@ If any invariant fails, the run reverts rather than half-launching.
 
 Both were constructed with `Ownable(msg.sender)` and ownership was never transferred. The real holder was the deployer EOA.
 
-This matters most on `ProtocolTreasury.rescue`, which moves an arbitrary amount of any token to an arbitrary address — that is, it can drain all accumulated protocol fees. The documented trust model and the actual trust model differed precisely on the function with the largest blast radius.
+This matters most on `ProtocolTreasury.rescue`, which moves an arbitrary amount of any token to an arbitrary address; that is, it can drain all accumulated protocol fees. The documented trust model and the actual trust model differed precisely on the function with the largest blast radius.
 
 **Fix:** both are owned by the Timelock from the deploy transaction, and the script refuses to run when `GOVERNANCE` is unset or equals the deployer. Handover is asserted before success is reported.
 
 ---
 
-## H-01 — A mint function that could never succeed, with tests asserting that it did
+## H-01; A mint function that could never succeed, with tests asserting that it did
 
 **Status:** Fixed · **Scope:** `Zorpha.sol` (was `SIDEQUEST.sol`)
 
@@ -255,7 +255,7 @@ So any call reverted unconditionally. Confirmed by execution:
 [FAIL: ERC20ExceededSafeSupply(...)] test_MintForTestnet_OnlyOnce()
 ```
 
-**Two consequences.** The function was dead code that also documented a capability the token did not have. More importantly, `test_MintForTestnet_OnlyChain46630` asserted it *worked* — proving the suite had never been executed, and that no test in the repository could be trusted as evidence of anything.
+**Two consequences.** The function was dead code that also documented a capability the token did not have. More importantly, `test_MintForTestnet_OnlyChain46630` asserted it *worked*, proving the suite had never been executed, and that no test in the repository could be trusted as evidence of anything.
 
 A secondary issue: after any burn, `totalSupply < CAP`, so on chain 46630 the function became genuinely callable and burned supply could be re-minted once.
 
@@ -263,7 +263,7 @@ A secondary issue: after any burn, `totalSupply < CAP`, so on chain 46630 the fu
 
 ---
 
-## H-02 — The repository did not compile
+## H-02; The repository did not compile
 
 **Status:** Fixed · **Scope:** build
 
@@ -287,7 +287,7 @@ There were no `out/` or `broadcast/` directories, corroborating that the project
 
 ---
 
-## H-03 — Vesting treated the cliff as additive with the vesting term
+## H-03, Vesting treated the cliff as additive with the vesting term
 
 **Status:** Fixed · **Scope:** `ZorphaVesting.sol`
 
@@ -302,7 +302,7 @@ Vesting accrued over `cliff + vestDuration`, not over `vestDuration`.
 
 ### Impact
 
-For the published contributor schedule — 12-month cliff, 48-month vest — the actual behaviour was:
+For the published contributor schedule, 12-month cliff, 48-month vest; the actual behaviour was:
 
 | | Intended | As written |
 |---|---|---|
@@ -317,7 +317,7 @@ Every contributor and backer schedule would have paid out on the wrong curve and
 
 # Medium
 
-## M-01 — Every contract address resolved to the zero address in the browser
+## M-01; Every contract address resolved to the zero address in the browser
 
 **Status:** Fixed · **Scope:** `zorpha-web/lib/contracts.ts`
 
@@ -336,7 +336,7 @@ Next.js inlines client-side env vars via a webpack `DefinePlugin` pass that rewr
 
 ---
 
-## M-02 — Documentation denied a capability the token has
+## M-02, Documentation denied a capability the token has
 
 **Status:** Fixed · **Scope:** `docs/SECURITY.md`, token page
 
@@ -347,11 +347,11 @@ Next.js inlines client-side env vars via a webpack `DefinePlugin` pass that rewr
 
 Both were false. Understating a token's capabilities on a public site is a disclosure problem, and the threat model was built on an assumption the code contradicted.
 
-**Fix:** voting is kept and described accurately — weight exists and is queryable today, no Governor is deployed, and the governance page states plainly that there is currently no on-chain venue for a proposal.
+**Fix:** voting is kept and described accurately, weight exists and is queryable today, no Governor is deployed, and the governance page states plainly that there is currently no on-chain venue for a proposal.
 
 ---
 
-## M-03 — Oracle deployed permanently unable to reach quorum
+## M-03, Oracle deployed permanently unable to reach quorum
 
 **Status:** Fixed · **Scope:** deploy pipeline, `MedianOracle.sol`
 
@@ -366,13 +366,13 @@ r.oracle.addUpdater(deployer);                                                 /
 if (count < minQuorum) revert InsufficientFreshReports(count, minQuorum);
 ```
 
-With one updater and a quorum of three, the count can never exceed one. Every price read reverts forever, so any vault falling back to this oracle was bricked from deployment. Because the vaults fail closed on a bad oracle — correct behaviour — this manifests as a permanently unusable vault rather than a mispriced one.
+With one updater and a quorum of three, the count can never exceed one. Every price read reverts forever, so any vault falling back to this oracle was bricked from deployment. Because the vaults fail closed on a bad oracle, correct behaviour; this manifests as a permanently unusable vault rather than a mispriced one.
 
-**Fix:** quorum is derived from the actual updater set, `require(quorum <= oracleUpdaters.length)` before broadcast, and a post-deploy assertion `require(r.oracle.minQuorum() <= r.oracle.updaterCount())`. The script prints an explicit instruction to seat a real multi-key set before accepting deposits — a single-updater median is a single point of failure even when it functions.
+**Fix:** quorum is derived from the actual updater set, `require(quorum <= oracleUpdaters.length)` before broadcast, and a post-deploy assertion `require(r.oracle.minQuorum() <= r.oracle.updaterCount())`. The script prints an explicit instruction to seat a real multi-key set before accepting deposits; a single-updater median is a single point of failure even when it functions.
 
 ---
 
-## M-04 — The deploy script reverted in every production configuration
+## M-04; The deploy script reverted in every production configuration
 
 **Status:** Fixed · **Scope:** deploy pipeline
 
@@ -385,7 +385,7 @@ constructor(address admin_) {
 }
 ```
 
-The script passed `admin_ = gov`, then called `r.vaultFactory.deploySpotVault(...)`, `r.spotVault.setSwapAdapter(...)` and `r.spotVault.grantRole(...)` from the deployer key. Whenever `GOVERNANCE != deployer` — i.e. every real deployment, since governance should be a multisig — the run reverted with `AccessControlUnauthorizedAccount`, **after the token had already been deployed and broadcast**, leaving a partially deployed system.
+The script passed `admin_ = gov`, then called `r.vaultFactory.deploySpotVault(...)`, `r.spotVault.setSwapAdapter(...)` and `r.spotVault.grantRole(...)` from the deployer key. Whenever `GOVERNANCE != deployer`, i.e. every real deployment, since governance should be a multisig; the run reverted with `AccessControlUnauthorizedAccount`, **after the token had already been deployed and broadcast**, leaving a partially deployed system.
 
 The bug hides in testing precisely because `GOVERNANCE` defaults to `deployer` via `vm.envOr("GOVERNANCE", deployer)`.
 
@@ -393,17 +393,17 @@ The bug hides in testing precisely because `GOVERNANCE` defaults to `deployer` v
 
 ---
 
-## M-05 — Voting checkpoints keyed to block numbers on an L2
+## M-05, Voting checkpoints keyed to block numbers on an L2
 
 **Status:** Fixed · **Scope:** `Zorpha.sol`
 
-`ERC20Votes` defaults to a block-number clock. Robinhood Chain does not guarantee a stable block interval, so any governance period expressed in blocks drifts in wall-clock terms — a "three day" vote can quietly become five, or two.
+`ERC20Votes` defaults to a block-number clock. Robinhood Chain does not guarantee a stable block interval, so any governance period expressed in blocks drifts in wall-clock terms; a "three day" vote can quietly become five, or two.
 
 **Fix:** `clock()` and `CLOCK_MODE()` are overridden to report timestamps per ERC-6372. Pinned by `test_VotingClockIsTimestampBased`.
 
 ---
 
-## M-06 — Vesting accepted already-vested schedules, and used quadratic gas
+## M-06, Vesting accepted already-vested schedules, and used quadratic gas
 
 **Status:** Fixed · **Scope:** `ZorphaVesting.sol`
 
@@ -417,7 +417,7 @@ Pinned by `test_ExcessivelyBackdatedStartReverts`, `test_CliffLongerThanVestReve
 
 ---
 
-## M-07 — Buyback had no slippage protection
+## M-07, Buyback had no slippage protection
 
 **Status:** Fixed · **Scope:** `ZorphaBuyback.sol`
 
@@ -429,15 +429,15 @@ Distinct from C-01: even had a swap existed, `execute()` took no minimum-output 
 
 # Low / Informational
 
-## L-01 — Revoking a vesting schedule emitted no event
+## L-01, Revoking a vesting schedule emitted no event
 
 **Status:** Fixed. `revoke()` moved tokens and permanently altered a beneficiary's schedule with no log. For a protocol whose entire pitch is a verifiable record, an unlogged privileged action is a hole in that record. `Revoked(beneficiary, vestedKept, unvestedReturned)` and `ScheduleCreated(...)` added.
 
-## L-02 — An unconfigured backend crashed the build instead of degrading
+## L-02; An unconfigured backend crashed the build instead of degrading
 
-**Status:** Fixed. `lib/supabase.ts` was marked `'use client'` yet imported by server components, and called `createClient('', '')` at module load — which throws. A deployment without backend env vars failed during prerender rather than rendering the marketing site. The client is now lazy, the module is server-safe, and every query degrades to an empty result with an explicit empty state.
+**Status:** Fixed. `lib/supabase.ts` was marked `'use client'` yet imported by server components, and called `createClient('', '')` at module load; which throws. A deployment without backend env vars failed during prerender rather than rendering the marketing site. The client is now lazy, the module is server-safe, and every query degrades to an empty result with an explicit empty state.
 
-## L-03 — `via_ir` silently invalidates time-based tests
+## L-03, `via_ir` silently invalidates time-based tests
 
 **Status:** Fixed (documented). `foundry.toml` sets `via_ir = true`. The IR optimiser rematerialises the `TIMESTAMP` opcode at each use rather than caching it in a stack slot, so a local `uint256 t0 = block.timestamp` picks up the **post-`vm.warp`** value. Observed directly:
 
@@ -451,12 +451,12 @@ Any time-based assertion in this repository can pass or fail for reasons unrelat
 
 ---
 
-# Vault layer — second pass
+# Vault layer, second pass
 
 All five findings left open by the first pass are closed, along with three further issues found
 while remediating them.
 
-## V-01 — Yield vault valued shares against an adapter balance it never funded
+## V-01, Yield vault valued shares against an adapter balance it never funded
 
 **Severity: Critical · Status: Fixed**
 
@@ -481,12 +481,12 @@ the vault. It also inflated share issuance for any later depositor, diluting the
 
 The second is a depositor redeeming a 100,000 USDC position and receiving **zero**.
 
-**Fix.** Both hooks now route capital through the adapter — `_deposit` forwards in, `_withdraw`
+**Fix.** Both hooks now route capital through the adapter, `_deposit` forwards in, `_withdraw`
 recalls first, clamped to what the adapter reports so a partially-liquid adapter produces a clear
 shortfall rather than an arithmetic error. Two adjacent gaps were closed at the same time:
 
 - **`setAdapter` stranded the position.** Repointing the adapter without moving the capital would
-  have reproduced this exact bug on purpose — the new adapter reports zero, every share reprices to
+  have reproduced this exact bug on purpose; the new adapter reports zero, every share reprices to
   nothing. It now migrates the full position in the same transaction.
 - **Accrued fees were unpayable.** `performanceFeeAccrued` only ever *subtracted* from
   `totalAssets()`; there was no `claimFees`, so it depressed every holder's NAV in exchange for
@@ -501,7 +501,7 @@ adapter.totalAssets() == vault.totalAssets() + vault.performanceFeeAccrued()
 plus `testFuzz_DepositThenRedeemIsWhole` over 256 runs asserting a deposit-then-redeem round trip
 returns the principal to within one wei, and `test_SetAdapter_MigratesThePosition`.
 
-## V-02 — The signed-rebalance path could not execute at all
+## V-02; The signed-rebalance path could not execute at all
 
 **Severity: High · Status: Fixed**
 
@@ -509,7 +509,7 @@ returns the principal to within one wei, and `test_SetAdapter_MigratesThePositio
 uint256 cutoff = block.timestamp - 1 days;
 ```
 
-This underflows on any chain whose timestamp is below 86400 — which is exactly the state a fresh
+This underflows on any chain whose timestamp is below 86400; which is exactly the state a fresh
 Foundry or Anvil instance starts in, where `block.timestamp` is 1. Every rate-limited rebalance
 reverted with `panic: arithmetic underflow`, so the EIP-712 mechanism the entire protocol is built
 around had never been exercised by a test. The same expression appeared in the public
@@ -524,7 +524,7 @@ around had never been exercised by a test. The same expression appeared in the p
 
 All nine executor tests pass, including nonce replay, daily limiting and window sliding.
 
-## V-03 — Reputation registry reported disputes as unchallenged
+## V-03, Reputation registry reported disputes as unchallenged
 
 **Severity: High · Status: Fixed**
 
@@ -536,7 +536,7 @@ disputed, so an overturned commitment kept displaying as unchallenged.
 `history`, so the two cannot disagree. Duplicated mutable state was the defect, not the missing
 write.
 
-## V-04 — Spot vault circuit breaker and fee accrual were never tested
+## V-04, Spot vault circuit breaker and fee accrual were never tested
 
 **Severity: Medium · Status: Fixed**
 
@@ -545,10 +545,10 @@ suite never granted `RISK_COUNCIL_ROLE` or `KEEPER_ROLE`. The circuit breaker an
 entirely unverified while appearing covered.
 
 **Fix.** Roles wired correctly. `KEEPER_ROLE` is deliberately withheld from the test contract so
-`test_KeeperOnly_Rebalance` still means something — granting it made that negative test silently
+`test_KeeperOnly_Rebalance` still means something, granting it made that negative test silently
 pass for the wrong reason, which is how the original gap arose.
 
-## V-05 — The invariant suite passed without exercising anything
+## V-05; The invariant suite passed without exercising anything
 
 **Severity: Medium · Status: Fixed**
 
@@ -560,7 +560,7 @@ The handler pranked `rebalanceTo` as the vault's own address, which holds no kee
 
 **Every one of 64,010 rebalance calls reverted.** Forge defaults to `fail_on_revert = false`, so the
 suite reported both invariants holding across 128,000 calls while never once exercising a rebalance.
-The two assertions were also tautologies — one checked that a `uint256` was at least zero.
+The two assertions were also tautologies; one checked that a `uint256` was at least zero.
 
 **Fix.** Rewritten with seven real invariants: fee solvency, full backing of outstanding shares, net
 never exceeding gross, receipt count matching executed rebalances, no value created from nothing,
@@ -577,10 +577,10 @@ assertGt(handler.rebalanceCalls(), 0, "no rebalance ever succeeded: invariants p
 ```
 
 Revert rate went from 100% to under 10%. Two of the new invariants failed on first run and were
-investigated before being adjusted — the dust state they flagged turned out to be handled by
+investigated before being adjusted; the dust state they flagged turned out to be handled by
 `maxDeposit`, which is asserted rather than assumed.
 
-## V-06 — A manager could mint their own "verified" badge
+## V-06; A manager could mint their own "verified" badge
 
 **Severity: High · Status: Fixed**
 
@@ -595,7 +595,7 @@ else                                    { c.upheld = true;  /* upheld */ }
 So a manager could publish any figures at all, immediately self-challenge quoting that same hash,
 and be recorded as upheld. The `!c.challenged` guard then **permanently blocked** a genuine
 challenge from anyone else. The portal renders `upheld` as a green "Upheld" badge, so the worst case
-was a fabricated track record displaying as independently verified — on a protocol whose entire
+was a fabricated track record displaying as independently verified, on a protocol whose entire
 proposition is that track records can be checked.
 
 **Fix.** Only a mismatch is a dispute; a matching counter-commitment reverts with `NoDispute` and
@@ -604,27 +604,27 @@ leaves the window open. `upheld` can now only be set by a governance arbiter via
 a hash comparison between the disputing parties can settle. `test_ManagerCannotSelfMintUpheld` pins
 the exact attack.
 
-## V-07 — Rotation vault receipts did not commit to the basket
+## V-07, Rotation vault receipts did not commit to the basket
 
 **Severity: Medium · Status: Fixed**
 
 `RWRotationVault` reused the single-asset commitment helper, which takes one `targetBps` and one
 `cashLeg`. It squeezed itself in by passing `rebalanceCount % 65536` as the target weight and the
 constant `10000` weight checksum as the cash leg. The resulting hash bound **neither the basket
-weights nor the per-token legs** — the only fields a rotation receipt exists to attest. Two
+weights nor the per-token legs**; the only fields a rotation receipt exists to attest. Two
 rebalances into completely different baskets could hash identically.
 
 **Fix.** A dedicated `basketCommitment` binds the full weight array and every token leg, using
 `abi.encode` rather than `encodePacked` so two dynamic arrays cannot collide. Tests assert that
 reordering either the weights or the legs changes the hash.
 
-## V-08 — Rotation vault charged none of its advertised performance fee
+## V-08, Rotation vault charged none of its advertised performance fee
 
 **Severity: Medium · Status: Fixed**
 
 Slither flagged `RWRotationVault.performanceFeeAccrued` as assignable-to-constant, which is what a
 never-written storage slot looks like from the outside. The vault stored `performanceFee`,
-`highWaterMark` and `performanceFeeAccrued`, and the deploy script configured 20% — but there was no
+`highWaterMark` and `performanceFeeAccrued`, and the deploy script configured 20%; but there was no
 `evaluateFees` and no `claimFees`. The protocol earned **zero** from this vault while the site
 advertised a 20% performance fee.
 
@@ -638,11 +638,11 @@ the empty-claim revert.
 # Off-chain airdrop generator
 
 The airdrop claim page existed but `scripts/generate-airdrop.ts` did not, so there was no way to
-produce a Merkle root or any proofs — the claim flow could not have been run at all.
+produce a Merkle root or any proofs; the claim flow could not have been run at all.
 
 Written, with the failure mode that matters guarded explicitly. If the generator and
 `MerkleDistributor.claim` disagree on leaf encoding, pair ordering, or odd-node promotion, every
-proof fails for real recipients with no diagnosable reason — and **neither side's own tests would
+proof fails for real recipients with no diagnosable reason; and **neither side's own tests would
 notice**, because each is internally self-consistent.
 
 `test/AirdropGeneratorParity.t.sol` closes that seam: it hardcodes the root and all proofs from an
@@ -661,14 +661,14 @@ confirm the allocation was not changed after the fact.
 
 # Static analysis
 
-`slither . --config-file slither.config.json` — **130 results, none at high or medium severity.**
+`slither . --config-file slither.config.json`, **130 results, none at high or medium severity.**
 The excluded detector list is limited to `solc-version`, `pragma`, `naming-convention`,
 `code-complexity`, `similar-lines` and `unused-import`, all informational, so the absence of
 high/medium results is a real outcome rather than a filtered one.
 
 Slither surfaced one genuine finding and one accepted one.
 
-**Genuine — acted on.** `constable-states` flagged `RWRotationVault.performanceFeeAccrued` as
+**Genuine, acted on.** `constable-states` flagged `RWRotationVault.performanceFeeAccrued` as
 assignable-to-constant, which is what a never-written storage slot looks like from the outside. That
 became finding V-08: the vault charged none of the 20% performance fee it advertised.
 
@@ -679,14 +679,14 @@ drained old adapter, so NAV reads as zero.
 
 It is not reachable. `setAdapter` and all four ERC-4626 entrypoints (`deposit`, `mint`, `withdraw`,
 `redeem`) are `nonReentrant`, so no state-changing path can execute inside that window. Slither
-continues to report it because its cross-function reentrancy detector lists `totalAssets()` — a
-`view` — among the reachable functions, and it does not model `nonReentrant` as protection. Reading
+continues to report it because its cross-function reentrancy detector lists `totalAssets()`; a
+`view`, among the reachable functions, and it does not model `nonReentrant` as protection. Reading
 a stale NAV without being able to act on it is not exploitable, and the whole sequence is atomic.
 
 The remaining results are gas and style: `cache-array-length`, `too-many-digits` (CREATE2
 `creationCode`), `immutable-states`, `assembly` (the executor's `ecrecover` decode),
 `cyclomatic-complexity`, and a set of `incorrect-equality` hits which are all `== 0` early-return
-guards on balances — the correct way to express "nothing to do", not the computed-balance comparison
+guards on balances; the correct way to express "nothing to do", not the computed-balance comparison
 that detector targets.
 
 ---
@@ -695,11 +695,11 @@ that detector targets.
 
 Not everything needed changing. Worth recording:
 
-- **`MerkleDistributor` is sound.** Double-hashed leaves committing `(index, account, amount)`, a bitmap for claim state, an immutable root and deadline, and payment to the committed `account` rather than `msg.sender` — so third-party submission is harmless and front-running is pointless. Now covered by 10 tests including tampered-amount and tampered-recipient cases.
+- **`MerkleDistributor` is sound.** Double-hashed leaves committing `(index, account, amount)`, a bitmap for claim state, an immutable root and deadline, and payment to the committed `account` rather than `msg.sender`; so third-party submission is harmless and front-running is pointless. Now covered by 10 tests including tampered-amount and tampered-recipient cases.
 - **Vaults fail closed on oracle failure.** A stale or out-of-bounds price reverts rather than pricing the trade wrongly. This is the right default and it is why M-03 produced an unusable vault rather than a mispriced one.
 - **`Ownable2Step` throughout.** A mistyped ownership transfer requires the recipient to accept, so a typo does not permanently orphan a contract.
 - **Claim-before-transfer ordering.** Both `ZorphaVesting.claim` and `MerkleDistributor.claim` update state before transferring, so neither is reentrancy-sensitive.
-- **Performance-fee-only economics.** No management fee means an idle vault costs a depositor nothing — a genuinely user-favourable choice that also removes a whole class of fee-accrual bugs.
+- **Performance-fee-only economics.** No management fee means an idle vault costs a depositor nothing; a genuinely user-favourable choice that also removes a whole class of fee-accrual bugs.
 
 ---
 
@@ -750,6 +750,6 @@ Ordered by dependency. Nothing below the first unchecked box should be started.
 ---
 
 *Reviewed against OpenZeppelin Contracts 5.6.1, Solidity 0.8.28, Foundry 1.8.1, Slither. This is
-an internal review by the authors of the code and **is not a substitute for a third-party audit** —
+an internal review by the authors of the code and **is not a substitute for a third-party audit** , 
 it reliably finds the bugs its reviewers were capable of imagining. Twenty-four findings in code
 that had never been compiled is not evidence that a twenty-fifth does not exist.*

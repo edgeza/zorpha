@@ -189,13 +189,13 @@ export function VestingPanel() {
             <div>
               <dt className="stat-label">Cliff</dt>
               <dd className="mt-1.5 font-mono text-sm text-ink-200">
-                {cliffMs ? formatDate(cliffMs) : '—'}
+                {cliffMs ? formatDate(cliffMs) : ', '}
               </dd>
             </div>
             <div>
               <dt className="stat-label">Fully vested</dt>
               <dd className="mt-1.5 font-mono text-sm text-ink-200">
-                {endMs ? formatDate(endMs) : '—'}
+                {endMs ? formatDate(endMs) : ', '}
               </dd>
             </div>
           </dl>

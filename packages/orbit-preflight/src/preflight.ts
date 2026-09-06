@@ -111,7 +111,7 @@ async function probeIdentity(url: string, opts: RpcOptions): Promise<RpcStatus> 
  *
  * The range is deliberately ancient and narrow: it costs the node almost
  * nothing to answer, and an endpoint that prunes history will decline it. We
- * are testing capability, not looking for results — an empty array is a pass.
+ * are testing capability, not looking for results; an empty array is a pass.
  */
 async function probeArchive(url: string, opts: RpcOptions): Promise<boolean> {
   const res = await rpcCall(url, 'eth_getLogs', [

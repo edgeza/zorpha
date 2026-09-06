@@ -263,7 +263,7 @@ export function GuardRails() {
                         </span>
                       )}
                       {r.status === 'running' && <span className="text-ink-500">running…</span>}
-                      {r.status === 'idle' && <span className="text-ink-500">—</span>}
+                      {r.status === 'idle' && <span className="text-ink-500">, </span>}
                       {r.status === 'passed' && <span className="text-danger-400">not refused</span>}
                       {r.status === 'error' && <span className="text-amber-300">{r.detail}</span>}
                     </span>
@@ -277,7 +277,7 @@ export function GuardRails() {
           <div className="border-t border-void-700 bg-void-850 px-5 py-4">
             <p className="text-xs leading-relaxed text-ink-400">
               Each line is a live <span className="font-mono">eth_call</span> against the deployed
-              executor, run when this page loaded — not a recording. No wallet, no gas, and the
+              executor, run when this page loaded; not a recording. No wallet, no gas, and the
               signature is sixty-five bytes of nonsense: the contract refuses the instruction before
               it ever looks at who signed it.
             </p>

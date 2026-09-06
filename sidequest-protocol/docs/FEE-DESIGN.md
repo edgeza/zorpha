@@ -15,7 +15,7 @@ settled on`.
 So the **risk** parameter was deliberately benchmarked against the closest
 comparable product. The **fee** was not benchmarked anywhere, and sits at twice
 that comparable's rate. To an auditor or a sophisticated depositor reading the
-repo, that looks like an oversight rather than a decision — and until this file
+repo, that looks like an oversight rather than a decision; and until this file
 existed, there was nothing to distinguish the two.
 
 ## What is deployed
@@ -44,7 +44,7 @@ Hyperliquid is the structural twin: a leader runs a vault, posts 5% of TVL as
 skin in the game, takes a fixed cut of profits above a high-water mark, and
 charges nothing annually. Morpho's numbers are a *ceiling* set per curator, not
 a market rate, and its vaults are curated credit rather than directional
-strategies — useful for showing there is headroom above 10%, not for showing
+strategies, useful for showing there is headroom above 10%, not for showing
 what is normal.
 
 ## Where a dollar of profit actually goes
@@ -58,11 +58,11 @@ This is the part that was not obvious and that changes the argument.
 | Hyperliquid user vault | 10% | 0% | 90% |
 | Zorpha spot / rotation | **16%** | 4% | 80% |
 
-`splitFees` sends `leaderFeeShareBps` — 80% — of the fee to the leader, so a
+`splitFees` sends `leaderFeeShareBps` (80%) of the fee to the leader, so a
 20% fee is 16 points to the leader and 4 to the protocol.
 
-**Factory vaults** (`zqtAAPL`, `zqROT`, `zqtUSDG`) have no escrow —
-`firstLossEscrow` is the zero address on all three — so there is no leader and
+**Factory vaults** (`zqtAAPL`, `zqROT`, `zqtUSDG`) have no escrow , 
+`firstLossEscrow` is the zero address on all three; so there is no leader and
 the whole fee goes to `feeRecipient`, the treasury. `ProtocolTreasury` then
 sends 50% of anything it receives to the buyback.
 
@@ -78,7 +78,7 @@ is protocol revenue:
 
 **The 20% on spot and rotation is a leader-recruitment decision, not a revenue
 decision.** A Zorpha leader earns 60% more than a Hyperliquid leader on
-identical performance — 16 cents against 10 — and the depositor funds the
+identical performance, 16 cents against 10; and the depositor funds the
 difference. That is a coherent strategy for a venue with no track record
 competing for talent against an established one, and it is the honest way to
 describe it. It is not defensible as "the market rate", because it is not.
@@ -103,15 +103,15 @@ performance rate.
 - **If leaders are the scarce side**, 20% is right and should be marketed *to
   leaders* as what it is: the best split available on this chain.
 - **The split itself is adjustable.** `leaderFeeShareBps` is governance-set, so
-  the 16/4 division can move without touching the headline rate — a lever worth
+  the 16/4 division can move without touching the headline rate; a lever worth
   knowing exists before changing the rate people quote.
 
 Recorded as analysis, not as a decision. The rate is governance's call.
 
 ## Related
 
-- [[FINDINGS-COVERAGE-FLOOR]] — `minCoverageBps` binds the leader's exit and
+- [[FINDINGS-COVERAGE-FLOOR]], `minCoverageBps` binds the leader's exit and
   not depositor inflows, which is the other place a stated protection turned
   out narrower than its name
-- `AUDIT-TOKEN-V1.md` — already notes the performance-fee-only design as a
+- `AUDIT-TOKEN-V1.md`, already notes the performance-fee-only design as a
   user-favourable choice

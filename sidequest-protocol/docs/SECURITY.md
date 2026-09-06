@@ -1,4 +1,4 @@
-# Zorpha V1 — Security Model
+# Zorpha V1, Security Model
 
 This document is the canonical reference for what is and is not safe in V1.
 It mirrors the ZENTORY `docs/SECURITY.md` shape but is rewritten for the
@@ -21,7 +21,7 @@ threat model assumes:
   regression tests. Suite green at 158/158 including 13 stateful invariants
   across two handlers.
 - Slither reports 0 high and 0 medium as of 2026-09-01. Every suppression is
-  written down in [SLITHER-TRIAGE.md](SLITHER-TRIAGE.md) — read that before
+  written down in [SLITHER-TRIAGE.md](SLITHER-TRIAGE.md), read that before
   quoting this line. The earlier claim here was unverified: Slither had never
   actually run, and the deploy script was reporting its crash as a finding.
 - Still outstanding: a THIRD-PARTY audit. That is a gate before mainnet, not
@@ -35,7 +35,7 @@ Out-of-scope for V1 (defense deferred to V2):
   carries real checkpointed voting weight (timestamp-keyed, ERC-6372). No
   Governor is deployed, so there is no on-chain venue for a proposal yet, but
   the weight exists and is queryable. An earlier revision of this document
-  incorrectly stated V1 had no voting token — see finding M-02.
+  incorrectly stated V1 had no voting token, see finding M-02.
 - Oracle manipulation beyond the staleness + bounds checks (V1 trusts the
   single configured oracle address per vault; production must use a quorum
   feed like `MedianOracle` or a verified Chainlink feed).
@@ -49,7 +49,7 @@ Out-of-scope for V1 (defense deferred to V2):
 | `SpotVaultMinimal` | `DEFAULT_ADMIN_ROLE` | Governance (Safe) | setSwapAdapter, setFeeRecipient, claimFees, writeDownAccruedFees |
 | `SpotVaultMinimal` | `KEEPER_ROLE`       | `StrategyExecutor` | rebalanceTo |
 | `SpotVaultMinimal` | `RISK_COUNCIL_ROLE`  | Governance (Safe) | setCircuitBreaker, setEmergencyRedeemCooldown |
-| `RWRotationVault`  | `DEFAULT_ADMIN_ROLE` | Governance (Safe) | (none in V1 — config is immutable) |
+| `RWRotationVault`  | `DEFAULT_ADMIN_ROLE` | Governance (Safe) | (none in V1, config is immutable) |
 | `RWRotationVault`  | `KEEPER_ROLE`        | `StrategyExecutor` | rebalanceTo |
 | `RWRotationVault`  | `RISK_COUNCIL_ROLE`  | Governance (Safe) | setCircuitBreaker |
 | `YieldVault`       | `DEFAULT_ADMIN_ROLE` | Governance (Safe) | (none in V1) |
@@ -106,14 +106,14 @@ unit-test suite. Any regression is a P0.
 ### `RWRotationVault`
 
 - All basket tokens + oracles are immutable. No live swap execution in V1.
-- The receipt is the manager's chosen target weights — V1 does not enforce
+- The receipt is the manager's chosen target weights, V1 does not enforce
   them. (V2 adds the swap leg.)
 
 ### `YieldVault`
 
 - The adapter is contract-settable (gated behind Timelock).
 - The `setAdapter` action re-approves the new adapter for the full ERC-20
-  allowance; the old adapter's allowance is NOT zeroed — production must
+  allowance; the old adapter's allowance is NOT zeroed, production must
   zero the old approval before swapping.
 
 ### `StrategyExecutor`
@@ -140,9 +140,9 @@ unit-test suite. Any regression is a P0.
 
 ### `ProtocolTreasury`
 
-- `sweep(token)` is permissionless by design — anything that lands here is
+- `sweep(token)` is permissionless by design, anything that lands here is
   force-split 50/50 between buyback and operations.
-- `rescue(token, to, amount)` is owner-only — escape hatch for genuinely
+- `rescue(token, to, amount)` is owner-only, escape hatch for genuinely
   misrouted assets before they're swept.
 
 ### `ZorphaBuyback`

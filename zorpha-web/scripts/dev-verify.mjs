@@ -5,8 +5,8 @@
 // requests `app/portal/layout.js` and finds only `layout-8ed2efd6.js`, so every
 // core chunk 404s and the app never hydrates. Nothing errors visibly. What you
 // see is a fully rendered page in which every on-chain value shows the
-// server-side "—" placeholder, which is indistinguishable from broken contract
-// reads — and that is what sent me looking at wagmi config for a while before
+// server-side ", " placeholder, which is indistinguishable from broken contract
+// reads; and that is what sent me looking at wagmi config for a while before
 // checking the disk.
 //
 // NEXT_DIST_DIR is read by next.config.mjs. With it set, this server keeps its

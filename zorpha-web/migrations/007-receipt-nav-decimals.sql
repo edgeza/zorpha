@@ -1,4 +1,4 @@
--- 007 — record the unit nav_per_share is denominated in.
+-- 007, record the unit nav_per_share is denominated in.
 --
 -- WHY
 --

@@ -39,7 +39,7 @@ function usdg(value: bigint): string {
 /**
  * What `coverageRatioBps()` returns for a vault with nothing in it.
  *
- * FirstLossEscrow does `if (raw == 0) return type(uint256).max;` — a sentinel
+ * FirstLossEscrow does `if (raw == 0) return type(uint256).max;`; a sentinel
  * meaning "nothing at risk", not a ratio. Passed through Number() it becomes
  * 1.15e77 and rendered as a percentage it reads `1.157920892373162e+75%`,
  * which is what an empty vault showed here before this guard.
@@ -57,7 +57,7 @@ function CoverageBar({ bps, min }: { bps: bigint; min: number }) {
           className="w-14 text-right font-mono text-xs text-ink-500"
           title="No deposits yet, so there is nothing for the buffer to cover."
         >
-          —
+          , 
         </span>
       </div>
     );

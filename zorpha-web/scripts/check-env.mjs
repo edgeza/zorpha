@@ -134,7 +134,7 @@ if (!siteUrl) {
     const publicUrl = process.env.NEXT_PUBLIC_VERCEL_URL;
     notes.push(
       publicUrl
-        ? `NEXT_PUBLIC_SITE_URL unset — preview build, using https://${publicUrl}`
+        ? `NEXT_PUBLIC_SITE_URL unset, preview build, using https://${publicUrl}`
         : [
             `NEXT_PUBLIC_SITE_URL unset, and NEXT_PUBLIC_VERCEL_URL is not exposed.`,
             `  This preview will label itself https://zorpha.xyz, not ${process.env.VERCEL_URL}.`,
@@ -153,7 +153,7 @@ if (!siteUrl) {
       ].join(LF + '      '),
     );
   } else {
-    notes.push('NEXT_PUBLIC_SITE_URL unset — dev build, falling back to https://zorpha.xyz');
+    notes.push('NEXT_PUBLIC_SITE_URL unset, dev build, falling back to https://zorpha.xyz');
   }
 } else {
   let url;
@@ -239,7 +239,7 @@ if (!siteUrl) {
 // cries wolf is worse than no check, which is the whole argument for this file.
 if (!process.env.NEXT_PUBLIC_WC_PROJECT_ID) {
   notes.push(
-    'NEXT_PUBLIC_WC_PROJECT_ID unset — WalletConnect and mobile wallet ' +
+    'NEXT_PUBLIC_WC_PROJECT_ID unset, WalletConnect and mobile wallet ' +
       'pairing will be unavailable in this build',
   );
 }
@@ -271,7 +271,7 @@ const ADDRESS_VARS = [
 const missingAddresses = ADDRESS_VARS.filter((v) => !process.env[v]);
 if (missingAddresses.length) {
   notes.push(
-    `${missingAddresses.length} of ${ADDRESS_VARS.length} contract addresses unset — ` +
+    `${missingAddresses.length} of ${ADDRESS_VARS.length} contract addresses unset, ` +
       'those panels will read nothing at runtime: ' +
       missingAddresses.map((v) => v.replace('NEXT_PUBLIC_', '').replace('_ADDRESS', '')).join(', '),
   );

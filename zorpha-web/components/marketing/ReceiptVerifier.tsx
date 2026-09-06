@@ -206,7 +206,7 @@ export function ReceiptVerifier() {
               Matches the commitment the chain recorded.
             </p>
             <p className="mt-1.5 text-xs leading-relaxed text-ink-400">
-              Change any number above and this stops matching. That is the whole guarantee — not
+              Change any number above and this stops matching. That is the whole guarantee; not
               that we are honest, but that the record cannot be edited after the fact.{' '}
               <button
                 type="button"
@@ -241,7 +241,7 @@ export function ReceiptVerifier() {
       <div className="border-t border-void-700 bg-void-900 px-5 py-3.5">
         <p className="text-xs leading-relaxed text-ink-400">
           A real receipt from the rotation vault on Robinhood Chain testnet. Its token legs are zero
-          because the vault held nothing when the rebalance ran — it proves the mechanism, not a
+          because the vault held nothing when the rebalance ran; it proves the mechanism, not a
           position. Emitted by the vault contract itself, so it exists whether or not this website
           does.
         </p>

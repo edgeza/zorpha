@@ -136,7 +136,7 @@ contract VaultInvariantsTest is StdInvariant, Test {
 
         handler = new VaultHandler(vault, asset, cash, oracle, adapter);
 
-        // Without this the handler cannot rebalance at all — the defect behind
+        // Without this the handler cannot rebalance at all; the defect behind
         // V-05.
         vault.grantRole(vault.KEEPER_ROLE(), address(handler));
 
@@ -160,7 +160,7 @@ contract VaultInvariantsTest is StdInvariant, Test {
     }
 
     /// The V-01 class of failure: outstanding shares backed by nothing, while
-    /// the vault still accepts deposits — so the next depositor funds the hole.
+    /// the vault still accepts deposits; so the next depositor funds the hole.
     ///
     /// ERC-4626 rounding can legitimately leave dust shares whose assets floor
     /// to zero, so the state itself is not the bug. The bug is being OPEN in

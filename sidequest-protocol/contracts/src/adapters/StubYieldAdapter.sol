@@ -11,7 +11,7 @@ import {IYieldAdapter} from "../interfaces/IYieldAdapter.sol";
 ///         balance. Used as the V1 default for the YieldVault so the slot
 ///         is functional even before a real lending market is wired up.
 ///         `totalAssets()` is always equal to the adapter's own underlying
-///         balance — i.e. zero yield, zero risk.
+///         balance, i.e. zero yield, zero risk.
 contract StubYieldAdapter is IYieldAdapter, AccessControl {
     using SafeERC20 for IERC20;
 

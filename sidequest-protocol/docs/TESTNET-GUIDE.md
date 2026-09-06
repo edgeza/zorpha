@@ -13,7 +13,7 @@ Checked on chain, so this is not an assumption:
 | | |
 | --- | --- |
 | Your wallet | `0xB4a7C2DeebB5EaDC34e120bC8a5708508DC17f4b` |
-| Testnet balance | **0.01 ETH** — the faucet worked |
+| Testnet balance | **0.01 ETH**; the faucet worked |
 | Transactions sent | 0 |
 | Whole deploy costs | ~0.00047 ETH at the current 0.01 gwei |
 | Headroom | **21×** |
@@ -55,7 +55,7 @@ Three things, and then never think about it again:
 
 ---
 
-## Step 1 — Set your variables
+## Step 1, Set your variables
 
 Open a terminal in `sidequest-protocol/contracts` and paste this, filling in
 the two placeholders:
@@ -77,7 +77,7 @@ why the rest of the guide happens in the same window.
 
 ---
 
-## Step 2 — Generate the airdrop root
+## Step 2, Generate the airdrop root
 
 The distributor commits to a Merkle root at deploy time, so it has to exist
 first. This runs from `sidequest-protocol/`, one level up from the contracts:
@@ -107,7 +107,7 @@ rebuild the root and confirm nothing changed afterwards.
 
 ---
 
-## Step 3 — Deploy everything
+## Step 3, Deploy everything
 
 ```bash
 ./script/testnet-launch.sh
@@ -116,8 +116,8 @@ rebuild the root and confirm nothing changed afterwards.
 That is the whole deploy. It runs four phases in order and passes each one's
 addresses to the next, so there is no copying hex between steps.
 
-**Phase 1, fixtures.** Testnet is a bare chain — no USDG, no curated vaults, no
-DEX — so this deploys stand-ins for all three.
+**Phase 1, fixtures.** Testnet is a bare chain; no USDG, no curated vaults, no
+DEX; so this deploys stand-ins for all three.
 
 **Phases 2 and 3, token and vault layers.** Runs the full test suite and
 slither first and stops if either fails. Then deploys ZOR and distributes the
@@ -126,20 +126,20 @@ entire supply in one transaction, then the vaults.
 **Phase 4, leadership.** The permissionless vault launcher, and it writes its
 address into `zorpha-web/.env.local` for you.
 
-Expect a few minutes, mostly tests. It refuses up front — before spending any
-gas — if your governance account is the deployer, if the RPC is not testnet, or
+Expect a few minutes, mostly tests. It refuses up front, before spending any
+gas, if your governance account is the deployer, if the RPC is not testnet, or
 if you have no balance.
 
 ### What to read in the output
 
-- `verified: deployer holds 0 ZOR` — the distribution worked. If this is
+- `verified: deployer holds 0 ZOR`; the distribution worked. If this is
   missing, stop.
 - A **swap stub** warning is expected. Testnet has no DEX.
 - A **yield stub** warning is not. It would mean the yield vault earns nothing.
 
 ---
 
-## Step 4 — Two things the script cannot do
+## Step 4; Two things the script cannot do
 
 Both fail **silently** if skipped, which is exactly why they are called out.
 
@@ -160,7 +160,7 @@ until accepted. Queue `acceptOwnership()` through the Timelock.
 
 ---
 
-## Step 5 — Start the site
+## Step 5, Start the site
 
 ```bash
 cd ../../zorpha-web && npm run dev
@@ -172,18 +172,18 @@ cd ../../zorpha-web && npm run dev
 broken when it is running perfectly on the next port up.
 
 Open `/portal` on whatever port it printed. The orange "not configured" banner
-should be **gone** — the deploy filled every address in. If a name is still
+should be **gone**; the deploy filled every address in. If a name is still
 listed there, that contract did not deploy.
 
 ---
 
-## Step 6 — Prove it works
+## Step 6, Prove it works
 
 Work phases 3 and 5b of `docs/LAUNCH-CHECKLIST.md`. The two that matter most,
 because they are the product:
 
 **The yield vault charges a fee.** Deposit tUSDG, make the venue earn, redeem.
-You should get back **less** than the full gain — that difference is the 10%
+You should get back **less** than the full gain; that difference is the 10%
 performance fee. If you get all of it, fees are broken.
 
 ```bash
@@ -201,19 +201,19 @@ anyone about it.
 
 ## When something goes wrong
 
-**`GOVERNANCE must not equal the deployer`** — you need that second account.
+**`GOVERNANCE must not equal the deployer`**; you need that second account.
 
-**`insufficient funds`** — the faucet went to a different address than the key
+**`insufficient funds`**; the faucet went to a different address than the key
 you exported. Check `cast wallet address --private-key $PRIVATE_KEY` matches
 the funded one.
 
-**`forge: command not found`** — foundry is not on this shell's PATH. Reopen
+**`forge: command not found`**, foundry is not on this shell's PATH. Reopen
 the terminal.
 
-**Slither or a test fails** — the script stops before deploying anything. That
+**Slither or a test fails**; the script stops before deploying anything. That
 is the gate working. Read the failure; do not skip it.
 
-**A phase half-finished** — safe to re-run `./script/testnet-launch.sh`. Each
+**A phase half-finished**, safe to re-run `./script/testnet-launch.sh`. Each
 phase redeploys and the last run wins.
 
 ---
@@ -223,7 +223,7 @@ phase redeploys and the last run wins.
 Two gates, and neither is optional.
 
 **The fork test.** Testnet proves the protocol's own accounting and nothing at
-all about whether it talks to real venues correctly — that is where the router
+all about whether it talks to real venues correctly; that is where the router
 bug was hiding.
 
 ```bash

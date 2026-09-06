@@ -1,4 +1,4 @@
--- 008 — register the 5 September 2026 vaults, retire everything before them.
+-- 008, register the 5 September 2026 vaults, retire everything before them.
 --
 -- The indexer takes its vault list from THIS TABLE, not from VAULT_ADDRESSES:
 -- that variable is read only by the DRY_RUN path, and `upsertVault` exists but

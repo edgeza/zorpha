@@ -81,7 +81,7 @@ export function EnvBanner() {
             This build cannot reach {activeChain.name}, so every on-chain figure below is blank
             and every transaction button is disabled. Nothing is wrong with your wallet.{' '}
             {blockedByCsp
-              ? "The browser is blocking the request under this site's own Content Security Policy — the configured RPC host is not on its allowlist."
+              ? "The browser is blocking the request under this site's own Content Security Policy; the configured RPC host is not on its allowlist."
               : 'The configured RPC endpoint is not responding.'}
           </p>
         </div>

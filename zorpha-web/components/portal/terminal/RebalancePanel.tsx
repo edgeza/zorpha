@@ -18,7 +18,7 @@ import { explorerTx } from '@/lib/contracts';
  * The one action a manager takes, in the three shapes it comes in.
  *
  * Everything here is built around showing what a signature will DO before it
- * is signed, because the alternative — sign, wait, read an event log — is what
+ * is signed, because the alternative, sign, wait, read an event log, is what
  * the shell scripts already did and is the reason nobody but us has ever
  * operated a vault.
  */
@@ -75,7 +75,7 @@ function Blockers({
       <Callout tone="danger" title="The oracle is stale">
         <p>
           The last price is older than the vault&rsquo;s staleness window, so any rebalance reverts
-          with <Mono>StaleOracle</Mono>. Wait for the next report — signing now only spends gas.
+          with <Mono>StaleOracle</Mono>. Wait for the next report, signing now only spends gas.
         </p>
       </Callout>
     );
@@ -183,7 +183,7 @@ export function SpotRebalance(
         <div>
           <dt className="stat-label">Move</dt>
           <dd className="mt-0.5 font-mono tabular-nums">
-            {preview.direction === 'none' ? '—' : (
+            {preview.direction === 'none' ? ', ' : (
               <>
                 {preview.direction === 'buy' ? '+' : '−'}
                 {fmt(preview.delta, assetDecimals)} {assetSymbol}
@@ -194,7 +194,7 @@ export function SpotRebalance(
         <div>
           <dt className="stat-label">Min out</dt>
           <dd className="mt-0.5 font-mono tabular-nums">
-            {preview.direction === 'none' ? '—' : fmt(preview.minOut, assetDecimals)}
+            {preview.direction === 'none' ? ', ' : fmt(preview.minOut, assetDecimals)}
           </dd>
         </div>
       </dl>
@@ -203,7 +203,7 @@ export function SpotRebalance(
         <Callout tone="warn" title="This would not trade">
           <p>
             The move is smaller than the vault&rsquo;s {(thresholdBps / 100).toFixed(2)}% rebalance
-            threshold. The contract writes the new target and returns — no swap, no receipt, no{' '}
+            threshold. The contract writes the new target and returns; no swap, no receipt, no{' '}
             <Mono>rebalanceCount</Mono> bump. The transaction succeeds and costs gas. Widen the
             move if you meant to trade.
           </p>
@@ -429,8 +429,8 @@ export function YieldRebalance(
         the permanent record.
       </p>
       <p className="max-w-prose text-sm leading-relaxed text-ink-400">
-        Changing which venue the vault uses is a different call — <Mono>reallocate</Mono> on the
-        launcher — and it belongs to the leader, not the keeper.
+        Changing which venue the vault uses is a different call, <Mono>reallocate</Mono> on the
+        launcher; and it belongs to the leader, not the keeper.
       </p>
 
       <dl className="grid grid-cols-2 gap-x-6 gap-y-2 border-y border-void-800 py-3 text-sm sm:grid-cols-3">
@@ -445,12 +445,12 @@ export function YieldRebalance(
           <dd className="mt-0.5 font-mono tabular-nums">
             {/* Asset units, not 18. A yield vault on 6-decimal USDG rendered a
                 NAV of 1.000000 as 0.000000 under a hardcoded 18. */}
-            {navPerShare === undefined ? '—' : Number(formatUnits(navPerShare, assetDecimals)).toFixed(6)}
+            {navPerShare === undefined ? ', ' : Number(formatUnits(navPerShare, assetDecimals)).toFixed(6)}
           </dd>
         </div>
         <div>
           <dt className="stat-label">Checkpoints</dt>
-          <dd className="mt-0.5 font-mono tabular-nums">{rebalanceCount?.toString() ?? '—'}</dd>
+          <dd className="mt-0.5 font-mono tabular-nums">{rebalanceCount?.toString() ?? ', '}</dd>
         </div>
       </dl>
 

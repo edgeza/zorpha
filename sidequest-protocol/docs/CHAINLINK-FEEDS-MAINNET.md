@@ -1,4 +1,4 @@
-# Chainlink price feeds — Robinhood Chain mainnet (4663)
+# Chainlink price feeds, Robinhood Chain mainnet (4663)
 
 Snapshot of the Chainlink reference-data directory: **57 feeds**, all 8 decimals.
 Eight decimals is what `SpotVaultMinimal` and `RWRotationVault` already expect from
@@ -6,7 +6,7 @@ an AggregatorV3 source, so no scaling change is needed to adopt them.
 
 ## Why this matters for the launch path
 
-There is **no published testnet feed list** — the equivalent testnet path returns 404.
+There is **no published testnet feed list**; the equivalent testnet path returns 404.
 So the two environments differ in their trust model, and that difference is the whole
 reason to treat mainnet as a separate step rather than a redeploy:
 
@@ -23,7 +23,7 @@ price every vault marks its NAV against. Do not ship that.
 
 **Verify every address against Chainlink's own docs before use.** This file is a
 point-in-time snapshot, and a wrong feed address is a silent mispricing rather than
-an error — the vault fails closed only on staleness and bounds, not on "correct feed,
+an error; the vault fails closed only on staleness and bounds, not on "correct feed,
 wrong asset".
 
 ## Feeds

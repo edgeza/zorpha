@@ -11,7 +11,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 ///         to those stats. Anyone can challenge the commitment within a window
 ///         by supplying a counter-proof.
 ///
-///         This is a CHEAP, OFFCHAIN-VERIFIABLE reputation primitive — it does
+///         This is a CHEAP, OFFCHAIN-VERIFIABLE reputation primitive; it does
 ///         NOT store numerical stats on chain. It only stores a hash and a
 ///         small public struct so off-chain observers can verify a manager's
 ///         claim matches their actual receipts history.
@@ -38,7 +38,7 @@ contract ReputationRegistry is AccessControl {
     ///         A separate `latest` mapping used to hold a duplicate of the most
     ///         recent entry, but `challenge` only ever wrote to `history`. The
     ///         two therefore diverged the moment anything was challenged, and
-    ///         `getLatest` — which is what the portal reads — kept reporting a
+    ///         `getLatest`; which is what the portal reads, kept reporting a
     ///         disputed commitment as unchallenged. Derived state cannot drift
     ///         from its source, so `latest` is gone.
     mapping(address => StatsCommitment[]) public history;
@@ -77,7 +77,7 @@ contract ReputationRegistry is AccessControl {
     }
 
     /// @notice Publish a stats commitment for a manager. Anyone can submit on
-    ///         behalf of the manager — the off-chain signed message proves intent.
+    ///         behalf of the manager; the off-chain signed message proves intent.
     function publish(
         address manager,
         bytes32 commitment,
@@ -120,7 +120,7 @@ contract ReputationRegistry is AccessControl {
     ///         `upheld = true`. That made the positive status trivially
     ///         self-mintable: a manager could publish any hash at all, chase it
     ///         with a self-challenge quoting that same hash, and be recorded as
-    ///         upheld — while `!challenged` then permanently blocked a genuine
+    ///         upheld, while `!challenged` then permanently blocked a genuine
     ///         challenge from anyone else. The portal renders `upheld` as a
     ///         green "Upheld" badge, so the flag actively misled readers about
     ///         stats nobody had verified.

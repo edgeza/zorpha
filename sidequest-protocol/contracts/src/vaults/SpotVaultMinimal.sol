@@ -20,7 +20,7 @@ import {ReceiptRenderer} from "../lib/ReceiptRenderer.sol";
 ///         (LONG) or the cash asset (USDC, FLAT). NAV is measured in
 ///         underlying units, valuing the cash leg via a Chainlink-compatible
 ///         oracle. Every successful rebalance emits a `Rebalanced` event that
-///         the Supabase indexer copies into the public receipts feed — the
+///         the Supabase indexer copies into the public receipts feed; the
 ///         manager's permanent onchain track record.
 ///
 ///         Slashed from the ZENTORY `SpotVault` for Zorpha V1:

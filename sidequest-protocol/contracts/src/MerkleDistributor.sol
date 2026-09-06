@@ -12,7 +12,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 ///         are paid from this contract's ZOR balance; admin tops it up
 ///         once with the total allocation pre-launch.
 ///
-///         Same shape as the Uniswap / 1inch / dYdX distributors — battle-
+///         Same shape as the Uniswap / 1inch / dYdX distributors, battle-
 ///         tested pattern.
 contract MerkleDistributor is AccessControl {
     using SafeERC20 for IERC20;

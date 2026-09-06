@@ -1,5 +1,5 @@
 /**
- * Oracle keeper — a second long-running process, deployed from this same
+ * Oracle keeper; a second long-running process, deployed from this same
  * package with a different start command.
  *
  * WHY IT IS HERE AND NOT A SHELL SCRIPT

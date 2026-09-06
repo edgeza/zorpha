@@ -1,4 +1,4 @@
--- 006 — record the token legs of a basket rebalance.
+-- 006, record the token legs of a basket rebalance.
 --
 -- WHY
 --

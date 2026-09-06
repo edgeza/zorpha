@@ -35,7 +35,7 @@ interface ISwapRouter02 {
         returns (uint256 amountOut);
 }
 
-/// @notice ISpotSwapAdapter — the interface SpotVault calls for rebalances.
+/// @notice ISpotSwapAdapter; the interface SpotVault calls for rebalances.
 interface ISpotSwapAdapter {
     function swap(address tokenIn, address tokenOut, uint256 amountIn, uint256 minOut)
         external
@@ -164,7 +164,7 @@ contract RobinhoodChainRouterAdapter is AccessControl, ISpotSwapAdapter {
 /// @notice Drop-in ISpotSwapAdapter for environments where no live DEX exists.
 ///         For NAV-only testing the vault still calls `swap(...)`; the stub
 ///         returns the same amount as the input (no slippage, no swap). This
-///         is NOT a real swap — it just keeps the rebalance path non-reverting
+///         is NOT a real swap; it just keeps the rebalance path non-reverting
 ///         so tests can exercise the vault's accounting.
 contract StubSwapAdapter is ISpotSwapAdapter, AccessControl {
     using SafeERC20 for IERC20;

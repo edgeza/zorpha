@@ -85,7 +85,7 @@ contract SpotVaultMinimalTest is Test {
     }
 
     /// The commitment is a keccak256 over every field of the receipt, so
-    /// asserting it as bytes32(0) — as this test previously did — could never
+    /// asserting it as bytes32(0), as this test previously did, could never
     /// pass. Recomputing it from the library is the assertion that actually
     /// matters: it proves the emitted hash binds the values the vault reported,
     /// which is the whole basis of a verifiable track record.

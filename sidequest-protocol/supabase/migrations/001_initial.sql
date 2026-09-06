@@ -1,4 +1,4 @@
--- Zorpha V1 — initial schema for the receipts indexer.
+-- Zorpha V1, initial schema for the receipts indexer.
 -- All tables: RLS-enabled; service_role bypasses RLS so the indexer worker
 -- can write freely, while the dApp uses the anon key + RLS.
 
