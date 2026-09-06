@@ -137,7 +137,7 @@ exception in Task 13.
 | --- | --- |
 | `src/lib/TickMath.sol` | `getSqrtRatioAtTick` and the two ratio bounds. Nothing else. |
 | `src/oracle/UniswapV3TwapAdapter.sol` | Pool interface, price arithmetic, five guards, `latestRoundData`, and the ungated charting view. |
-| `test/mocks/MockUniswapV3Pool.sol` | A pool whose tick, liquidity, cardinality and observation age are settable, so each guard fires in isolation. |
+| `test/mocks/MockUniswapV3Pool.sol` | A pool whose tick, liquidity, cardinality and observation age are settable, so each guard fires in isolation. It must ALSO support per-slot observation ages, a per-slot `initialized` flag, and an explicit cumulative series — see the note under Task 2, Step 3. |
 | `test/lib/TickMath.t.sol` | Unit, no network. Known-answer checks. |
 | `test/oracle/UniswapV3TwapAdapterUnit.t.sol` | Unit, no network. Constructor ordering, price arithmetic, five guards. |
 | `test/fork/StockVaultMainnet.t.sol` | Fork. Adapter against the real pool, then the whole vault round-trip. |
@@ -652,7 +652,18 @@ Expected: compilation failure, `Source "src/oracle/UniswapV3TwapAdapter.sol" not
 
 - [ ] **Step 3: Write the mock pool**
 
-Create `test/mocks/MockUniswapV3Pool.sol`:
+Create `test/mocks/MockUniswapV3Pool.sol`. Beyond the listing below it needs three things
+Task 5 depends on, and which are easiest to build now:
+
+- `setObservationAgeAt(uint256 index, uint32 age)` — a per-slot age override, falling back to
+  the global `observationAge`. **Without this, `observations()` serves every slot the same
+  value, an off-by-one in `(index + 1) % cardinality` returns the right answer for the wrong
+  reason, and Task 5's buffer-depth test passes vacuously.**
+- `setObservationUninitialized(uint256 index, bool)` — so the unfilled-ring fallback path is
+  reachable.
+- `setCumulativeSeries(int56[] calldata)` — return these cumulatives verbatim from `observe`
+  instead of interpolating between two endpoints, so a test can make the price MOVE across
+  the span. Interpolation alone cannot reveal a reversed series, because every point is equal.
 
 ```solidity
 // SPDX-License-Identifier: MIT
@@ -1482,7 +1493,7 @@ and replace `latestRoundData` with the guarded version:
 forge test --match-path 'test/oracle/UniswapV3TwapAdapterUnit.t.sol' -vv
 ```
 
-Expected: 26 passing.
+Expected: **42 passing**. Then `forge test`: **386 passed, 0 failed, 34 skipped, 420 total**.
 
 - [ ] **Step 5: Confirm nothing else moved**
 
@@ -1584,10 +1595,85 @@ Append to `test/oracle/UniswapV3TwapAdapterUnit.t.sol`:
         assertGt(answers[0], 0);
     }
 
-    function test_OldestObservationSecondsAgo_ReportsTheBufferDepth() public {
+    /// THE SERIES MUST NOT COME BACK MIRRORED.
+    ///
+    /// `secondsAgos` runs oldest-first, so answers[0] is the OLDEST interval.
+    /// Reverse that and the chart renders back to front -- a bug no
+    /// constant-price fixture can reveal, because every point is identical. So
+    /// the ticks move across the span here. Base is token1, so a rising TICK is
+    /// a FALLING price, which pins the ordering and the inversion together.
+    function test_AnswersOverWindows_IsOrderedOldestFirst() public {
         UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
-        pool.setObservationAge(7200);
-        assertEq(a.oldestObservationSecondsAgo(), 7200);
+
+        int56[] memory cum = new int56[](4);
+        cum[0] = 0;
+        cum[1] = cum[0] + int56(221000) * 1200;
+        cum[2] = cum[1] + int56(221882) * 1200;
+        cum[3] = cum[2] + int56(222500) * 1200;
+        pool.setCumulativeSeries(cum);
+
+        uint32[] memory agos = new uint32[](4);
+        agos[0] = 3600; agos[1] = 2400; agos[2] = 1200; agos[3] = 0;
+        uint256[] memory answers = a.answersOverWindows(agos);
+
+        assertEq(answers[1], 23134970771, "middle interval is the known tick");
+        assertGt(answers[0], answers[1], "oldest interval had the lowest tick");
+        assertGt(answers[1], answers[2], "newest interval had the highest tick");
+    }
+
+    /// Equal neighbours are a zero-length interval, so a division by zero
+    /// rather than a validation error.
+    function test_AnswersOverWindows_RejectsARepeatedEntry() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        uint32[] memory agos = new uint32[](3);
+        agos[0] = 1200; agos[1] = 1200; agos[2] = 0;
+        vm.expectRevert(UniswapV3TwapAdapter.BadWindowSeries.selector);
+        a.answersOverWindows(agos);
+    }
+
+    /// The chart and NAV must be the same arithmetic, not two that agree today.
+    function test_AnswersOverWindows_AgreesWithLatestRoundData() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        uint32[] memory agos = new uint32[](2);
+        agos[0] = WINDOW; agos[1] = 0;
+        (, int256 nav, , , ) = a.latestRoundData();
+        assertEq(a.answersOverWindows(agos)[0], uint256(nav), "same window, same number");
+    }
+
+    // The oldest slot is the one AFTER the newest, because the ring overwrites
+    // forward. These three need the per-slot mock support from Task 2: on a
+    // uniform ring an off-by-one returns the right answer for the wrong reason.
+
+    function test_OldestObservationSecondsAgo_ReadsTheSlotAfterTheNewest() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        pool.setCardinality(6000);
+        pool.setObservationIndex(1);
+        pool.setObservationAgeAt(1, 60);        // newest
+        pool.setObservationAgeAt(2, 198438);    // oldest, ~55 hours
+        assertEq(a.oldestObservationSecondsAgo(), 198438, "must read index + 1");
+    }
+
+    function test_OldestObservationSecondsAgo_WrapsAtTheEndOfTheRing() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        pool.setCardinality(300);
+        pool.setObservationIndex(299);
+        pool.setObservationAgeAt(299, 30);
+        pool.setObservationAgeAt(0, 7200);
+        assertEq(a.oldestObservationSecondsAgo(), 7200, "must wrap to slot 0");
+    }
+
+    /// An unfilled ring has nothing at `index + 1`. Uniswap leaves those slots
+    /// uninitialised, and their zero timestamp reads as a buffer stretching
+    /// back to 1970. Slot 0 is written at pool creation, so it is the fallback.
+    function test_OldestObservationSecondsAgo_FallsBackWhenTheRingIsUnfilled() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        pool.setCardinality(6000);
+        pool.setObservationIndex(3);
+        pool.setObservationAgeAt(4, 0);
+        pool.setObservationUninitialized(4, true);
+        pool.setObservationAgeAt(0, 3600);
+        assertEq(a.oldestObservationSecondsAgo(), 3600, "uninitialised slot must not be trusted");
     }
 ```
 
@@ -1668,7 +1754,8 @@ Add the error and the two views:
 forge test --match-path 'test/oracle/UniswapV3TwapAdapterUnit.t.sol' -vv
 ```
 
-Expected: 32 passing.
+Expected: **53 passing**. Then `forge test`: **397 passed, 0 failed, 34 skipped, 431 total**.
+The adapter is complete after this task; Tasks 6 and 7 add no contract code.
 
 - [ ] **Step 5: Confirm nothing else moved, and check the contract size**
 
@@ -1677,7 +1764,7 @@ forge test
 forge build --sizes 2>&1 | grep -i twap
 ```
 
-Expected: all green, and the adapter comfortably under 24,576 bytes.
+Expected: all green. Measured runtime size **5,824 bytes**, far under the 24,576 limit.
 
 - [ ] **Step 6: Commit**
 
