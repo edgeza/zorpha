@@ -35,11 +35,23 @@ at risk in signing.
     Whitepaper    https://www.zorpha.xyz/whitepaper
     Docs/blog     https://www.zorpha.xyz/writing
     App/portal    https://www.zorpha.xyz/portal
+    GitHub        https://github.com/edgeza/zorpha
 
-**Do not submit a GitHub link.** `github.com/edgeza/zorpha` is private and
-returns 404 to anonymous visitors. A dead "source code" link on a token profile
-is worse than none — it is the same failure the whitepaper page already had and
-deliberately removed. If the repo is made public later, add it then.
+**Submit the GitHub link.** UPDATED 6 Sep 2026: the repository was made public
+that morning — the API reports `private: false` — so the link now resolves for
+anonymous visitors and is worth including. For a project whose whole claim is
+that its record can be checked rather than taken on trust, readable source is
+among the strongest signals a listing can carry.
+
+This section previously said the opposite, and the earlier Blockscout,
+CoinGecko and GeckoTerminal submissions were filed with the GitHub field blank
+on that basis. All three were still in review when the repo went public, and
+Blockscout and GeckoTerminal both allow a pending request to be amended, so the
+link should be added to each rather than waiting for a re-submission.
+
+The original reasoning still holds whenever the link is dead: a "source code"
+link that 404s is worse than no link, which is why the whitepaper page removed
+its own. What changed is the fact, not the rule.
 
 ## Images (all live, all 200)
 
@@ -127,7 +139,8 @@ Verified 2026-09-05. Form: https://www.coingecko.com/en/coins/new
 | Contact email | info@zorpha.xyz |
 | Logo | `public/zorpha-200.png` (200x200 PNG, generated for CoinGecko's spec) |
 
-GitHub: leave blank, the repo is private and 404s.
+GitHub: `https://github.com/edgeza/zorpha` — public since 6 Sep 2026. If this
+submission was filed before then with the field blank, amend it.
 
 ## Supply figures — the part that decides the outcome
 
