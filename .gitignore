@@ -43,9 +43,10 @@ Thumbs.db
 tsconfig.tsbuildinfo
 *.tsbuildinfo
 
-# Agent skills are installed to .agents/skills (canonical). On Windows the
-# installer copies rather than symlinks, so .claude/skills is a duplicate.
-.claude/skills/
+.claude/
+.cursor/
+.agents/
+.mcp.json
 
 # backup taken when switching the web app from testnet to mainnet config
 .env.local.testnet-backup

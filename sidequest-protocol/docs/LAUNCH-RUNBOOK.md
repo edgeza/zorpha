@@ -210,7 +210,7 @@ Two migrations, in order:
 old code silently fell back to an upsert that never incremented
 `total_rebalances`, so the leaderboard read zero forever.
 
-Either authenticate the MCP (`claude /mcp`) or paste both files into the
+Either authenticate the database connector or paste both files into the
 Supabase SQL editor.
 
 ### 3.10 Deploy the indexer
