@@ -13,6 +13,22 @@ const SOCIALS: { href: string; label: string }[] = [
   { href: 'https://x.com/ZorphaProtocol', label: 'X' },
 ];
 
+/**
+ * Market data links. GeckoTerminal asks for a reciprocal link as a condition of
+ * publishing a project's token info, and Zorpha agreed to one on that form, so
+ * it is rendered rather than promised.
+ */
+const MARKETS: { href: string; label: string }[] = [
+  {
+    href: 'https://www.geckoterminal.com/robinhood/pools/0x42aea5cf1534498db2f66f14bb9b9bed2ab98d8d',
+    label: 'GeckoTerminal',
+  },
+  {
+    href: 'https://app.uniswap.org/swap?chain=robinhood&outputCurrency=0x9684AFe2422a0B03719201c78959b6B70e8d4ae8',
+    label: 'Trade on Uniswap',
+  },
+];
+
 const COLUMNS: { heading: string; links: { href: string; label: string; external?: boolean }[] }[] =
   [
     {
@@ -89,6 +105,21 @@ export function SiteFooter() {
                 </a>
               ))}
             </div>
+
+            <ul className="mt-5 space-y-1.5">
+              {MARKETS.map((m) => (
+                <li key={m.href}>
+                  <a
+                    href={m.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-ink-400 transition-colors hover:text-ink-100"
+                  >
+                    {m.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
 
             <p className="mt-5 text-2xs leading-relaxed text-ink-500">
               {TOKEN.ticker} contract
