@@ -1,6 +1,6 @@
 {
   "name": "orbit-preflight",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Startup checks that turn silent chain misconfigurations into a refusal to boot. Zero dependencies.",
   "homepage": "https://www.zorpha.xyz/writing/silent-failures",
   "repository": {
