@@ -40,8 +40,12 @@ include this section.
 - Roles: `DEFAULT_ADMIN_ROLE` to the Timelock; `KEEPER_ROLE` and `RISK_COUNCIL_ROLE` to the Safe
 - Solidity **0.8.28**; every file opens `// SPDX-License-Identifier: MIT` then
   `pragma solidity ^0.8.28;`
-- **All 366 existing tests must stay green.** Run `forge test` with no fork env set after
-  every task
+- **All existing tests must stay green.** The runner's own baseline, measured on `main`:
+  **334 passed, 0 failed, 34 skipped, 368 total.** (An earlier figure of 366 came from
+  grepping `function test`, which is not what the runner counts — use these.) The 34 skips
+  are the fork tests, which need `RH_MAINNET_RPC_URL`. Run `forge test` with no fork env set
+  after every task, and get the exact delta with
+  `forge test --no-match-path '<the file you added>'`
 - `SpotVaultMinimal.sol`, `RWRotationVault.sol` and every other existing contract ship
   **unmodified**. This plan adds files; it edits no existing file under `src/`
 - The adapter **must not implement `maxStaleness()`**. `OracleWindow.requireNotTighterThan`
@@ -231,7 +235,18 @@ why neither branch ever forms `sqrtP * sqrtP` as a plain product.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `test/lib/TickMath.t.sol`:
+Create `test/lib/TickMath.t.sol`.
+
+**The revert cases need a harness.** A library's `internal` function is inlined into its
+caller, so it reverts inside the test frame rather than in a sub-call and `vm.expectRevert`
+never sees it — the test simply fails with the library's own error. Put an external wrapper
+in the same file and route the two revert tests through it. (This does not apply to later
+tasks: a constructor revert is a CREATE and `latestRoundData` is an external call, both of
+which `expectRevert` does intercept.)
+
+`assertEq`, `assertGt`, `assertLe`, `assertApproxEqAbs`, `assertApproxEqRel` and
+`bound(int256,int256,int256)` are all `internal pure` in this forge-std, so the value tests
+can be `public pure`. The revert tests cannot, because they touch `vm`.
 
 ```solidity
 // SPDX-License-Identifier: MIT
@@ -239,6 +254,14 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {TickMath} from "../../src/lib/TickMath.sol";
+
+/// @notice `getSqrtRatioAtTick` behind an external call, so `vm.expectRevert`
+///         has something to intercept.
+contract TickMathHarness {
+    function getSqrtRatioAtTick(int24 tick) external pure returns (uint160) {
+        return TickMath.getSqrtRatioAtTick(tick);
+    }
+}
 
 /// @notice Known-answer tests for the vendored tick-to-ratio conversion.
 ///
@@ -248,6 +271,12 @@ import {TickMath} from "../../src/lib/TickMath.sol";
 ///         against values that are fixed by the Uniswap V3 specification, not
 ///         against this implementation's own output.
 contract TickMathTest is Test {
+    TickMathHarness harness;
+
+    function setUp() public {
+        harness = new TickMathHarness();
+    }
+
     /// Tick zero is a ratio of exactly one, so sqrtPriceX96 is exactly 2^96.
     function test_TickZeroIsQ96() public pure {
         assertEq(uint256(TickMath.getSqrtRatioAtTick(0)), 1 << 96);
@@ -280,14 +309,31 @@ contract TickMathTest is Test {
         assertApproxEqRel(down, expected, 1e12); // 1e-6 relative
     }
 
+    /// The live NVDA/USDG tick, against the value the pool's own slot0 reports.
+    /// External ground truth: this number was read off chain 4663, so it cannot
+    /// agree with a bug in the library.
+    function test_TheLivePoolTickProducesTheObservedRatio() public pure {
+        uint256 r = uint256(TickMath.getSqrtRatioAtTick(221882));
+        assertApproxEqRel(r, 5209002981863638722623952383317079, 1e14, "tick 221882");
+    }
+
     function test_RevertsAboveMaxTick() public {
         vm.expectRevert(abi.encodeWithSelector(TickMath.TickOutOfRange.selector, int24(887273)));
-        TickMath.getSqrtRatioAtTick(887273);
+        harness.getSqrtRatioAtTick(int24(887273));
     }
 
     function test_RevertsBelowMinTick() public {
         vm.expectRevert(abi.encodeWithSelector(TickMath.TickOutOfRange.selector, int24(-887273)));
-        TickMath.getSqrtRatioAtTick(-887273);
+        harness.getSqrtRatioAtTick(int24(-887273));
+    }
+
+    function testFuzz_IsMonotonicEverywhere(int24 tick) public pure {
+        tick = int24(bound(int256(tick), TickMath.MIN_TICK, TickMath.MAX_TICK - 1));
+        assertGt(
+            TickMath.getSqrtRatioAtTick(tick + 1),
+            TickMath.getSqrtRatioAtTick(tick),
+            "a higher tick must never produce a lower ratio"
+        );
     }
 
     function testFuzz_StaysInsideTheRatioBounds(int24 tick) public pure {
@@ -389,7 +435,7 @@ library TickMath {
 forge test --match-path 'test/lib/TickMath.t.sol' -vv
 ```
 
-Expected: 8 passing (7 plus the fuzz run).
+Expected: **10 passing** (8 value/revert tests plus 2 fuzz runs).
 
 - [ ] **Step 5: Confirm nothing else moved**
 
@@ -397,7 +443,7 @@ Expected: 8 passing (7 plus the fuzz run).
 forge test
 ```
 
-Expected: the existing 366 plus the 8 new ones, all passing.
+Expected: **344 passed, 0 failed, 34 skipped, 378 total** — the 334 baseline plus 10.
 
 - [ ] **Step 6: Commit**
 
