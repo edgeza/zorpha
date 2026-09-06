@@ -18,7 +18,7 @@ contract UniswapV3TwapAdapterUnitTest is Test {
 
     uint32 constant WINDOW = 1800;
     uint16 constant MIN_CARDINALITY = 300;
-    uint128 constant MIN_LIQUIDITY = 12e18;
+    uint128 constant MIN_LIQUIDITY = 5e18;
     uint32 constant MAX_OBS_AGE = 4 hours;
     uint16 constant MAX_DIVERGENCE_BPS = 200;
 
