@@ -345,4 +345,272 @@ contract UniswapV3TwapAdapterUnitTest is Test {
         (bool ok, ) = address(a).staticcall(abi.encodeWithSignature("maxStaleness()"));
         assertFalse(ok, "the adapter must not answer maxStaleness()");
     }
+
+    // --- guards -------------------------------------------------------------
+    //
+    // Each must fire on its OWN trigger and only its own trigger. A guard that
+    // fires for a neighbour's reason sends an operator to fix the wrong thing,
+    // which is worse than not having it: they change the pool, the vault still
+    // refuses, and now they distrust the error.
+
+    /// Every guard satisfied, so each test below breaks exactly one thing.
+    function _healthy() internal {
+        pool.setTick(221882);
+        pool.setMeanTick(221882, WINDOW);
+        pool.setLiquidity(50e18);
+        pool.setCardinality(6000);
+        pool.setObservationAge(60);
+    }
+
+    function test_Guard_AllHealthyDoesNotRevert() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        (, int256 answer, , , ) = a.latestRoundData();
+        assertEq(uint256(answer), 23134970771);
+    }
+
+    // 1. cardinality
+
+    function test_Guard_CardinalityBelowMinimumReverts() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        pool.setCardinality(299);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                UniswapV3TwapAdapter.InsufficientCardinality.selector, uint16(299), MIN_CARDINALITY
+            )
+        );
+        a.latestRoundData();
+    }
+
+    function test_Guard_CardinalityExactlyAtMinimumPasses() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        pool.setCardinality(MIN_CARDINALITY);
+        (, int256 answer, , , ) = a.latestRoundData();
+        assertGt(answer, 0, "the floor is inclusive");
+    }
+
+    /// Cardinality 1 is the state SPY/USDG 0.01% and ZOR/USDG are in today: a
+    /// pool that exists and trades but keeps a single observation.
+    function test_Guard_CardinalityOneIsRefused() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        pool.setCardinality(1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                UniswapV3TwapAdapter.InsufficientCardinality.selector, uint16(1), MIN_CARDINALITY
+            )
+        );
+        a.latestRoundData();
+    }
+
+    // 2. liquidity
+
+    function test_Guard_LiquidityBelowFloorReverts() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        pool.setLiquidity(MIN_LIQUIDITY - 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                UniswapV3TwapAdapter.InsufficientLiquidity.selector, MIN_LIQUIDITY - 1, MIN_LIQUIDITY
+            )
+        );
+        a.latestRoundData();
+    }
+
+    function test_Guard_LiquidityExactlyAtFloorPasses() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        pool.setLiquidity(MIN_LIQUIDITY);
+        (, int256 answer, , , ) = a.latestRoundData();
+        assertGt(answer, 0, "the floor is inclusive");
+    }
+
+    function test_Guard_DrainedPoolIsRefused() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        pool.setLiquidity(0);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                UniswapV3TwapAdapter.InsufficientLiquidity.selector, uint128(0), MIN_LIQUIDITY
+            )
+        );
+        a.latestRoundData();
+    }
+
+    // 3. observation age
+
+    function test_Guard_ObservationOlderThanMaxAgeReverts() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        pool.setObservationAge(MAX_OBS_AGE + 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                UniswapV3TwapAdapter.ObservationTooOld.selector, MAX_OBS_AGE + 1, MAX_OBS_AGE
+            )
+        );
+        a.latestRoundData();
+    }
+
+    function test_Guard_ObservationExactlyAtMaxAgePasses() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        pool.setObservationAge(MAX_OBS_AGE);
+        (, int256 answer, , , ) = a.latestRoundData();
+        assertGt(answer, 0, "the ceiling is inclusive");
+    }
+
+    /// An observation written in this very block is age zero, which must pass.
+    /// A guard that rejected it would make the adapter unusable on a busy pool.
+    function test_Guard_FreshObservationPasses() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        pool.setObservationAge(0);
+        (, int256 answer, , , ) = a.latestRoundData();
+        assertGt(answer, 0);
+    }
+
+    // 4. spot against the average
+
+    /// 300 ticks is 295 bps against a 200 bps tolerance. Base is token1, so a
+    /// HIGHER tick means a LOWER answer -- direction does not matter to the
+    /// guard, only magnitude, and both directions are tested.
+    function test_Guard_SpotAboveTwapByMoreThanToleranceReverts() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        pool.setTick(221882 + 300);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                UniswapV3TwapAdapter.SpotDivergesFromTwap.selector,
+                uint256(23134970771), uint256(22451262728), uint256(295)
+            )
+        );
+        a.latestRoundData();
+    }
+
+    function test_Guard_SpotBelowTwapByMoreThanToleranceReverts() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        pool.setTick(221882 - 300);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                UniswapV3TwapAdapter.SpotDivergesFromTwap.selector,
+                uint256(23134970771), uint256(23839499767), uint256(304)
+            )
+        );
+        a.latestRoundData();
+    }
+
+    /// 100 ticks is 99 bps, comfortably inside the tolerance.
+    function test_Guard_SmallSpotDivergenceIsAllowed() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        pool.setTick(221882 + 100);
+        (, int256 answer, , , ) = a.latestRoundData();
+        assertEq(uint256(answer), 23134970771, "still reports the average");
+    }
+
+    /// The tolerance is inclusive: exactly at the limit must pass, so that a
+    /// pool sitting on the boundary is not a coin flip between blocks.
+    function test_Guard_DivergenceExactlyAtToleranceIsAllowed() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        // Search downward for the largest gap that still reports exactly
+        // MAX_DIVERGENCE_BPS, rather than hardcoding a tick that a change to
+        // the tolerance would silently invalidate.
+        int24 offset = 300;
+        while (offset > 0) {
+            uint256 twap = a.answerAtTick(221882);
+            uint256 spot = a.answerAtTick(221882 + offset);
+            uint256 diff = twap > spot ? twap - spot : spot - twap;
+            if ((diff * 10000) / twap == MAX_DIVERGENCE_BPS) break;
+            offset--;
+        }
+        assertGt(offset, 0, "no tick offset produces exactly the tolerance");
+        pool.setTick(221882 + offset);
+        (, int256 answer, , , ) = a.latestRoundData();
+        assertGt(answer, 0, "exactly at the tolerance must be allowed");
+    }
+
+    // 5. sanity
+
+    /// A pair whose price cannot be expressed at 1e8 -- 6dp base against an
+    /// 18dp quote, where one whole unit buys 1e-12 of the other -- computes to
+    /// zero and must be refused rather than reported as a free asset.
+    function test_Guard_AnswerThatUnderflowsToZeroIsRefused() public {
+        UniswapV3TwapAdapter a = _deploy(address(usdg), address(nvda));
+        pool.setTick(0);
+        pool.setMeanTick(0, WINDOW);
+        pool.setLiquidity(50e18);
+        pool.setCardinality(6000);
+        pool.setObservationAge(60);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(UniswapV3TwapAdapter.InvalidAnswer.selector, uint256(0))
+        );
+        a.latestRoundData();
+    }
+
+    // --- ordering -----------------------------------------------------------
+
+    /// ORDER IS LOAD-BEARING, not cosmetic.
+    ///
+    /// A pool that cannot serve the requested window makes `observe` revert
+    /// with a bare "OLD" that names nothing an operator can act on. All three
+    /// cheap guards therefore run BEFORE anything calls observe, so each of the
+    /// three diagnosable conditions produces its own typed error carrying both
+    /// numbers. This test makes observe always revert, then trips each guard in
+    /// turn: if any of them moved after the observe call, its typed error would
+    /// be replaced by "OLD" and this would fail.
+    function test_Guard_TheCheapGuardsAllRunBeforeObserve() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        pool.setObserveReverts(true);
+
+        pool.setCardinality(1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                UniswapV3TwapAdapter.InsufficientCardinality.selector, uint16(1), MIN_CARDINALITY
+            )
+        );
+        a.latestRoundData();
+        pool.setCardinality(6000);
+
+        pool.setLiquidity(0);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                UniswapV3TwapAdapter.InsufficientLiquidity.selector, uint128(0), MIN_LIQUIDITY
+            )
+        );
+        a.latestRoundData();
+        pool.setLiquidity(50e18);
+
+        pool.setObservationAge(MAX_OBS_AGE + 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                UniswapV3TwapAdapter.ObservationTooOld.selector, MAX_OBS_AGE + 1, MAX_OBS_AGE
+            )
+        );
+        a.latestRoundData();
+    }
+
+    /// A KNOWN DIAGNOSTIC GAP, pinned so it cannot change silently.
+    ///
+    /// Cardinality is the buffer's SIZE, not its time span. A pool can hold 300
+    /// observations that between them cover only a few minutes, in which case a
+    /// 30-minute window is unavailable and `observe` reverts with a bare "OLD"
+    /// -- past all five guards, because none of them measures span.
+    ///
+    /// This is fail-closed: the vault refuses to rebalance either way, so it is
+    /// a diagnosis cost rather than a safety hole. It is not fixed here because
+    /// the spec fixes the guard list at five. `oldestObservationSecondsAgo` in
+    /// the next commit is what a sixth guard would use if one is ever wanted.
+    function test_Guard_ATooShallowBufferRevertsUntyped() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        _healthy();
+        pool.setObserveReverts(true);
+        vm.expectRevert(bytes("OLD"));
+        a.latestRoundData();
+    }
 }

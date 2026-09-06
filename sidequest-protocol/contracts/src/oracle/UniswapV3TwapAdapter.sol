@@ -102,6 +102,10 @@ contract UniswapV3TwapAdapter is AggregatorV3Interface {
     uint16 public immutable maxSpotDivergenceBps;
 
     error PoolTokenMismatch(address token0, address token1);
+    error InsufficientCardinality(uint16 have, uint16 need);
+    error InsufficientLiquidity(uint128 have, uint128 need);
+    error ObservationTooOld(uint32 ageSeconds, uint32 maxAgeSeconds);
+    error SpotDivergesFromTwap(uint256 twapAnswer, uint256 spotAnswer, uint256 divergenceBps);
     error InvalidAnswer(uint256 answer);
 
     /// @param pool_                 the Uniswap V3 pool to read
@@ -242,15 +246,77 @@ contract UniswapV3TwapAdapter is AggregatorV3Interface {
     ///         `roundId` and `answeredInRound` are both 1 so the vault's
     ///         `answeredInRound < roundId` check passes. There are no rounds.
     ///
-    ///         The guards land in the next commit.
+    ///         EVERY GUARD REVERTS. A failure here stops a rebalance rather
+    ///         than pricing one wrongly, which is the point: `_oraclePrice` is
+    ///         the only path into `rebalanceTo`, so refusing to answer is
+    ///         refusing to trade.
+    ///
+    ///         ORDER IS LOAD-BEARING. The three cheap checks all run before
+    ///         anything calls `observe`, because a pool that cannot serve the
+    ///         requested window reverts with a bare "OLD" that names nothing an
+    ///         operator can act on. Running them first turns each diagnosable
+    ///         condition into a typed error carrying both numbers.
+    ///
+    ///         KNOWN GAP, stated because it is real rather than because it is
+    ///         handled: cardinality is the buffer's SIZE, not its time span. A
+    ///         pool holding 300 observations that between them cover a few
+    ///         minutes cannot serve a 30-minute window, and that case still
+    ///         arrives as "OLD". It is fail-closed -- the vault refuses either
+    ///         way -- so it costs diagnosis, not safety.
     function latestRoundData()
         external
         view
         override
         returns (uint80, int256, uint256, uint256, uint80)
     {
-        uint256 answer = answerAtTick(meanTick());
-        if (answer == 0 || answer > uint256(type(int256).max)) revert InvalidAnswer(answer);
-        return (1, int256(answer), block.timestamp, block.timestamp, 1);
+        (, int24 spotTick, uint16 observationIndex, uint16 cardinality, , , ) = pool.slot0();
+
+        // 1. HISTORY. A pool at cardinality 1 keeps a single observation and
+        //    cannot answer a windowed query at all. SPY/USDG 0.01% and
+        //    ZOR/USDG both sit there today.
+        if (cardinality < minCardinality) revert InsufficientCardinality(cardinality, minCardinality);
+
+        // 2. DEPTH. This is what makes the average expensive to move, so its
+        //    draining away is the condition under which every other guarantee
+        //    here weakens. Note `liquidity()` is IN-RANGE liquidity and moves as
+        //    positions enter and leave range, so the floor is set well below the
+        //    observed value rather than just under it.
+        uint128 liq = pool.liquidity();
+        if (liq < minLiquidity) revert InsufficientLiquidity(liq, minLiquidity);
+
+        // 3. ACTIVITY. On a quiet pool `observe` extrapolates the last tick
+        //    forward, so it returns a confident price nobody has traded at.
+        //    The subtraction is unchecked because the pool stores timestamps
+        //    truncated to uint32: wrapping subtraction is the correct
+        //    arithmetic there, and is what Uniswap itself does. A wrapped clock
+        //    yields a huge age and therefore a revert, which is fail-closed.
+        (uint32 lastObservedAt, , , ) = pool.observations(observationIndex);
+        uint32 age;
+        unchecked { age = uint32(block.timestamp) - lastObservedAt; }
+        if (age > maxObservationAge) revert ObservationTooOld(age, maxObservationAge);
+
+        uint256 twapAnswer = answerAtTick(meanTick());
+        uint256 spotAnswer = answerAtTick(spotTick);
+
+        // 5. SANITY, before 4, because a zero denominator cannot be divided by.
+        //    Not hypothetical: a 6-decimal base against an 18-decimal quote
+        //    computes to zero at any plausible tick, because one whole unit buys
+        //    1e-12 of the other and that does not survive 1e8 scaling. Such a
+        //    pair is refused at the first read rather than reported as free.
+        if (twapAnswer == 0 || twapAnswer > uint256(type(int256).max)) revert InvalidAnswer(twapAnswer);
+        if (spotAnswer == 0) revert InvalidAnswer(spotAnswer);
+
+        // 4. MANIPULATION, and a market-condition check besides: a 2% gap
+        //    between spot and a 30-minute average is a moment a fund should not
+        //    be rebalancing, whatever the cause. `Math.mulDiv` rather than
+        //    `diff * BPS / twapAnswer` so the intermediate cannot overflow at
+        //    the top of the range the sanity check above permits.
+        uint256 diff = twapAnswer > spotAnswer ? twapAnswer - spotAnswer : spotAnswer - twapAnswer;
+        uint256 divergenceBps = Math.mulDiv(diff, BPS, twapAnswer);
+        if (divergenceBps > maxSpotDivergenceBps) {
+            revert SpotDivergesFromTwap(twapAnswer, spotAnswer, divergenceBps);
+        }
+
+        return (1, int256(twapAnswer), block.timestamp, block.timestamp, 1);
     }
 }
