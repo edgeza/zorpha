@@ -511,6 +511,12 @@ contract UniswapV3TwapAdapterUnitTest is Test {
     uint16 constant MAX_DIVERGENCE_BPS = 200;
 
     function setUp() public {
+        // REQUIRED. Forge starts at block.timestamp == 1, and the mock computes
+        // an observation's timestamp by subtracting an age from now. Without a
+        // warp that subtraction underflows and every guard test in Task 4 fails
+        // inside the fixture rather than in the code under test.
+        vm.warp(1788713101);
+
         usdg = new MockERC20("USDG", "USDG", 6);
         nvda = new MockERC20("NVDA", "NVDA", 18);
         pool = new MockUniswapV3Pool(address(usdg), address(nvda));
@@ -548,20 +554,27 @@ contract UniswapV3TwapAdapterUnitTest is Test {
         assertTrue(a.baseIsToken0());
     }
 
-    /// The whole point of the assertion: a deployer who passes base and quote
-    /// the wrong way round gets a revert, not a reciprocal price.
-    function test_Constructor_RevertsOnSwappedBaseAndQuote() public {
-        // Deliberately unreachable in this pool: base and quote are both real
-        // pool tokens, so this cannot be caught by an address check alone --
-        // only by comparing against token0/token1 in order.
-        MockUniswapV3Pool p2 = new MockUniswapV3Pool(address(usdg), address(nvda));
-        // usdg as base and nvda as quote is (token0, token1), which IS a valid
-        // ordering, so it must NOT revert -- it means "price of USDG in NVDA".
-        UniswapV3TwapAdapter a = new UniswapV3TwapAdapter(
-            address(p2), address(usdg), address(nvda),
-            WINDOW, MIN_CARDINALITY, MIN_LIQUIDITY, MAX_OBS_AGE, MAX_DIVERGENCE_BPS
-        );
-        assertTrue(a.baseIsToken0());
+    /// WHAT THE ORDERING ASSERTION DOES AND DOES NOT PROMISE.
+    ///
+    /// Naming the pair the other way round is LEGAL and does not revert: it
+    /// means "the price of USDG in NVDA", a real quantity, and the flag flips
+    /// to match. What the constructor guarantees is narrower and more useful --
+    /// that the ARITHMETIC BRANCH always matches the pool's real token order,
+    /// so the adapter can never compute a reciprocal by accident. That is the
+    /// bug this class of contract actually ships: 0.0043 where 231.35 belongs.
+    ///
+    /// A deployer who meant NVDA-in-USDG and typed the arguments backwards is
+    /// NOT caught here, because both orderings describe a real pair. That is
+    /// caught by the deploy script in Task 8 reading the answer back and
+    /// printing `baseIsToken0` and `assetToCash(1e18)` before anyone signs.
+    function test_Constructor_ReversingTheDirectionFlipsTheFlagRatherThanReverting() public {
+        UniswapV3TwapAdapter forward = _deploy(address(nvda), address(usdg));
+        UniswapV3TwapAdapter reverse = _deploy(address(usdg), address(nvda));
+
+        assertFalse(forward.baseIsToken0(), "NVDA priced in USDG");
+        assertTrue(reverse.baseIsToken0(), "USDG priced in NVDA");
+        assertEq(forward.base(), reverse.quote());
+        assertEq(forward.quote(), reverse.base());
     }
 
     function test_Constructor_RevertsWhenATokenIsNotInThePool() public {
@@ -582,9 +595,37 @@ contract UniswapV3TwapAdapterUnitTest is Test {
         );
     }
 
-    function test_Constructor_RevertsOnZeroAddresses() public {
+    function test_Constructor_RevertsOnZeroPool() public {
+        vm.expectRevert(bytes("zero addr"));
+        new UniswapV3TwapAdapter(
+            address(0), address(nvda), address(usdg),
+            WINDOW, MIN_CARDINALITY, MIN_LIQUIDITY, MAX_OBS_AGE, MAX_DIVERGENCE_BPS
+        );
+    }
+
+    function test_Constructor_RevertsOnZeroBase() public {
         vm.expectRevert(bytes("zero addr"));
         _deploy(address(0), address(usdg));
+    }
+
+    function test_Constructor_RevertsOnZeroQuote() public {
+        vm.expectRevert(bytes("zero addr"));
+        _deploy(address(nvda), address(0));
+    }
+
+    function test_Constructor_RevertsOnTheSameTokenTwice() public {
+        vm.expectRevert(bytes("same token"));
+        _deploy(address(nvda), address(nvda));
+    }
+
+    /// Zero would reject every observation, including one written in this very
+    /// block, so the adapter would never answer at all.
+    function test_Constructor_RevertsOnZeroMaxObservationAge() public {
+        vm.expectRevert(bytes("zero max age"));
+        new UniswapV3TwapAdapter(
+            address(pool), address(nvda), address(usdg),
+            WINDOW, MIN_CARDINALITY, MIN_LIQUIDITY, 0, MAX_DIVERGENCE_BPS
+        );
     }
 
     function test_Constructor_RevertsOnBadDivergenceBps() public {
@@ -873,7 +914,12 @@ contract UniswapV3TwapAdapter is AggregatorV3Interface {
 forge test --match-path 'test/oracle/UniswapV3TwapAdapterUnit.t.sol' -vv
 ```
 
-Expected: 7 passing.
+Expected: **13 passing**. Then `forge test` for the running total: **357 passed, 0 failed,
+34 skipped, 391 total**.
+
+The placeholder `latestRoundData` is `pure`, not `view`: a body that is only a revert reads
+nothing, and solc warns if it is declared `view`. It relaxes to `view` in Task 3, which the
+interface permits either way.
 
 - [ ] **Step 6: Commit**
 
