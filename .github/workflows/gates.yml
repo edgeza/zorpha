@@ -25,6 +25,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Runnable on demand. The gates are the cheapest job here and the one
+  # most often wanted without a commit to hang it on.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
