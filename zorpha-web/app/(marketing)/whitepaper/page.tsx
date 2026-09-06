@@ -175,7 +175,7 @@ export default function WhitepaperPage() {
             </div>
 
 
-            {/* Deployment status — what is live, versus what this document describes */}
+            {/* Deployment status: what is live, versus what this document describes */}
             <div className="mt-14 rounded-xl border border-amber-500/25 bg-amber-500/[0.04] p-6 sm:p-8">
               <h2 id="deployment" className="scroll-mt-28 text-xl font-semibold text-ink-100">
                 Deployment status

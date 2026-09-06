@@ -101,7 +101,7 @@ export async function listVaults(): Promise<VaultRow[]> {
         // and migration 010 already unlisted the testnet rows by hand, so the
         // fallback is still correct for the mainnet build it was written for.
         console.warn(
-          '[zorpha] vaults.chain_id or vaults.listed missing — run ' +
+          '[zorpha] vaults.chain_id or vaults.listed missing: run ' +
             'migrations/012-cursor-and-vault-chain-scope.sql (and 004). ' +
             'Falling back to name-based exclusion, which cannot tell the two ' +
             'chains apart.',

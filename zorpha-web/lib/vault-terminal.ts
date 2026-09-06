@@ -117,7 +117,7 @@ export function factoryVaults(): TerminalVault[] {
     'yield',
     contracts.yieldVault,
     'Yield',
-    'Nothing directly — a rebalance here stamps a checkpoint, it moves no funds.',
+    'Nothing directly: a rebalance here stamps a checkpoint, it moves no funds.',
   );
   return out;
 }

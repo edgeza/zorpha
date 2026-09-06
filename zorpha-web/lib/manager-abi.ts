@@ -3,7 +3,7 @@
  * two launcher functions a leader may call.
  *
  * Kept apart from `lib/contracts.ts` because that file describes what a
- * DEPOSITOR needs — balances, supply, NAV — and this one describes what an
+ * DEPOSITOR needs (balances, supply, NAV) and this one describes what an
  * OPERATOR needs, which is a different and much larger set. Merging them would
  * ship the whole operator surface to every visitor reading a vault page.
  *
@@ -68,7 +68,7 @@ export const spotVaultAbi = [
  *
  * The accessor names here are the ARRAY names, checked against the deployed
  * contract: `oracles(i)`, `tokens(i)`, `targetWeightsBps(i)`. The singular
- * forms do not exist — `oracle()` and `weightsBps(i)` both revert on chain.
+ * forms do not exist: `oracle()` and `weightsBps(i)` both revert on chain.
  */
 export const rotationVaultAbi = [
   ...vaultCommonAbi,
@@ -123,7 +123,7 @@ export const oracleAbi = [
  * The leader's two functions, plus the reads that make a vault list possible.
  *
  * `reallocate` and `reclaimBond` are gated on `msg.sender == launch.leader`
- * and are the ONLY things a leader may do to their own vault — the launcher
+ * and are the ONLY things a leader may do to their own vault; the launcher
  * hands DEFAULT_ADMIN, KEEPER_ROLE and RISK_COUNCIL_ROLE to `vaultAdmin`, an
  * immutable governance address, at launch time.
  */

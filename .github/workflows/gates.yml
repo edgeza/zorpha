@@ -49,10 +49,34 @@ jobs:
       # A merge conflict was committed into components/marketing/Hero.tsx on
       # 2026-09-02 and broke the whole marketing site until it was noticed by
       # hand. Vendored dependencies are excluded; they are not ours to police.
+      #
+      # That exclusion was `:!*/lib/*`, which also skipped zorpha-web/lib and
+      # contracts/src/lib. Both are first-party, so a conflict marker committed
+      # in either was invisible to the only check looking for one. Narrowed to
+      # the single directory that actually holds vendored code.
       - name: No committed merge conflict markers
         run: |
-          if git grep -In -E '^(<<<<<<<|>>>>>>>) ' -- . ':!*/lib/*' ; then
+          if git grep -In -E '^(<<<<<<<|>>>>>>>) ' -- . ':!sidequest-protocol/contracts/lib' ; then
             echo "::error::merge conflict markers are committed"
+            exit 1
+          fi
+          echo "clean"
+
+      # The repository went public on 6 September and a punctuation pass took
+      # every em-dash out of first-party prose that morning. Two were back the
+      # same afternoon, in a pull request merged a few hours later, because
+      # nothing was watching. A one-time cleanup with no ratchet behind it only
+      # decays.
+      #
+      # An em-dash alone inside quotes is deliberate: lib/format.ts returns it
+      # as the placeholder for an empty value and its tests assert on that. So
+      # the pattern permits an em-dash that is the entire quoted string and
+      # rejects it everywhere else. Written as a PCRE escape rather than the
+      # character itself, so this file does not trip its own check.
+      - name: No em-dashes in prose
+        run: |
+          if git grep -nP "(?<!')\x{2014}(?!')" -- . ':!sidequest-protocol/contracts/lib' ; then
+            echo "::error::em-dash found: use a comma, semicolon, colon or parentheses"
             exit 1
           fi
           echo "clean"
