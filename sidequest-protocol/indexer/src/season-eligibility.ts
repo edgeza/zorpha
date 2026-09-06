@@ -55,3 +55,54 @@ export function balanceIntervals(
   }
   return out;
 }
+
+/** A qualifying band. Tiers are evaluated best first, and do not stack. */
+export interface Tier {
+  /** Minimum asset value, in the asset's own decimals (USDG, 6dp). */
+  minAssets: bigint;
+  /** Minimum continuous seconds at or above `minAssets`. */
+  minSeconds: number;
+  /** Fixed allocation, in ZOR wei. */
+  allocation: bigint;
+}
+
+const ZOR = (whole: bigint) => whole * 10n ** 18n;
+const USDG = (whole: bigint) => whole * 10n ** 6n;
+const DAYS = (n: number) => n * 86_400;
+
+/**
+ * Ten times the capital and twice the duration earns 2.67 times the
+ * allocation. The compression is the point: this is a gate with a nod to
+ * commitment, not a weight. Tier 2 is a hard cap, so no amount of capital
+ * concentrates the tranche.
+ */
+export const SEASON_1_TIERS: Tier[] = [
+  { minAssets: USDG(250n), minSeconds: DAYS(60), allocation: ZOR(40_000n) },
+  { minAssets: USDG(25n), minSeconds: DAYS(30), allocation: ZOR(15_000n) },
+];
+
+/**
+ * The best allocation these intervals earn, or 0n.
+ *
+ * Continuity is per tier: a run of consecutive intervals each priced at or
+ * above the tier's minimum counts, and any interval that dips below breaks it.
+ * That is why a withdraw and redeposit does not accumulate.
+ */
+export function allocationFor(
+  intervals: BalanceInterval[],
+  toAssets: (shares: bigint, at: number) => bigint,
+  tiers: Tier[],
+): bigint {
+  for (const tier of tiers) {
+    let run = 0;
+    for (const span of intervals) {
+      if (toAssets(span.balance, span.start) >= tier.minAssets) {
+        run += span.end - span.start;
+        if (run >= tier.minSeconds) return tier.allocation;
+      } else {
+        run = 0;
+      }
+    }
+  }
+  return 0n;
+}
