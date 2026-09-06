@@ -955,17 +955,51 @@ Append to `test/oracle/UniswapV3TwapAdapterUnit.t.sol`:
 ```solidity
     // --- price arithmetic ---------------------------------------------------
 
-    /// The worked example from the spec, to the unit.
+    /// The worked example from the spec, to the unit. VERIFIED: the contract
+    /// returns exactly this, so assert equality rather than approximation --
+    /// an approximate assertion lets the arithmetic drift and still agree with
+    /// itself, which is the whole failure mode worth guarding.
     ///
-    /// tick 221,882 on a pool with token0 = USDG (6dp) and token1 = NVDA (18dp)
-    /// is 231.35 USDG per NVDA, which at 1e8 is 23,134,970,771. That figure was
-    /// computed off-chain from 1.0001^221882 and is asserted here as a fixed
-    /// number precisely so that a change to the arithmetic cannot quietly agree
-    /// with itself.
+    /// NOTE FOR TASK 6. Reading the live pool's slot0 gives
+    /// sqrtPriceX96 = 5209002981863638722623952383317079, which works out to
+    /// 23,133,958,672 -- 0.0044% BELOW this number. Both are correct and they
+    /// answer different questions: a pool's price sits somewhere INSIDE a tick,
+    /// while `getSqrtRatioAtTick` returns that tick's lower boundary. The gap is
+    /// bounded by one tick, which is one basis point. Do not "fix" either one to
+    /// match the other.
     function test_AnswerAtTick_MatchesTheWorkedExample() public {
         UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
-        uint256 answer = a.answerAtTick(221882);
-        assertApproxEqRel(answer, 23134970771, 1e13); // 1e-5 relative
+        assertEq(a.answerAtTick(221882), 23134970771, "USDG per NVDA at 1e8");
+    }
+
+    /// Decimal scaling, isolated from the tick maths entirely.
+    ///
+    /// At tick 0 the sqrt ratio is exactly 2^96, so the raw ratio is exactly 1
+    /// and every digit of the answer comes from the decimal adjustment. A bug
+    /// in the 18/6/8 handling shows up here as a clean power of ten rather than
+    /// as a plausible price.
+    function test_AnswerAtTick_DecimalScalingAtUnityRatio() public {
+        // One NVDA-wei buys one USDG-microunit, so one whole NVDA (1e18 wei)
+        // buys 1e18 microunits = 1e12 USDG. At 1e8: 1e20.
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        assertEq(a.answerAtTick(0), 1e20, "18dp base against 6dp quote");
+
+        // The inverse: one whole USDG buys 1e-12 NVDA, which at 1e8 rounds to
+        // ZERO. Arithmetically right, and precisely why latestRoundData carries
+        // a sanity guard instead of assuming a positive answer falls out.
+        UniswapV3TwapAdapter b = _deploy(address(usdg), address(nvda));
+        assertEq(b.answerAtTick(0), 0, "6dp base against 18dp quote underflows 1e8");
+    }
+
+    function test_AnswerAtTick_MatchedDecimalsNeedNoAdjustment() public {
+        MockERC20 a18 = new MockERC20("A", "A", 18);
+        MockERC20 b18 = new MockERC20("B", "B", 18);
+        MockUniswapV3Pool p = new MockUniswapV3Pool(address(a18), address(b18));
+        UniswapV3TwapAdapter a = new UniswapV3TwapAdapter(
+            address(p), address(b18), address(a18),
+            WINDOW, MIN_CARDINALITY, MIN_LIQUIDITY, MAX_OBS_AGE, MAX_DIVERGENCE_BPS
+        );
+        assertEq(a.answerAtTick(0), 1e8, "matched decimals at unity ratio");
     }
 
     /// Flipping which token is base must invert the answer, not change it by a
@@ -988,19 +1022,50 @@ Append to `test/oracle/UniswapV3TwapAdapterUnit.t.sol`:
         assertEq(a.meanTick(), int24(221882));
     }
 
-    /// Solidity truncates integer division toward zero; Uniswap's OracleLibrary
-    /// floors. They differ only for a negative cumulative delta with a
-    /// remainder, and one tick is one basis point of price.
-    function test_MeanTick_FloorsNegativeDeltas() public {
-        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
-        // delta = -5, window = 2  ->  -2.5. Truncation gives -2; floor gives -3.
-        UniswapV3TwapAdapter shortWindow = new UniswapV3TwapAdapter(
+    function _shortWindow() internal returns (UniswapV3TwapAdapter) {
+        return new UniswapV3TwapAdapter(
             address(pool), address(nvda), address(usdg),
             2, MIN_CARDINALITY, MIN_LIQUIDITY, MAX_OBS_AGE, MAX_DIVERGENCE_BPS
         );
+    }
+
+    /// Solidity truncates integer division toward zero; Uniswap's OracleLibrary
+    /// floors. They differ only for a NEGATIVE delta with a remainder, and one
+    /// tick is one basis point -- but it is a one-sided bias on falling prices,
+    /// so all three cases are pinned rather than just the interesting one.
+    /// delta = -5 over a window of 2 is -2.5: truncation gives -2, floor -3.
+    function test_MeanTick_FloorsNegativeDeltas() public {
+        UniswapV3TwapAdapter a = _shortWindow();
         pool.setTickCumulatives(int56(0), int56(-5));
-        assertEq(shortWindow.meanTick(), int24(-3));
-        a; // silence unused warning
+        assertEq(a.meanTick(), int24(-3), "must floor, not truncate");
+    }
+
+    /// Must NOT adjust a positive delta, where truncation already floors.
+    function test_MeanTick_LeavesPositiveDeltasAlone() public {
+        UniswapV3TwapAdapter a = _shortWindow();
+        pool.setTickCumulatives(int56(0), int56(5));
+        assertEq(a.meanTick(), int24(2), "floor(2.5) is 2");
+    }
+
+    /// An exact negative division has no remainder, so no adjustment either.
+    function test_MeanTick_ExactNegativeDivisionIsNotAdjusted() public {
+        UniswapV3TwapAdapter a = _shortWindow();
+        pool.setTickCumulatives(int56(0), int56(-6));
+        assertEq(a.meanTick(), int24(-3), "floor(-3.0) is -3");
+    }
+
+    /// The answer must track the AVERAGE, not spot. "Reads a TWAP" is easy to
+    /// write and easy to get wrong, so move spot and assert nothing happens.
+    function test_LatestRoundData_ReportsTheAverageAndNotSpot() public {
+        UniswapV3TwapAdapter a = _deploy(address(nvda), address(usdg));
+        pool.setMeanTick(221882, WINDOW);
+
+        pool.setTick(221882);
+        (, int256 atMean, , , ) = a.latestRoundData();
+        pool.setTick(221882 + 100); // 99.5 bps away, inside the tolerance
+        (, int256 spotMoved, , , ) = a.latestRoundData();
+
+        assertEq(spotMoved, atMean, "spot moved; the reported average must not");
     }
 
     function test_LatestRoundData_ReportsTheTwapAndTheCurrentTimestamp() public {
@@ -1142,7 +1207,13 @@ then replace the placeholder `latestRoundData` with:
 forge test --match-path 'test/oracle/UniswapV3TwapAdapterUnit.t.sol' -vv
 ```
 
-Expected: 14 passing.
+Expected: **25 passing**. Then `forge test` for the running total: **369 passed, 0 failed,
+34 skipped, 403 total**.
+
+Note the constants `ANSWER_SCALE = 1e8` and `Q96 = 1 << 96` are needed from here on, as is
+`error InvalidAnswer(uint256 answer)`. Add them beside `ANSWER_DECIMALS` and
+`PoolTokenMismatch` if Task 2 left them out. `latestRoundData` also relaxes from `pure` back
+to `view` now that it reads state.
 
 - [ ] **Step 5: Confirm nothing else moved**
 
