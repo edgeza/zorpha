@@ -31,7 +31,7 @@ const STATS = [
   { label: 'Max supply', value: TOKEN.maxSupply, sub: 'fixed, no mint', compact: true },
   { label: 'Circulating', value: CIRCULATING_PCT, sub: 'onchain, 800M locked', suffix: '%' },
   { label: 'Fee to buyback', value: 50, sub: 'bought and burned', suffix: '%' },
-  { label: 'Timelock delay', value: 48, sub: 'on every admin action', suffix: 'h' },
+  { label: 'Timelock delay', value: 48, sub: 'on fees, roles and mandates', suffix: 'h' },
 ];
 
 const BUILT_ON = [

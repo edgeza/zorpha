@@ -44,10 +44,10 @@ const VAULTS = [
   {
     symbol: SYM['USDG Yield'],
     name: 'USDG Yield',
-    body: 'Routes idle USDG through a pluggable yield adapter. V1 ships a zero-yield, zero-risk stub so the slot is real before a lending market is wired in; swapping the adapter is a timelocked action.',
+    body: 'Routes idle USDG through a pluggable yield adapter, today into Steakhouse USDG. The adapter can be swapped only to a venue on a governance-approved allowlist, and the replacement is constructed by the launcher rather than named by the caller.',
     specs: [
       ['Mandate', 'USDG in, USDG out, via one adapter'],
-      ['Adapter changes', 'Timelock-gated, 48-hour delay'],
+      ['Adapter changes', 'Vault leader, restricted to approved venues'],
       ['Performance fee', '10% above high-water mark'],
       ['Status', 'Live. Capital routes through the adapter'],
     ],
@@ -198,8 +198,19 @@ export default function ProtocolPage() {
               A risk-council role can halt deposits and rebalances on a single vault without
               touching redemptions.
             </SpecRow>
+            {/*
+              This said "every privileged change". It is not every one: the vault's
+              ADAPTER_SETTER_ROLE is held by the VaultLauncher, not the Timelock, so
+              `reallocate` moves a vault between approved venues with no delay. That is
+              deliberate -- a leader expressing an allocation view should not wait two days,
+              and the launcher builds the adapter itself so the caller can never name the
+              contract that holds the money -- but describing it as timelocked was wrong.
+            */}
             <SpecRow label="Admin delay">
-              Every privileged change is queued in a 48-hour Timelock owned by a multisig.
+              Fees, roles, mandates and the vault&rsquo;s own admin are queued in a 48-hour
+              Timelock owned by a multisig. Moving a vault between already-approved venues is
+              the exception: the leader does that directly, and governance controls which
+              venues are on the list.
             </SpecRow>
           </dl>
         </div>
