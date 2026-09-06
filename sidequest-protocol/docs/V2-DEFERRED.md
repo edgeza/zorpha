@@ -1,7 +1,7 @@
-# Zorpha V2+ — Deferred Items
+# Zorpha V2+, Deferred Items
 
 Every item that the original `Plan.md` calls for but V1 deliberately drops.
-Each entry has a **trigger** — the moment we should re-open the discussion.
+Each entry has a **trigger**; the moment we should re-open the discussion.
 
 ## 1. ERC-7540 async deposit/redemption queues
 
@@ -9,7 +9,7 @@ Each entry has a **trigger** — the moment we should re-open the discussion.
 
 **Why deferred**: ERC-7540 is a heavy protocol surface (cancel, request,
 fulfill, claim). V1 ships with vanilla ERC-4626 because the curated launchpad
-model doesn't need async settlement — there is no upstream-rail bottleneck
+model doesn't need async settlement; there is no upstream-rail bottleneck
 to wait out.
 
 **Trigger to reopen**: TVL per vault > $1M where the daily deposit volume
@@ -22,7 +22,7 @@ behind the next rebalance to avoid premature swaps).
 
 **Why deferred**: The dual-hurdle math (`FeeableReturn = max(0, NAV − HWM − BenchmarkHurdle)`)
 needs a published benchmark per vault. With a single testnet manager, the
-benchmark is the manager's own benchmark — which would be self-dealing. V1
+benchmark is the manager's own benchmark; which would be self-dealing. V1
 ships with HWM-on-NAV-delta only.
 
 **Trigger to reopen**: Multiple uncorrelated managers per strategy become
@@ -36,7 +36,7 @@ can be published.
 **Why deferred**: Bonding + slashing implies (a) a bond denominated in some
 asset (ZENT-style), (b) an oracle that can attest to misbehavior, and (c) a
 slashing mechanism that doesn't grief honest managers. V1 uses a single
-EoA manager — no economic stake, no slashing. Operational trust is the
+EoA manager; no economic stake, no slashing. Operational trust is the
 deployment.
 
 **Trigger to reopen**: The curator wants to onboard a third-party manager
@@ -57,7 +57,7 @@ permissionless piece on top of the bonding work.
 **Plan.md phase**: 2 ("HUMANITY vs MACHINE season 1")
 
 **Why deferred**: V1 ships with manual-signer rebalances. The EIP-712 path
-already supports AI agents — the only change is the signer address. The
+already supports AI agents; the only change is the signer address. The
 "GAME" framing (rewards, leaderboards, season rules) is V2.
 
 **Trigger to reopen**: At least one external AI manager expresses interest
@@ -89,7 +89,7 @@ adapter wrapper. Both are upstream dependencies.
 
 **Why deferred**: V1 ships with no voting token. The Timelock + Safe model
 is the V1 governance. Adding ve-locking requires porting `ZENTStaking` and
-making `ZentGovernor` the timelock's proposer — which is a substantial
+making `ZentGovernor` the timelock's proposer; which is a substantial
 addition.
 
 **Trigger to reopen**: Token holders ask for governance participation

@@ -58,11 +58,11 @@ const GROUPS: { heading: string; items: QA[] }[] = [
       },
       {
         q: `How much of the supply is actually liquid?`,
-        a: `${CIRCULATING_PCT}% circulating: the governance Safe, protocol-owned liquidity and holders. 800,000,000 — 80% — sits in a vesting contract on a 180-day cliff and then releases linearly to day 1095. That schedule is marked non-revocable onchain, so it cannot be cancelled or clawed back by anyone, including us.`,
+        a: `${CIRCULATING_PCT}% circulating: the governance Safe, protocol-owned liquidity and holders. 800,000,000 (80%) sits in a vesting contract on a 180-day cliff and then releases linearly to day 1095. That schedule is marked non-revocable onchain, so it cannot be cancelled or clawed back by anyone, including us.`,
       },
       {
         q: 'How much do insiders hold?',
-        a: 'The published allocation reserves 25% for contributors and backers. Onchain, that share is not held as separate per-cohort schedules: the treasury, contributor and backer buckets were locked together as one non-revocable schedule to the governance Safe. Verify the vesting contract rather than the allocation table — it is the schedule that binds, and it releases nothing until day 180.',
+        a: 'The published allocation reserves 25% for contributors and backers. Onchain, that share is not held as separate per-cohort schedules: the treasury, contributor and backer buckets were locked together as one non-revocable schedule to the governance Safe. Verify the vesting contract rather than the allocation table; it is the schedule that binds, and it releases nothing until day 180.',
       },
       {
         q: 'Is ZOR a security?',

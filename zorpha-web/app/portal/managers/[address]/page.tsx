@@ -69,7 +69,7 @@ export default async function ManagerPage({
 
       <section className="grid grid-cols-2 gap-5 sm:grid-cols-3">
         <Stat label="Signed receipts" value={receipts.length.toLocaleString('en-US')} />
-        <Stat label="First seen" value={firstSeen ? formatDate(firstSeen) : '—'} />
+        <Stat label="First seen" value={firstSeen ? formatDate(firstSeen) : ', '} />
         <Stat
           label="Last active"
           value={
@@ -77,7 +77,7 @@ export default async function ManagerPage({
               ? formatRelative(manager.last_active_at)
               : receipts[0]
                 ? formatRelative(receipts[0].block_timestamp)
-                : '—'
+                : ', '
           }
         />
       </section>

@@ -1,4 +1,4 @@
-# Mainnet asset universe — Robinhood Chain 4663
+# Mainnet asset universe, Robinhood Chain 4663
 
 Read off chain at block **53,639,835**, 3 September 2026 18:54 UTC. Every number
 below came from `eth_call` against the live chain, not from a token list or a
@@ -13,7 +13,7 @@ depth moves daily.
 
 `DeployVaultsV1.s.sol` sets `maxOracleStaleness: 1 hours` (lines 203 and 238).
 `maxOracleStaleness` is **`immutable`** in both `SpotVaultMinimal` (line 38) and
-`RWRotationVault` (line 44) — assigned in the constructor, with no setter. A vault
+`RWRotationVault` (line 44), assigned in the constructor, with no setter. A vault
 deployed with the wrong window is not reconfigurable. It is redeployable.
 
 Chainlink's feeds on this chain publish on an **86,400s heartbeat** with a 0.5%
@@ -137,7 +137,7 @@ the deepest pool on the chain, by a factor of two over NVDA.
 
 NVDA has 6.36M USDG behind it. AMD has 22k. The router adapter's own measurements
 (`RobinhoodChainRouterAdapter`) put $10k at 0.44% and $40k at 31% on a pool of
-comparable size — so with `maxSlippageBps = 100`, **vault capacity is set by the
+comparable size; so with `maxSlippageBps = 100`, **vault capacity is set by the
 pool, not by demand.**
 
 An AAPL vault against 237k of depth cannot rebalance half of a $100k book: that is a
@@ -156,7 +156,7 @@ Not listable today. Some may have WETH-quoted pools this scan did not cover.
 
 ---
 
-## 3. Ticker collisions are real here — key the allowlist on address
+## 3. Ticker collisions are real here, key the allowlist on address
 
 The scan matched feeds to tokens **by ticker**, and that method immediately picked
 up two impostors:
@@ -173,7 +173,7 @@ Anyone can deploy an ERC-20 with any symbol, and this chain has 4,524 USDG pools
 an active launchpad.
 
 **The `approvedTarget` allowlist in `VaultLauncher` must be keyed on address, and
-every entry verified by hand.** Never resolve an asset by symbol — not in the
+every entry verified by hand.** Never resolve an asset by symbol; not in the
 contracts, not in the indexer, not in the portal. A symbol-matched allowlist would
 let a leader launch a "GME" vault over a memecoin priced by the real GameStop feed,
 which misprices silently rather than reverting.

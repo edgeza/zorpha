@@ -182,7 +182,7 @@ export function LeaderActions({
           <h3 className="text-sm font-semibold">Reclaim your bond</h3>
           <p className="mt-1 max-w-prose text-sm leading-relaxed text-ink-400">
             Only once the vault holds no depositor shares at all. While anyone is still in, the
-            bond stays posted — that is what it is for.
+            bond stays posted; that is what it is for.
           </p>
         </div>
 
@@ -191,7 +191,7 @@ export function LeaderActions({
             <dt className="stat-label">Bond</dt>
             <dd className="mt-0.5 font-mono tabular-nums">
               {bond === undefined
-                ? '—'
+                ? ', '
                 : `${Number(formatUnits(bond, 18)).toLocaleString('en-US')} ZOR`}
             </dd>
           </div>
@@ -199,7 +199,7 @@ export function LeaderActions({
             <dt className="stat-label">Shares outstanding</dt>
             <dd className="mt-0.5 font-mono tabular-nums">
               {vaultTotalSupply === undefined
-                ? '—'
+                ? ', '
                 : Number(formatUnits(vaultTotalSupply, shareDecimals)).toLocaleString('en-US', {
                     maximumFractionDigits: 4,
                   })}

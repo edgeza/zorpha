@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Zorpha — one-command testnet launch.
+# Zorpha; one-command testnet launch.
 #
 # Runs the four deploy steps in order, capturing each one's addresses and
 # feeding them to the next, so there is no copy-pasting of hex between phases:

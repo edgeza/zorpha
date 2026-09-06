@@ -76,7 +76,7 @@ invalidate a whole generation of signatures by bumping it. Without it, if the
 `Rebalance` struct ever gains a field, the old and new payloads live under the
 same domain and any signature still in flight stays valid against whichever
 interpretation the contract now holds. There is no in-flight signature problem
-today because `MAX_SIGNAL_EXPIRY` is 7 days, which bounds the window — but that
+today because `MAX_SIGNAL_EXPIRY` is 7 days, which bounds the window; but that
 is a mitigation by accident, not by design.
 
 **3. `name` is absent**, which costs nothing cryptographically and is the field
@@ -94,7 +94,7 @@ one, so it is a coordinated change, not a patch.
    and waiting a week.
 2. **Keep the domain, add a readable summary.** The signing UI shows the decoded
    fields next to the hash it is about to sign. Cheaper, and worth doing
-   regardless — but it protects only against a manager's own inattention, not
+   regardless; but it protects only against a manager's own inattention, not
    against a frontend that lies, because the hash is still the only thing the
    wallet independently confirms.
 3. **Accept it.** Defensible while the signer is a single internal key on

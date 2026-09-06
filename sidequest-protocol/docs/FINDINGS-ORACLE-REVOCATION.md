@@ -19,7 +19,7 @@ cast send $ORACLE 'revokeRole(bytes32,address)' $(cast keccak 'UPDATER_ROLE') $B
 ```
 
 That was the wrong command. `MedianOracle` has `removeUpdater`, and it was
-callable at the time — `updaters.length` was 2 against a `minQuorum` of 1, so its
+callable at the time, `updaters.length` was 2 against a `minQuorum` of 1, so its
 own guard would have passed.
 
 ## Why the difference matters
@@ -41,7 +41,7 @@ report. It never checks `hasRole`. So revoking the role stops a key writing a
 *new* price and leaves its *last* price in the median until that report ages past
 `maxStaleness`.
 
-`removeUpdater` does both — revokes the role *and* removes the array entry, so
+`removeUpdater` does both, revokes the role *and* removes the array entry, so
 the influence stops in the same transaction:
 
 ```solidity
@@ -57,10 +57,10 @@ function removeUpdater(address u) external onlyRole(DEFAULT_ADMIN_ROLE) {
 
 | | |
 | --- | --- |
-| `hasRole(UPDATER_ROLE, burned key)` | **false** — the key cannot report again |
+| `hasRole(UPDATER_ROLE, burned key)` | **false**; the key cannot report again |
 | `updaters` array | still contains it |
 | `updaterCount()` | reports **2**; only **1** address holds the role |
-| `reports[burned key]` | `(0, 0)` — it never reported, so it contributes nothing |
+| `reports[burned key]` | `(0, 0)`; it never reported, so it contributes nothing |
 | `latestRoundData()` | healthy, on governance's fresh price |
 
 **The security goal was achieved by luck, not by the command.** That key had
@@ -89,7 +89,7 @@ up and the oracle must be replaced to restore an accurate `updaterCount()`.
 `MainnetSafety.check` reads `oracle.updaterCount()`, which is `updaters.length`.
 As this incident shows, that can exceed the number of addresses actually holding
 `UPDATER_ROLE`. On a clean deploy the two agree, because `addUpdater` is the only
-path and it maintains both — so the gate is sound at deploy time, which is when
+path and it maintains both; so the gate is sound at deploy time, which is when
 it runs. But it is counting array slots, not authority, and the two can diverge
 afterwards.
 
@@ -103,7 +103,7 @@ available.
 1. **Make the read path role-aware.** Add `hasRole(UPDATER_ROLE, updaters[i])` to
    the `latestRoundData` loop, so a revoked updater stops counting immediately
    however it was revoked. Costs one `SLOAD` per updater per read, on the hottest
-   path in the protocol — every NAV read, every rebalance, every redemption.
+   path in the protocol; every NAV read, every rebalance, every redemption.
 2. **Make `removeUpdater` work on an already-revoked address.** Drop the
    `hasRole` precondition so the array can always be cleaned up. Small, and it
    makes the mistake above recoverable instead of permanent.
@@ -112,7 +112,7 @@ available.
 4. **Both 1 and 2.** Correct by construction, and recoverable when someone still
    gets it wrong.
 
-Option 2 is unambiguously worth doing — it is a one-line change that turns a
+Option 2 is unambiguously worth doing; it is a one-line change that turns a
 permanent mistake into a fixable one. Option 1 is the real fix and it costs gas
 on the hottest read in the system, which is a decision rather than a cleanup.
 

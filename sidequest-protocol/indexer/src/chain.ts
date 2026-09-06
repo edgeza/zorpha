@@ -275,7 +275,7 @@ export function blockChunks(from: bigint, to: bigint, size: bigint): [bigint, bi
 /**
  * True when an RPC error means "your query matched too many logs".
  *
- * Robinhood Chain caps getLogs at 10,000 RESULTS rather than on block range —
+ * Robinhood Chain caps getLogs at 10,000 RESULTS rather than on block range , 
  * measured directly: an unfiltered 2,000-block window already returns ~7,650
  * logs, while 10,000 blocks is rejected. Our queries are address- and
  * topic-filtered so they normally return far fewer, but a busy vault over a

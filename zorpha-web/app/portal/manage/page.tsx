@@ -19,7 +19,7 @@ export default function ManagePage() {
         </p>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-400">
           There is deliberately no free-form trading here. A manager&rsquo;s whole discretion is
-          one rebalance instruction inside a slippage bound the contract enforces — which is the
+          one rebalance instruction inside a slippage bound the contract enforces; which is the
           reason a Zorpha track record means something, and the reason a manager cannot take your
           deposit anywhere you did not agree to.
         </p>

@@ -10,7 +10,7 @@ function targetLabel(row: RebalanceRow): string {
   if (row.target_bps !== null && row.target_bps !== undefined) {
     return bpsToPct(row.target_bps, 0);
   }
-  return '—';
+  return ', ';
 }
 
 export function ReceiptCard({ row }: { row: RebalanceRow }) {
@@ -55,7 +55,7 @@ export function ReceiptCard({ row }: { row: RebalanceRow }) {
                 is better to show nothing than to state a NAV we cannot scale. */}
             {row.nav_per_share && row.nav_decimals != null
               ? formatUnits(row.nav_per_share, row.nav_decimals, 5)
-              : '—'}
+              : ', '}
           </dd>
         </div>
         <div>

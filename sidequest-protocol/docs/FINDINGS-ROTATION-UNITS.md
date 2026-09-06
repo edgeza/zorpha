@@ -25,7 +25,7 @@ No performance fee. No price change. Alice is the only depositor.
 
 ## Why
 
-`asset()` is `tokens[0]` — the ERC-4626 unit a depositor pays in and is paid out
+`asset()` is `tokens[0]`; the ERC-4626 unit a depositor pays in and is paid out
 in. `totalAssets()` returned `grossValue()` net of fees, and `grossValue()` is
 denominated in **`baseAsset`**, a different token:
 
@@ -37,7 +37,7 @@ function totalAssets() public view override returns (uint256) {
 }
 ```
 
-No conversion function is overridden — checked: `_convertToShares`,
+No conversion function is overridden, checked: `_convertToShares`,
 `_convertToAssets`, `previewDeposit` and `previewRedeem` are all inherited. So
 OpenZeppelin's `ERC4626` sized every share against a base-denominated total and
 then moved `asset()` tokens by that number. The two differ by a decimal gap
@@ -65,7 +65,7 @@ as "Rotates between approved real-world assets on a signed mandate".
 Nine tests passed either side of this, including a real fee test that is not
 vacuous. None of them compared a deposit against its own redemption **in a
 single unit**. Every assertion was either about a base-denominated quantity or
-about shares, and both are internally consistent — the mismatch only shows when
+about shares, and both are internally consistent; the mismatch only shows when
 you put HOOD in one end and count HOOD out the other.
 
 `test_Units_DepositRedeemRoundTrip` does exactly that, and nothing more.
@@ -89,10 +89,10 @@ function totalAssets() public view override returns (uint256) {
 `baseToToken` already existed as the exact inverse of `tokenToBase`, so the fix
 is three lines. The split keeps each subsystem in one unit:
 
-- **Fee subsystem** — `grossValue`, `performanceFeeAccrued`, `highWaterMark`,
-  `getNavPerShare`, and the payout in `claimFees` — all base units, unchanged.
-- **ERC-4626 surface** — `totalAssets`, and everything OpenZeppelin derives from
-  it — asset units.
+- **Fee subsystem**, `grossValue`, `performanceFeeAccrued`, `highWaterMark`,
+  `getNavPerShare`, and the payout in `claimFees`, all base units, unchanged.
+- **ERC-4626 surface**, `totalAssets`, and everything OpenZeppelin derives from
+  it, asset units.
 
 This is what `SpotVaultMinimal` already does: its `grossValue()` converts the
 cash leg *into* asset units for precisely this reason. The rotation vault
@@ -111,7 +111,7 @@ had both.
 ### Equalisation, and it bites the FIRST depositor here
 
 The constructor seeds `highWaterMark = 10 ** baseDecimals` = 1,000,000. A real
-entry NAV is base-value-per-share and lands nowhere near that — **20,000,000**
+entry NAV is base-value-per-share and lands nowhere near that, **20,000,000**
 on the fixture. So the first depositor's own entry is already twenty times above
 the mark, and the first fee evaluation charges 20% of a gain from the sentinel up
 to their own entry price: **a gain nobody earned**.
@@ -136,7 +136,7 @@ behind it is not, nothing binds them.
 The first version of the second-cohort test asserted
 `highWaterMark == getNavPerShare()` immediately after the new deposit. It passed
 with `_markFirstEntry` **disabled**, because in that scenario the incoming price
-happened to equal the departed mark — there was no gap to detect.
+happened to equal the departed mark; there was no gap to detect.
 
 I only found it by disabling each fix and checking that a specific test failed.
 That check is cheap and I had not been doing it. The replacement moves the price
@@ -159,7 +159,7 @@ Every fix in this file is now verified by disabling it:
 - [ ] **Auditor review.** This changes what a depositor receives, and it changes
       fee accounting. Three vaults now share two fixes that all need the same eye.
 - [ ] **Redeploy the rotation vault.** The one on testnet has the broken
-      arithmetic. It holds nothing, so there is nothing to migrate — but it is
+      arithmetic. It holds nothing, so there is nothing to migrate; but it is
       listed in the portal and must not stay listed.
 - [ ] Add the round-trip assertion to the other two vaults. Both are internally
       consistent today, but nothing pins that, and this is the assertion that

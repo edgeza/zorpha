@@ -42,7 +42,7 @@ This package is the four checks that would have caught them.
 
 Ask any node for logs in a range beyond its head and you do not get an error.
 You get `[]`. The indexer scans an empty window, advances its cursor, logs a
-successful cycle, and repeats forever. Health checks green, receipts zero — and
+successful cycle, and repeats forever. Health checks green, receipts zero; and
 "zero receipts" was also the *correct* answer for a vault that had never
 rebalanced, so the working state and the broken state were indistinguishable
 from outside.
@@ -56,7 +56,7 @@ quiet vaults.
 ### 3. A fallback that answers the right chain id and cannot serve your workload
 
 The original fallback answered **46630**, and `viem`'s fallback transport fails
-over on *transport errors* rather than chain identity — so a mainnet indexer
+over on *transport errors* rather than chain identity; so a mainnet indexer
 with that fallback quietly reads testnet whenever the primary hiccups.
 
 We replaced it on the strength of one call:
@@ -83,7 +83,7 @@ watching.
 
 ### 4. One database, two chains, and no column saying which
 
-Out of scope for this package — it is a schema problem, not a startup check —
+Out of scope for this package; it is a schema problem, not a startup check , 
 but it is the one that reached users. A single database served both
 deployments and no table carried a chain identifier, so a portal pointed at
 mainnet served three testnet vault addresses. `eth_getCode` returns `0x` for
@@ -102,8 +102,8 @@ answers.**
 
 | | |
 |---|---|
-| **fatal** | the config contradicts the chain — chain id mismatch, start block past the head, an address with no code, an endpoint that cannot serve archive queries |
-| **warning** | the chain did not answer — timeout, HTTP 502, an HTML gateway page, a JSON-RPC error object |
+| **fatal** | the config contradicts the chain, chain id mismatch, start block past the head, an address with no code, an endpoint that cannot serve archive queries |
+| **warning** | the chain did not answer, timeout, HTTP 502, an HTML gateway page, a JSON-RPC error object |
 
 A JSON-RPC error, a 502 and a timeout have one thing in common: **none of them
 tells you which chain answered.** So none is evidence that your config is
@@ -165,13 +165,13 @@ Stable strings, safe to match on in tests and log filters.
 **No dependencies, deliberately.** This runs before your application starts,
 against configuration you do not yet trust. Pulling in a web3 library would
 mean the check shares a transport, a retry policy and a failover strategy with
-the code it is supposed to be checking — and a transport that silently retries
+the code it is supposed to be checking; and a transport that silently retries
 the next endpoint is precisely the behaviour that hides bug 3. Every call here
 goes to one named URL and reports what that URL said.
 
 **The archive probe is deliberately tiny.** Blocks `0x1` to `0x2` with a single
 topic filter: almost free for a node to answer, and declined outright by one
-that prunes history. An empty array is a pass — we are testing capability, not
+that prunes history. An empty array is a pass; we are testing capability, not
 looking for results.
 
 **`startBlock` is not judged when no endpoint reported a head.** Guessing in the
@@ -184,7 +184,7 @@ dark is how a guard invents a failure that is not there.
 A related mistake, kept here because it cost us a production abort.
 
 A migration that backfilled a `chain_id` column asserted that no row sat below
-the indexer's `START_BLOCK`. Applied to production it aborted — two of four rows
+the indexer's `START_BLOCK`. Applied to production it aborted; two of four rows
 sat below it. The data was fine.
 
 `START_BLOCK` had held **three** different values over the project's life: `0`,
@@ -192,7 +192,7 @@ then one in a developer's local `.env`, then another on the deployment host.
 Rows indexed under an earlier value legitimately sit below a later one. It is a
 resume position, and it says nothing about which chain a row came from.
 
-The replacement threshold came from the chain instead — no mainnet row can exist
+The replacement threshold came from the chain instead; no mainnet row can exist
 above a height mainnet has never reached. **Guard on an invariant of the world,
 not on a value in your config.**
 

@@ -36,7 +36,7 @@ function shorten(a?: string) {
 
 /** 6dp assets shown whole; the seed is thousands of dollars, not cents. */
 function units(v: bigint | undefined, decimals: number, dp = 2) {
-  if (v === undefined) return '—';
+  if (v === undefined) return ', ';
   const s = (Number(v) / 10 ** decimals).toLocaleString('en-US', { maximumFractionDigits: dp });
   return s;
 }
@@ -273,7 +273,7 @@ export function LaunchVaultForm() {
             </dd>
             <p className="mt-1 text-xs leading-relaxed text-ink-500">
               Refundable once the vault is empty. Slashable by governance for misconduct, not for
-              losing money — a drawdown is not misconduct.
+              losing money; a drawdown is not misconduct.
             </p>
           </div>
           <div>
@@ -289,7 +289,7 @@ export function LaunchVaultForm() {
         </dl>
         <p className="mt-4 text-xs leading-relaxed text-ink-400">
           You keep 80% of performance fees. While your coverage is below the floor, your share is
-          retained into the escrow instead of paid out — you rebuild the buffer before you earn
+          retained into the escrow instead of paid out; you rebuild the buffer before you earn
           again.
         </p>
       </div>
@@ -445,7 +445,7 @@ export function LaunchVaultForm() {
               },
               {
                 key: 'seed' as const,
-                label: `Approve ${seedInput || '—'} ${assetSymbol ?? 'asset'} capital`,
+                label: `Approve ${seedInput || ', '} ${assetSymbol ?? 'asset'} capital`,
                 done: seedDone,
                 onClick: () =>
                   writeContract({

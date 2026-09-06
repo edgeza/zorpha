@@ -13,8 +13,8 @@ records which chain a row belongs to**. Tables are `vaults`, `rebalances`,
 Pointing the web app at mainnet therefore changed the RPC and the contract
 addresses in config, but not the data. This shipped:
 
-> `www.zorpha.xyz/portal/vaults` advertised three vaults — `0xaA7A513F…`,
-> `0xB003d9fd…`, `0x5c2dD1F0…` — to mainnet visitors. `cast code` against
+> `www.zorpha.xyz/portal/vaults` advertised three vaults, `0xaA7A513F…`,
+> `0xB003d9fd…`, `0x5c2dD1F0…`, to mainnet visitors. `cast code` against
 > chain 4663 returns `0x` for all three. They are testnet contracts. Anyone who
 > picked one and deposited would have been sending funds at an empty address.
 
@@ -24,11 +24,11 @@ its own header.
 
 The codebase already diagnosed both halves of this before today:
 
-- `indexer/src/chain.ts:154` — `assertChainId()` refuses to index when the RPC's
+- `indexer/src/chain.ts:154`, `assertChainId()` refuses to index when the RPC's
   chain id disagrees with `CHAIN_ID`, because *"a misconfigured URL would
   otherwise poison the database with another chain's data, which is far harder
   to detect after the fact than at startup."* **The web app has no equivalent.**
-- `indexer/src/index.ts:277` — *"upsertVault exists and is never called, so
+- `indexer/src/index.ts:277`, *"upsertVault exists and is never called, so
   there is no code path that registers a vault. Registration is a hand-written
   SQL insert, and that is exactly the step that gets forgotten after a
   redeploy."*
@@ -42,7 +42,7 @@ start rather than writing mainnet-shaped rows into a testnet-shaped table.
 The two halves need different solutions, because they differ in whether the
 chain is derivable.
 
-### 1. A receipt's chain cannot be derived — so store it
+### 1. A receipt's chain cannot be derived; so store it
 
 A `rebalances` row is a historical fact: a `tx_hash` at a `block_number` with a
 `nav_per_share`. Nothing in it says which network it happened on, and nothing
@@ -53,14 +53,14 @@ Add `chain_id integer not null` to `rebalances`, `managers`,
 `reputation_publishes` and `indexer_cursor`, and backfill every existing row
 to **46630**. Every row
 written to date is testnet: the indexer has only ever run against testnet, and
-`START_BLOCK` (`112522500`) is a testnet height — above mainnet's current head
-of ~55.1M — so no mainnet row can exist.
+`START_BLOCK` (`112522500`) is a testnet height, above mainnet's current head
+of ~55.1M; so no mainnet row can exist.
 
 `managers` needs its primary key widened from `address` to
 `(address, chain_id)`: the same manager address can act on both chains and its
 `total_rebalances` must not merge them.
 
-`rebalances` carries `unique (tx_hash, log_index)` — the natural key for "one
+`rebalances` carries `unique (tx_hash, log_index)`; the natural key for "one
 row per log, so a re-indexed block cannot duplicate the feed". That key is
 chain-blind. A cross-chain transaction-hash collision is not a practical
 concern, but the constraint states a semantic that is now wrong: uniqueness is
@@ -76,14 +76,14 @@ when no cursor exists** (`indexer/src/index.ts:107`):
 The stored cursors sit at testnet heights (~112M). Repoint to mainnet without
 touching them and the indexer resumes from 112,522,501 against a chain whose
 head is ~55.1M: it scans nothing, inserts nothing, and reports success. Fixing
-the environment variables alone does not work, and the failure is silent —
+the environment variables alone does not work, and the failure is silent , 
 strictly worse than the honest crash the chain-id mismatch currently produces.
 
 Every read in `lib/queries.ts` filters on the connected chain. Every indexer
 write sets it from `config.chainId`, which `assertChainId()` has already proven
 matches the RPC.
 
-### 2. A vault's chain CAN be derived — so stop storing it
+### 2. A vault's chain CAN be derived; so stop storing it
 
 Either the contract exists on the connected chain or it does not. The chain is
 the authority, and the database has repeatedly been wrong about it.
@@ -98,16 +98,16 @@ launches(uint256) -> (address vault, address escrow, address adapter,
 ```
 
 The `vaults` table stops being a source of truth about existence and becomes
-presentation metadata only — `strategy` prose, `name` overrides, and the
-`listed` flag for hiding drill vaults — joined by address. A vault with no row
+presentation metadata only, `strategy` prose, `name` overrides, and the
+`listed` flag for hiding drill vaults, joined by address. A vault with no row
 still renders, with its on-chain name and no prose. **Registration stops being
 a step anyone can forget**, which is the failure `index.ts:277` describes.
 
 Two things this does not cover, stated rather than discovered later:
 
 - Vaults deployed outside `VaultLauncher` (directly through `VaultFactory`)
-  will not enumerate. On mainnet today that set is empty — `launchCount()` is
-  1 and it is the zsUSDG vault — and the launcher is the only supported path.
+  will not enumerate. On mainnet today that set is empty, `launchCount()` is
+  1 and it is the zsUSDG vault; and the launcher is the only supported path.
 - `launches(uint256)` returns a **nine-field** struct. Decoding it with a
   shorter signature silently shifts every field: during the launch it was
   decoded with five and reported the escrow address as the vault. The
@@ -131,10 +131,10 @@ each must become:
 | Setting | Now | Required for 4663 |
 |---|---|---|
 | `RPC_URL` | testnet RPC (answers 46630) | mainnet RPC |
-| `CHAIN_ID` | `4663` | `4663` (already correct — this mismatch is what halted it) |
+| `CHAIN_ID` | `4663` | `4663` (already correct; this mismatch is what halted it) |
 | `START_BLOCK` | `112522500` | the block `Zorpha` was deployed at; the current value is above mainnet's head, so the indexer would scan nothing and look healthy |
 | `EXPLORER_URL` | testnet explorer | `https://robinhoodchain.blockscout.com` |
-| `VAULT_ADDRESSES` | three addresses matching neither the table nor the chain | removed — after §2 nothing reads it outside dry-run |
+| `VAULT_ADDRESSES` | three addresses matching neither the table nor the chain | removed, after §2 nothing reads it outside dry-run |
 
 Flipping `RPC_URL` alone is worse than the current halt: the guard would pass
 and the indexer would scan from a block above the head, indexing nothing while
@@ -163,7 +163,7 @@ resumes writes, and by then every reader filters.
   `/portal/leaderboard` render empty rather than showing testnet history; with
   `46630` they render the existing history unchanged.
 - After step 4: `/portal/vaults` lists exactly the vaults `launchCount()`
-  reports for the connected chain — one on mainnet (zsUSDG,
+  reports for the connected chain; one on mainnet (zsUSDG,
   `0x3829bC787d4eB15Ec855A6cA33e1492a9103d130`), and a test asserts
   `launches(0)` maps to the vault address and not the escrow.
 - After step 5: the indexer starts, `assertChainId()` passes, and the first
@@ -182,7 +182,7 @@ resumes writes, and by then every reader filters.
   becomes an empty vault list rather than a stale one. The empty state must
   distinguish "no vaults" from "could not reach the chain".
 - **Widening the `managers` primary key rewrites the table.** No foreign keys
-  reference it — `005-baseline.sql` declares none anywhere in the schema — so
+  reference it, `005-baseline.sql` declares none anywhere in the schema; so
   this is a rewrite without dependents, which is the cheap case. The plan should
   still re-check before altering, since the schema may have drifted from the
   migrations.

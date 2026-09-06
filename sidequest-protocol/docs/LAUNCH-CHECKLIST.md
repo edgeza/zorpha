@@ -11,8 +11,8 @@ Chain facts, verified 1 September 2026 by reading the chains directly:
 | Chain ID | 46630 | 4663 |
 | RPC | `https://rpc.testnet.chain.robinhood.com/rpc` | `https://rpc.mainnet.chain.robinhood.com` |
 | Explorer | `https://explorer.testnet.chain.robinhood.com` | `https://robinhoodchain.blockscout.com` |
-| Stablecoin | none — deploy fixtures | USDG `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` (6dp) |
-| Yield venue | none — deploy fixtures | Steakhouse USDG `0xBeEff033F34C046626B8D0A041844C5d1A5409dd` |
+| Stablecoin | none, deploy fixtures | USDG `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` (6dp) |
+| Yield venue | none, deploy fixtures | Steakhouse USDG `0xBeEff033F34C046626B8D0A041844C5d1A5409dd` |
 | DEX | none | SwapRouter02 `0xCaf681a66D020601342297493863E78C959E5cb2` |
 
 **Testnet is a bare chain.** USDG, Steakhouse and Uniswap all return no code at
@@ -22,13 +22,13 @@ real venues correctly.
 
 ---
 
-## Open blockers — read before Phase 5
+## Open blockers, read before Phase 5
 
 These are not checklist steps. They are findings that should stop a mainnet
 deploy until somebody has decided what to do about them, and they are recorded
 here because a decision that lives only in a findings doc does not get made.
 
-- [x] ~~A depositor can lose 9—10% of their principal on entry, silently.~~
+- [x] ~~A depositor can lose 9, 10% of their principal on entry, silently.~~
       **Fixed**, both vaults. `_reconcileFeeClaimWhenEmpty()` caps an accrued fee
       claim at the value backing it while the vault is empty, which is the only
       window where the price paid can decouple from the encumbrance settled.
@@ -99,13 +99,13 @@ here because a decision that lives only in a findings doc does not get made.
 
 ---
 
-## Phase 0 — Before anything
+## Phase 0, Before anything
 
 - [ ] **Governance address that is not the deployer.** Both deploy scripts
       hard-revert otherwise. Testnet: a second Rabby account is fine. Mainnet:
       a Safe at [app.safe.global](https://app.safe.global) on chain 4663.
 - [ ] Deployer EOA funded with gas on the target chain.
-- [ ] `git config user.email juan@autonama.co.za` — Vercel blocks deployments
+- [ ] `git config user.email juan@autonama.co.za`, Vercel blocks deployments
       whose commit author is not associated with the account.
 - [ ] Toolchain: `forge --version` (1.8.1), `cast`, `jq`, `slither`.
 - [ ] Airdrop root generated, from `sidequest-protocol/` not `contracts/`:
@@ -118,7 +118,7 @@ here because a decision that lives only in a findings doc does not get made.
 
 ---
 
-## Phase 1 — Testnet fixtures
+## Phase 1, Testnet fixtures
 
 ```bash
 export PRIVATE_KEY=0x...
@@ -138,7 +138,7 @@ forge script script/DeployTestnetFixtures.s.sol:DeployTestnetFixtures \
 
 ---
 
-## Phase 2 — Testnet deploy
+## Phase 2, Testnet deploy
 
 ```bash
 export GOVERNANCE=0x...            # NOT the deployer
@@ -153,7 +153,7 @@ export DEPLOY_VAULTS=true
 - [ ] The script's own check passed: **deployer holds 0 ZOR**.
 - [ ] Phase B printed the vault addresses, including the yield and swap adapters.
 - [ ] Read the warnings at the end of phase B. On testnet the swap stub warning
-      is expected; the **yield stub warning must not appear** — if it does,
+      is expected; the **yield stub warning must not appear**, if it does,
       `YIELD_TARGET` was not picked up and the vault earns nothing.
 - [ ] `zorpha-web/.env.local` was written, and your
       `NEXT_PUBLIC_WC_PROJECT_ID` survived (the script merges, and backs up to
@@ -164,23 +164,23 @@ configured" banner is gone.
 
 ---
 
-## Phase 3 — Testnet end to end
+## Phase 3, Testnet end to end
 
 Contract flows. Each should be done from the portal where a UI exists for it,
 because the point is to test the whole stack rather than the contracts alone.
 
-**Yield vault (`zqUSD`) — the one that will hold real size**
+**Yield vault (`zqUSD`); the one that will hold real size**
 - [ ] Deposit tUSDG. Shares minted, balance shown in the portal.
 - [ ] `cast send $YIELD_TARGET "accrue(uint256)" 500000000` to simulate yield.
 - [ ] NAV per share rose in the portal.
-- [ ] Redeem. You receive **less than** the full gain — that is the 10%
+- [ ] Redeem. You receive **less than** the full gain; that is the 10%
       performance fee. If you receive all of it, fees are broken; see the
       regression tests in `ERC4626YieldAdapter.t.sol`.
 - [ ] `cast call $VAULT "performanceFeeAccrued()(uint256)"` is non-zero
       **without anyone having called `evaluateFees`**.
 - [ ] `claimFees()` moves the accrued amount to the treasury.
 
-**Spot vault (`zqHOOD`)** — `./script/testnet-spot-setup.sh <gov>` then
+**Spot vault (`zqHOOD`)**, `./script/testnet-spot-setup.sh <gov>` then
 `./script/testnet-spot-drill.sh <signer> <keeper>`. Run 2026-09-02, all green.
 
 - [x] A manager signs an EIP-712 rebalance and it is accepted, the nonce
@@ -189,7 +189,7 @@ because the point is to test the whole stack rather than the contracts alone.
 - [x] Submitted through `StrategyExecutor`. **Not** permissionless:
       `executeRebalance` is `onlyRole(KEEPER_ROLE)`, so a keeper submits the
       manager's signature. An earlier version of this line said submission was
-      permissionless by design, which was wrong about the code — and the
+      permissionless by design, which was wrong about the code; and the
       wrongness hid the fact that `KEEPER_ROLE` was unseated, so nobody could
       submit at all.
 - [x] Replay the same signature: reverts `NonceAlreadyUsed`.
@@ -197,7 +197,7 @@ because the point is to test the whole stack rather than the contracts alone.
 - [x] A deadline beyond `MAX_SIGNAL_EXPIRY` (7 days): reverts `ExpiryTooFar`.
       A signature good for a year is a standing authority, not an instruction.
 - [x] A signature from the **keeper's own key**: reverts `InvalidSignature`.
-      This is the one that matters most — the keeper holds `KEEPER_ROLE` and so
+      This is the one that matters most; the keeper holds `KEEPER_ROLE` and so
       may submit, but is not `authorizedSigner` and so may not decide. If it
       passed, submission authority and signing authority would be the same
       thing and the whole design would be decorative.
@@ -214,12 +214,12 @@ Steps for the executor's own checks run against `NoopRebalancer`, not the
 vault. That is deliberate and stronger: every one of those checks happens in
 `executeRebalance` before it calls the vault, so routing them through a vault
 only entangles them with oracle prices, rebalance thresholds and adapter
-liquidity — any of which can fail a step while the property under test works.
+liquidity, any of which can fail a step while the property under test works.
 
 And trade economics are **not tested at all**. `StubSwapAdapter` returns the
 same amount as the input, 1:1 on raw units, ignoring decimals. One trade
 between an 18dp equity and a 6dp stable misvalued the cash leg by eleven orders
-of magnitude — `grossValue` went 1e20 → 2e29 — after which every rebalance
+of magnitude, `grossValue` went 1e20 → 2e29, after which every rebalance
 demands an impossible trade and even a full redemption reverts on slippage.
 The receipt's NAV figures after that first trade are meaningless.
 
@@ -227,30 +227,30 @@ The receipt's NAV figures after that first trade are meaningless.
       as much as a mainnet one: until it is done, no vault holding two legs can
       be rebalanced twice or emptied once.
 
-**The escape hatch (`redeemEmergency`)** — proven on chain 2026-09-02, tx
+**The escape hatch (`redeemEmergency`)**, proven on chain 2026-09-02, tx
 `0x2baa8c11…0406`.
 
 - [x] A depositor can exit a vault whose swap venue cannot service a redemption
-      and whose oracle has gone stale. Normal `redeem` reverted — first on
-      slippage, later on `InsufficientFreshReports` — and the emergency path
+      and whose oracle has gone stale. Normal `redeem` reverted, first on
+      slippage, later on `InsufficientFreshReports`; and the emergency path
       still paid out the full asset leg. It reads neither the venue nor the
       price feed, which is the whole design.
 - [x] The cooldown blocks an immediate second exit, so the hatch cannot be used
       to drain the asset leg in a loop while the cash leg is stuck.
 - [ ] **Open finding.** The exit forfeits the cash leg, reports the loss as
-      `haircut = 0`, and strands the forfeited balance permanently — there is no
+      `haircut = 0`, and strands the forfeited balance permanently; there is no
       rescue path on the vault. Observed: 50e18 asset paid, 50e18 raw cash
       forfeited, haircut emitted as zero. See
       [FINDINGS-EMERGENCY-EXIT.md](FINDINGS-EMERGENCY-EXIT.md); four options,
       none chosen.
 
-**Rotation vault (`zqROT`)** — `./script/testnet-migrate-executor.sh <gov> <signer>`
+**Rotation vault (`zqROT`)**, `./script/testnet-migrate-executor.sh <gov> <signer>`
 once, then `./script/testnet-rotation-drill.sh <signer> <keeper>`. Run
 2026-09-02, all green. First rebalance in the vault's existence.
 
 Found as a launch blocker earlier the same day: `KEEPER_ROLE` on the vault was
 held only by `StrategyExecutor`, the executor called `rebalanceTo(uint16)`, the
-vault exposes `rebalanceTo(uint16[])` — different selectors, so the call
+vault exposes `rebalanceTo(uint16[])`, different selectors, so the call
 reverted with empty data and nothing else could reach it. The portal advertised
 it as rotating on a signed mandate while it could not rotate at all. Fixed with
 `executeBasketRebalance`, a distinct EIP-712 type, and the executor redeployed
@@ -263,7 +263,7 @@ on testnet with the old one revoked from all three vaults.
 - [x] A tampered weight: `InvalidSignature`. The array is hashed into the signed
       struct, so a keeper cannot rewrite the mandate in flight.
 - [x] Reordered weights: `InvalidSignature`. Same elements, same sum, different
-      instruction — a sum-or-length check would have waved it through.
+      instruction; a sum-or-length check would have waved it through.
 - [x] A basket summing to 9000: `BadWeights()`, **from the vault**, and the
       nonce did not advance. The executor deliberately does not duplicate the
       vault's basket rules, and a vault revert unwinds the whole transaction so
@@ -271,7 +271,7 @@ on testnet with the old one revoked from all three vaults.
 - [x] Wrong length: `"RWRotationVault: length mismatch"`, also from the vault.
 - [x] A spot-form signature cannot be replayed as a basket (unit test).
 
-**Leadership and first loss** — the differentiator, so the one to test hardest
+**Leadership and first loss**; the differentiator, so the one to test hardest
 
 - [x] A leader posts the bond and the seed and gets a vault:
       `./script/testnet-launch-vault.sh <keystore-account>`.
@@ -289,7 +289,7 @@ on testnet with the old one revoked from all three vaults.
       `totalAssets() = rawAssets() + escrowSupport()`, so after a loss
       `rawAssets` falls, `escrowSupport` rises to the high-water mark, and
       `totalAssets` does **not** move. It fails if `totalAssets` or nav/share
-      changes — if either does, the depositor absorbed the loss and the
+      changes, if either does, the depositor absorbed the loss and the
       subordination did nothing.
 
       First run, testnet 46630: venue destroyed 200 tUSDG, depositor redeemed
@@ -309,7 +309,7 @@ on testnet with the old one revoked from all three vaults.
 - [ ] `reclaimBond` after the withdrawal timelock.
 - [ ] A second leader launching against the same target does not collide.
 
-**Yield vault (`zqUSD`)** — `./script/testnet-yield-drill.sh <account>`
+**Yield vault (`zqUSD`)**, `./script/testnet-yield-drill.sh <account>`
 
 - [x] Circuit breaker refuses a real deposit, then clears.
 - [x] Deposit, venue accrues, NAV per share rises.
@@ -319,12 +319,12 @@ on testnet with the old one revoked from all three vaults.
       `(nav - highWaterMark) * totalSupply * bps / (shareUnit * 10000)`.
 - [x] Rounding favours the vault, never the depositor. The drill rejects any
       overpayment outright, and allows an underpayment of at most five base
-      units — one per conversion in a deposit/redeem round trip.
+      units; one per conversion in a deposit/redeem round trip.
 - [x] `claimFees()` moves the accrued amount to the treasury and resets the
       counter. Run 2026-09-02: 291,249,949 reached the treasury, counter to 0.
 
 **Open finding from this drill.** A depositor entering an empty-but-dusty vault
-is charged a performance fee on NAV appreciation from before they arrived —
+is charged a performance fee on NAV appreciation from before they arrived , 
 measured at 20% over on testnet. The high-water mark is not set for a first
 depositor, because `_evaluateFees()` returns early on `totalSupply() == 0`.
 See [FINDINGS-EQUALISATION.md](FINDINGS-EQUALISATION.md). Decide before mainnet;
@@ -334,7 +334,7 @@ no test in the suite covers it.
 - [ ] Let a price go stale past `maxOracleStaleness`, attempt a rebalance,
       confirm it **reverts** rather than trading on a stale price.
 
-**Token layer** — `./script/testnet-token-drill.sh <account>`
+**Token layer**, `./script/testnet-token-drill.sh <account>`
 
 - [x] Airdrop claim from an eligible address succeeds; a second claim reverts.
       Run 2026-09-02: exactly 75,000 $ZOR received, `isClaimed` flipped, the
@@ -345,7 +345,7 @@ no test in the suite covers it.
       account.
 - [ ] Vesting: nothing claimable before cliff; linear after. **Half done.** The
       drill confirms nothing is claimable with no schedule funded, which is the
-      only half testable today — funding a schedule needs real beneficiary
+      only half testable today, funding a schedule needs real beneficiary
       addresses and amounts (DEPLOY-ENV.md 4.2), not invented ones. Fund one,
       then re-run for the cliff.
 - [ ] Timelock: queue a privileged call, confirm it cannot execute before the
@@ -366,7 +366,7 @@ no test in the suite covers it.
 
 ---
 
-## Phase 4 — Mainnet fork validation
+## Phase 4, Mainnet fork validation
 
 This is the phase that actually de-risks mainnet, because it is the only one
 that exercises the real venues.
@@ -387,7 +387,7 @@ RH_MAINNET_RPC_URL=https://rpc.mainnet.chain.robinhood.com \
 
 ---
 
-## Phase 5 — Mainnet deploy
+## Phase 5, Mainnet deploy
 
 ```bash
 export CHAIN_ID=4663
@@ -405,7 +405,7 @@ export STOCK_TOKEN_1=0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9   # AAPL
 
 - [ ] `GOVERNANCE` is a Safe, and you can execute a transaction from it.
 - [ ] Ran `./script/deploy-and-verify.sh`.
-- [ ] **Neither stub warning appeared.** If either did, stop — the vaults are
+- [ ] **Neither stub warning appeared.** If either did, stop; the vaults are
       not products.
 - [ ] Contract verification succeeded on Blockscout for all seven token
       contracts and the vault layer.
@@ -414,7 +414,7 @@ export STOCK_TOKEN_1=0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9   # AAPL
 
 ---
 
-## Phase 5b — Leadership layer
+## Phase 5b, Leadership layer
 
 Permissionless vault creation, with the leader's capital subordinated to
 depositors'. Run after the vault layer, because it needs the factory.
@@ -443,7 +443,7 @@ Exercise it end to end from a **second account**, not the deployer:
 - [ ] Deposit from a **third** account. Coverage ratio falls as the vault grows.
 - [ ] Accrue yield on the venue, claim fees: leader and treasury both paid.
 - [ ] Force a drawdown smaller than the buffer. Depositor redeems **whole**;
-      `totalAbsorbed()` is non-zero. This is the product claim — see it work.
+      `totalAbsorbed()` is non-zero. This is the product claim, see it work.
 - [ ] Force a drawdown larger than the buffer. Depositor takes only the
       uncovered part, and the escrow is empty.
 - [ ] Leader reallocates to a second approved venue. NAV does not move.
@@ -458,7 +458,7 @@ you watched it happen.
 
 ---
 
-## Phase 6 — Manual steps no script can do
+## Phase 6, Manual steps no script can do
 
 Each needs the Safe.
 
@@ -475,7 +475,7 @@ Each needs the Safe.
 
 ---
 
-## Phase 7 — Sizing, before you invite deposits
+## Phase 7, Sizing, before you invite deposits
 
 - [ ] **Cap the spot vaults.** Measured on the AAPL/USDG 0.05% pool: $10k fills
       at 0.44%, $20k at 0.94%, $40k at 31%. With `maxSlippageBps = 100` a
@@ -483,7 +483,7 @@ Each needs the Safe.
       rotate is a vault that cannot rebalance.
 - [ ] Do not widen `maxSlippageBps` to make that revert go away. The revert is
       the protection.
-- [ ] The yield vault has no such ceiling — ERC-4626 deposits do not slip. If
+- [ ] The yield vault has no such ceiling, ERC-4626 deposits do not slip. If
       you want size early, it goes there.
 - [ ] Announce with the real numbers. `docs/AUDIT-TOKEN-V1.md` and the site say
       what is and is not audited; keep them true.
@@ -497,7 +497,7 @@ If something is wrong after mainnet deploy and before real deposits:
 1. `NEXT_PUBLIC_ENABLE_VAULT_DEPOSITS=false` in Vercel, redeploy. Kills the
    deposit surface across all vaults in one change, no contract call.
 2. Risk council sets the circuit breaker on affected vaults.
-3. Timelock queues an adapter swap if the venue is the problem — the migration
+3. Timelock queues an adapter swap if the venue is the problem; the migration
    path is tested, including the share-rounding trap on full exit.
 
 Withdrawals stay open in all three cases. That is deliberate.

@@ -47,7 +47,7 @@ export default function LaunchVaultPage() {
           <li>
             <strong className="text-ink-300">You cannot withdraw it freely.</strong> Withdrawals
             require a request, a seven-day delay, and coverage staying above the floor at the moment
-            of execution — not merely at the moment you asked.
+            of execution; not merely at the moment you asked.
           </li>
           <li>
             <strong className="text-ink-300">Fees rebuild the buffer before they pay you.</strong>{' '}

@@ -92,7 +92,7 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
     // AUDIT V-01. `totalAssets()` below values shares against the ADAPTER's
     // balance, but the vault previously never overrode these hooks. Deposited
     // funds therefore sat on the vault, the adapter balance stayed at zero, and
-    // so `totalAssets()` returned 0 while `totalSupply()` was positive — share
+    // so `totalAssets()` returned 0 while `totalSupply()` was positive, share
     // price of zero. A depositor burned every share and received nothing, while
     // their principal stayed stranded on the vault. It also inflated share
     // issuance for the next depositor, diluting the first.
@@ -109,8 +109,8 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
     //
     // The hooks below make an external call to the adapter *after* shares have
     // been minted or burned. A malicious or compromised adapter re-entering at
-    // that moment would observe `totalAssets()` mid-flight — funds already
-    // debited from one side but not yet credited to the other — and mint shares
+    // that moment would observe `totalAssets()` mid-flight, funds already
+    // debited from one side but not yet credited to the other; and mint shares
     // against a stale, understated NAV. Installing the adapter is timelocked,
     // so this needs a compromised governance action to reach; guarding it costs
     // one storage slot and removes the window entirely.
@@ -415,7 +415,7 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
 
     /// @notice "Rebalance" the yield slot by re-pushing funds into / pulling
     ///         funds from the adapter. V1 with StubYieldAdapter this is a no-op
-    ///         for accounting but still emits a receipt — the manager's record
+    ///         for accounting but still emits a receipt; the manager's record
     ///         of having reviewed the position.
     function rebalanceTo() external onlyRole(KEEPER_ROLE) nonReentrant {
         if (isCircuitBreakerActive) revert CircuitBreakerActive();
@@ -448,12 +448,12 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
     ///         Migration is not optional: `totalAssets()` is measured against
     ///         whichever adapter is currently set, so repointing without moving
     ///         the capital would strand every deposit in the old adapter and
-    ///         reprice every share to zero — the same class of failure as
+    ///         reprice every share to zero; the same class of failure as
     ///         audit finding V-01.
     ///         `nonReentrant` is load-bearing here, not decorative: between
     ///         `old.withdraw(...)` and the write of the new `adapter`, the
     ///         vault holds the capital while `totalAssets()` still reads the
-    ///         old adapter — which is now drained, so NAV reads as zero. A
+    ///         old adapter; which is now drained, so NAV reads as zero. A
     ///         re-entrant deposit in that window would mint against a share
     ///         price of nothing.
     // slither: reaching the cross-function reentrancy this describes requires
@@ -492,7 +492,7 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
     /// @notice Pay accrued performance fees to the fee recipient.
     ///
     ///         Without this, `performanceFeeAccrued` only ever subtracted from
-    ///         `totalAssets()` and was never payable to anyone — it depressed
+    ///         `totalAssets()` and was never payable to anyone; it depressed
     ///         every holder's NAV in exchange for nothing, and `feeRecipient`
     ///         was a dead storage slot. Claiming leaves `totalAssets()`
     ///         unchanged: the accrual is zeroed at the same moment the assets
@@ -547,7 +547,7 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
     /// @notice Mark performance fees against the high-water mark.
     /// @dev Kept as a keeper entrypoint so fees can still be marked during a
     ///      long stretch with no deposits or withdrawals. It is no longer the
-    ///      ONLY way fees accrue — see `_evaluateFees` for why that mattered.
+    ///      ONLY way fees accrue, see `_evaluateFees` for why that mattered.
     function evaluateFees() external onlyRole(KEEPER_ROLE) {
         _evaluateFees();
     }
@@ -627,7 +627,7 @@ contract YieldVault is ERC4626, AccessControl, ReentrancyGuard {
         // larger than any NAV a funded vault will ever report. Letting it reach
         // the line below ratchets `highWaterMark` to a level the vault can
         // never exceed and silently disables performance fees for the life of
-        // the contract — which, since half of every fee funds the buyback, also
+        // the contract; which, since half of every fee funds the buyback, also
         // disables $ZOR value accrual. Reachable by anyone able to touch an
         // empty vault, including a keeper calling `evaluateFees` once before
         // the first deposit.

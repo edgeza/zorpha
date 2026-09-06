@@ -4,7 +4,7 @@
 
 **Goal:** Make the site's brand colour match the logo without breaking contrast, and recolour the hero prism from its white wash to true logo chroma.
 
-**Architecture:** A two-tier colour system. The UI tier (`--zor-*`) stays legible and governs text, borders and focus rings. A new graphic tier (`--zor-graphic-*`) carries true logo chroma and is used only on surfaces with no contrast obligation — currently just the WebGL prism. Because every surface already reads from tokens, the change propagates site-wide from two files. A new `scripts/check-contrast.mjs` guard makes the contrast requirement executable rather than aspirational.
+**Architecture:** A two-tier colour system. The UI tier (`--zor-*`) stays legible and governs text, borders and focus rings. A new graphic tier (`--zor-graphic-*`) carries true logo chroma and is used only on surfaces with no contrast obligation, currently just the WebGL prism. Because every surface already reads from tokens, the change propagates site-wide from two files. A new `scripts/check-contrast.mjs` guard makes the contrast requirement executable rather than aspirational.
 
 **Tech Stack:** Next.js 15.5, Tailwind (config in `tailwind.config.mjs`), CSS custom properties in `app/globals.css`, React Three Fiber (`components/ui/prism-hero.tsx`), Node 22 for scripts.
 
@@ -18,7 +18,7 @@
 - Logo-measured chroma range is `#4700f8` (hue 257) to `#8700f9` (hue 273), both HSL saturation 100%, lightness 49%.
 - `prefers-reduced-motion` handling in `app/globals.css:72` and in `components/motion/*` is authoritative and must not regress.
 - Out of scope this phase: legal pages, the custody/allocation tables on `/token`, whitepaper restructuring, and any motion adoption (that is Phase 2/3).
-- Line endings in this repo are **LF**. Do not write files with Python text-mode writes on Windows — that produces CRLF and turns a 40-line diff into a 900-line one.
+- Line endings in this repo are **LF**. Do not write files with Python text-mode writes on Windows; that produces CRLF and turns a 40-line diff into a 900-line one.
 
 ---
 
@@ -182,7 +182,7 @@ In `app/globals.css`, change line 11 only:
     --zor-500: #7c4dff;
 ```
 
-Leave `--verified-500`, `--cyan-500`, `--amber-500`, `--magenta-500` and `--danger-500` untouched — they already sit in the logo's secondary range per spec section 1.
+Leave `--verified-500`, `--cyan-500`, `--amber-500`, `--magenta-500` and `--danger-500` untouched; they already sit in the logo's secondary range per spec section 1.
 
 - [ ] **Step 2: Add the graphic tier**
 
@@ -299,7 +299,7 @@ Change nothing else in that call. `word`, `eyebrow`, `description`, `footnote` a
 
 Run: `cd zorpha-web && npx tsc --noEmit`
 
-Expected: no output. If `tint` or `accent` are rejected, the prop names are wrong — check `components/ui/prism-hero.tsx:217,221`.
+Expected: no output. If `tint` or `accent` are rejected, the prop names are wrong, check `components/ui/prism-hero.tsx:217,221`.
 
 - [ ] **Step 4: Verify it renders**
 
@@ -322,7 +322,7 @@ Open `http://localhost:3000/` and confirm by eye that the prism reads as electri
 
 In browser devtools, Rendering panel, set **Emulate CSS prefers-reduced-motion: reduce**, then reload `/`.
 
-Expected: the prism paints a static frame and does not animate. If it animates, stop — the change has regressed `components/ui/prism-hero.tsx:271-277` and must be fixed before commit.
+Expected: the prism paints a static frame and does not animate. If it animates, stop; the change has regressed `components/ui/prism-hero.tsx:271-277` and must be fixed before commit.
 
 - [ ] **Step 6: Commit**
 
@@ -402,7 +402,7 @@ In `zorpha-web/package.json`, add to `scripts`:
 "check:routes": "node scripts/crawl-routes.mjs",
 ```
 
-Do NOT add this to `prebuild` — it needs a running server, and prebuild runs before one exists.
+Do NOT add this to `prebuild`; it needs a running server, and prebuild runs before one exists.
 
 - [ ] **Step 3: Run the full verification set**
 
@@ -425,7 +425,7 @@ Expected: contrast ok; tokenomics parity 6 allocations summing to 100%; env ok; 
 node -e "(async()=>{for(const r of ['/','/token','/protocol']){const h=await(await fetch('http://localhost:3000'+r)).text();console.log(r.padEnd(12),'new brand token present:',/7c4dff/i.test(h));}})();"
 ```
 
-Expected: at least the root route reports true. If every route reports false, Tailwind did not pick up the config change — rebuild.
+Expected: at least the root route reports true. If every route reports false, Tailwind did not pick up the config change, rebuild.
 
 - [ ] **Step 5: Commit**
 

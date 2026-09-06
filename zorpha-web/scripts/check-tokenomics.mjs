@@ -49,7 +49,7 @@ if (!existsSync(SOL)) {
 const ts = readFileSync(TS, 'utf8');
 const sol = readFileSync(SOL, 'utf8');
 
-// Site: `key: 'community',` ... `bps: 3800,` — the bps that follows each key.
+// Site: `key: 'community',` ... `bps: 3800,`; the bps that follows each key.
 const site = {};
 for (const key of Object.keys(PAIRS)) {
   const m = ts.match(new RegExp(`key:\\s*'${key}'[\\s\\S]{0,400}?bps:\\s*(\\d+)`));

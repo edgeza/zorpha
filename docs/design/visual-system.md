@@ -2,14 +2,14 @@
 
 Date: 5 September 2026
 Status: approved design, not yet planned or implemented
-Scope: `zorpha-web` — all 20 routes, marketing and portal
+Scope: `zorpha-web`, all 20 routes, marketing and portal
 
 ## Problem
 
 Two problems, one root cause.
 
 The hero prism reads as pale lavender glass while the logo reads as electric
-violet. The initial diagnosis — "the prism is under-saturated" — was wrong.
+violet. The initial diagnosis, "the prism is under-saturated", was wrong.
 Measured in HSL, the prism accent and the logo are both 100% saturated. The gap
 is **lightness**:
 
@@ -38,13 +38,13 @@ the brand token to full logo chroma would make the site inaccessible.
 
 So the system splits by obligation:
 
-**UI tier** — anything subject to contrast rules: text, links, borders, focus
+**UI tier**, anything subject to contrast rules: text, links, borders, focus
 rings, badges.
 - `--zor-500`: `#8b6dff` → `#7c4dff` (hue 256, lightness 65%, contrast **4.20**)
 - Passes large-text and UI contrast (3.0). Body copy remains on `ink` tokens,
   which is already the case, so no body text depends on this value.
 
-**Graphic tier** — surfaces with no contrast obligation: the WebGL prism, glow
+**Graphic tier**, surfaces with no contrast obligation: the WebGL prism, glow
 layers, gradient fills, the OG banner.
 - New tokens spanning the measured logo range, `#4700f8` → `#8700f9`.
 - This is where the logo match actually happens.
@@ -78,10 +78,10 @@ all three of which are already `prefers-reduced-motion` aware.
 
 Motion is split by surface:
 
-- **Marketing — cinematic.** Prism performs at full chroma. `Reveal` on section
+- **Marketing, cinematic.** Prism performs at full chroma. `Reveal` on section
   entry. `CountUp` on every real number. Depth via graphic-tier gradient and
   glow layers. Motion lands once and settles; no infinite loops.
-- **Portal — restrained.** Motion only where it carries information: balances
+- **Portal, restrained.** Motion only where it carries information: balances
   counting when they change, transaction state transitions, `ScrambleHash`
   resolving addresses and hashes, hover states that confirm a control is live.
   Nothing decorative near money.
@@ -92,14 +92,14 @@ remains authoritative.
 
 ### 3. Sequencing
 
-**Phase 1 — Foundation.** `globals.css`, `tailwind.config.mjs`, and the prism
+**Phase 1, Foundation.** `globals.css`, `tailwind.config.mjs`, and the prism
 props. Two files plus one component; propagates to all 20 routes. Highest visual
 delta per line changed in the project.
 
-**Phase 2 — Marketing.** Nine pages in impact order: homepage → token →
+**Phase 2, Marketing.** Nine pages in impact order: homepage → token →
 protocol → whitepaper → roadmap, faq, bridge.
 
-**Phase 3 — Portal.** The portal's substance is in **14 components under
+**Phase 3, Portal.** The portal's substance is in **14 components under
 `components/portal/` that already read live chain data**, not in the thin page
 shells (24–163 lines). Work happens in the components.
 
@@ -127,7 +127,7 @@ Run at every phase:
 
 ## Risks
 
-- **Chroma changes can quietly break contrast in unmeasured places** — borders,
+- **Chroma changes can quietly break contrast in unmeasured places**, borders,
   disabled states, focus rings, placeholder text. Phase 1 measures these rather
   than assuming; any token failing its threshold is adjusted before shipping.
 - **Motion can undercut the trust story.** The project spent its build avoiding

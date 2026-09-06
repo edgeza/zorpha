@@ -213,7 +213,7 @@ export function WalletButton() {
             <div className="mt-2 flex items-baseline justify-between text-2xs">
               <span className="text-ink-500">{connector?.name ?? 'Wallet'}</span>
               <span className="font-mono text-ink-300">
-                {balance ? `${formatUnits(balance.value, balance.decimals, 4)} ${balance.symbol}` : '—'}
+                {balance ? `${formatUnits(balance.value, balance.decimals, 4)} ${balance.symbol}` : ', '}
               </span>
             </div>
             <div className="mt-1 text-2xs text-ink-500">{activeChain.name}</div>

@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Zorpha V1 — Robinhood Chain deploy + verify.
+# Zorpha V1, Robinhood Chain deploy + verify.
 #
 # The pipeline is TWO scripts, not one. Splitting them means the token can
 # launch without dragging the vault contracts along, and a vault-layer failure
 # can never leave a half-deployed token.
 #
-#   Phase A  DeployZorphaToken  — token, timelock, treasury, buyback, insurance,
+#   Phase A  DeployZorphaToken, token, timelock, treasury, buyback, insurance,
 #                                 airdrop distributor, vesting, and an ATOMIC
 #                                 distribution of the whole supply. Asserts the
 #                                 deployer ends with zero tokens and zero roles.
-#   Phase B  DeployVaultsV1     — oracle, factory, executor, registry, vaults.
+#   Phase B  DeployVaultsV1, oracle, factory, executor, registry, vaults.
 #                                 Opt-in via DEPLOY_VAULTS=true, and refuses to
 #                                 run if the test suite is red. Deploying the
 #                                 token alone first is a valid launch, so this
@@ -156,7 +156,7 @@ fi
 echo "==> [1/7] forge build"
 forge build
 
-echo "==> [2/7] forge test — token layer (must be green)"
+echo "==> [2/7] forge test, token layer (must be green)"
 forge test --match-path 'test/Zorpha.t.sol'
 
 # The fork tests skip themselves when RH_MAINNET_RPC_URL is unset, and for
@@ -168,7 +168,7 @@ forge test --match-path 'test/Zorpha.t.sol'
 # test accepted.
 export RH_MAINNET_RPC_URL="${RH_MAINNET_RPC_URL:-https://rpc.mainnet.chain.robinhood.com/rpc}"
 
-echo "==> [3/7] forge test — full suite (fork tests included)"
+echo "==> [3/7] forge test, full suite (fork tests included)"
 if forge test; then
   FULL_SUITE_GREEN=true
   echo "    full suite green"
@@ -250,7 +250,7 @@ if ! node -e '
 fi
 
 if [[ "${SKIP_TOKEN:-false}" == "true" ]]; then
-  echo "==> [5/7] Phase A — SKIPPED (SKIP_TOKEN=true)"
+  echo "==> [5/7] Phase A, SKIPPED (SKIP_TOKEN=true)"
   echo "    The live token layer is left exactly as it is. Nothing below"
   echo "    touches ZOR, the timelock, the treasury, the vesting schedules,"
   echo "    the buyback or the airdrop distributor."
@@ -270,7 +270,7 @@ if [[ "${SKIP_TOKEN:-false}" == "true" ]]; then
   echo "    ones the portal points at, so anything left in them is stranded"
   echo "    from a user's point of view."
 else
-  echo "==> [5/7] Phase A — token layer deploy"
+  echo "==> [5/7] Phase A, token layer deploy"
   forge script "$TOKEN_SCRIPT" \
   --rpc-url "$RH_TESTNET_RPC_URL" \
   "${SIGNER_ARGS[@]}" \
@@ -286,7 +286,7 @@ else
 
   # Reads a deployed address out of a broadcast artifact, via node rather
   # than jq. jq is a separate install often absent on a fresh machine, and it
-  # is only reached AFTER the token layer is live — the worst moment to find
+  # is only reached AFTER the token layer is live; the worst moment to find
   # out, with a half-finished deploy and no addresses captured.
   addr_of() {
   node -e '
@@ -411,7 +411,7 @@ verify_broadcast() {
       echo "    verified  ${target##*:}  $addr"
       ok=$((ok + 1))
     elif grep -qi "already verified" <<< "$out"; then
-      echo "    verified  ${target##*:}  $addr  (already verified)"
+      echo "    verified  ${target##*:}  $addr (already verified)"
       ok=$((ok + 1))
     else
       echo "    FAILED    ${target##*:}  $addr"
@@ -437,7 +437,7 @@ else
   verify_broadcast "$BROADCAST"
 fi
 
-echo "==> [7/7] Phase B — vault layer"
+echo "==> [7/7] Phase B, vault layer"
 FACTORY_ADDR=""
 EXECUTOR_ADDR=""
 REPUTATION_ADDR=""

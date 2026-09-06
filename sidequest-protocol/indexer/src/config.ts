@@ -132,7 +132,7 @@ export const config = {
    * Measured against Robinhood Chain testnet: the RPC caps on RESULT COUNT
    * (10,000 logs), not on block range. Our queries are address- plus
    * topic-filtered so they return far fewer, which is why the range can be
-   * generous — but a busy vault can still trip the cap, so `indexVault`
+   * generous; but a busy vault can still trip the cap, so `indexVault`
    * halves the range and retries rather than treating it as fatal.
    *
    * Block time is ~0.17s, so 50k blocks is roughly 2.4 hours of history per

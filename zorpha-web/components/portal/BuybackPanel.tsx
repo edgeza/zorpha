@@ -80,7 +80,7 @@ export function BuybackPanel() {
           <div>
             <dt className="stat-label">USDG spent</dt>
             <dd className="mt-1.5 font-mono text-sm text-ink-200">
-              {usdcSpent === undefined ? '—' : `$${formatUnits(usdcSpent as bigint, 6, 2)}`}
+              {usdcSpent === undefined ? ', ' : `$${formatUnits(usdcSpent as bigint, 6, 2)}`}
             </dd>
           </div>
           <div>
@@ -92,7 +92,7 @@ export function BuybackPanel() {
           <div>
             <dt className="stat-label">Trigger threshold</dt>
             <dd className="mt-1.5 font-mono text-sm text-ink-200">
-              {threshold === undefined ? '—' : `$${formatUnits(threshold as bigint, 6, 0)}`}
+              {threshold === undefined ? ', ' : `$${formatUnits(threshold as bigint, 6, 0)}`}
             </dd>
           </div>
         </dl>

@@ -20,7 +20,7 @@ is dead, which are precisely the moments they most want to, and precisely the
 moments a normal `redeem` cannot help them.
 
 Proven on chain. The testnet spot vault had been left unable to rebalance or
-redeem — a normal `redeem` reverted, first on slippage and later on
+redeem; a normal `redeem` reverted, first on slippage and later on
 `InsufficientFreshReports` once the oracle went stale. `redeemEmergency` still
 paid out, with a dead oracle and a venue that could not have serviced the trade.
 That is the design working exactly as intended, and it is worth saying plainly
@@ -40,7 +40,7 @@ uint256 haircut = grossOwed > paid ? grossOwed - paid : 0;
 ```
 
 `grossOwed` is derived from the asset balance alone, so `haircut` can only ever
-equal `feeShare`. The cash leg — the thing actually given up — never enters the
+equal `feeShare`. The cash leg; the thing actually given up, never enters the
 arithmetic.
 
 The observed exit:
@@ -63,7 +63,7 @@ The vault now holds zero shares and a non-zero cash balance. `grossValue()`
 counts that cash, so the next depositor's entry NAV is set by a balance nobody
 owns. That is the same mechanism as
 [FINDINGS-EQUALISATION.md](FINDINGS-EQUALISATION.md), reached by a different
-route and at a much larger magnitude — dust there, half a position here.
+route and at a much larger magnitude, dust there, half a position here.
 
 ### 3. Nothing can ever recover it
 
@@ -138,7 +138,7 @@ decisions.
 
 1. **Report the real haircut.** Value the forfeited cash leg and include it, or
    emit it as its own field. Costs an oracle read, which the function currently
-   and deliberately avoids — so the honest version may be to emit the raw
+   and deliberately avoids; so the honest version may be to emit the raw
    forfeited cash amount rather than its value, keeping the function
    price-independent. Small, and it stops the event asserting something false.
 2. **Sweep the residue when the vault empties.** If `totalSupply()` reaches

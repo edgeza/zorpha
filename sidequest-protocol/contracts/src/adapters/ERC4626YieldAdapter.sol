@@ -12,7 +12,7 @@ import {IYieldAdapter} from "../interfaces/IYieldAdapter.sol";
 /// @notice Routes YieldVault deposits into any ERC-4626 vault.
 ///
 ///         This is what replaces `StubYieldAdapter`, whose own comment concedes
-///         "zero yield, zero risk" — a USDG yield vault that earns nothing is a
+///         "zero yield, zero risk"; a USDG yield vault that earns nothing is a
 ///         demo, not a product.
 ///
 ///         The target is deliberately "any ERC-4626" rather than "Morpho". On

@@ -57,7 +57,7 @@ export function TokenPanel() {
   //
   // This was `if (isSuccess) void refetchDelegate();` inline, which refetches
   // during render: the refetch resolves, the component re-renders, isSuccess is
-  // still true, and it refetches again — forever. The visible symptom was the
+  // still true, and it refetches again, forever. The visible symptom was the
   // button sticking on "Activating…" after a delegate transaction had already
   // confirmed on chain, because the component never settled long enough to read
   // the new delegatee back.
@@ -88,7 +88,7 @@ export function TokenPanel() {
         <div>
           <div className="stat-label">Your {TOKEN.ticker}</div>
           <div className="stat-value mt-2">
-            {address ? formatUnits(balance as bigint | undefined, 18, 2) : '—'}
+            {address ? formatUnits(balance as bigint | undefined, 18, 2) : ', '}
           </div>
         </div>
         <a

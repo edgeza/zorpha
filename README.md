@@ -18,8 +18,8 @@
 | Third-party audit | **Not started.** Gate before mainnet. |
 | Mainnet | Not deployed. |
 
-Full internal audit — all 24 findings, with the mechanism behind each and the test that now
-prevents it — is in
+Full internal audit, all 24 findings, with the mechanism behind each and the test that now
+prevents it, is in
 [`sidequest-protocol/docs/AUDIT-TOKEN-V1.md`](sidequest-protocol/docs/AUDIT-TOKEN-V1.md) and
 published on the site at `/security`.
 
@@ -71,12 +71,12 @@ SideQuest/
 
 | Bucket | Share | At launch | Cliff | Vest |
 |---|---|---|---|---|
-| Community & Ecosystem | 38% | 8% (airdrop) | — | 4y, seasonal, governance-approved |
-| DAO Treasury | 20% | — | 6m | 4y |
-| Core Contributors | 17% | — | 12m | 4y |
-| Protocol-Owned Liquidity | 13% | 13% | — | fully unlocked |
-| Early Backers | 8% | — | 12m | 3y |
-| Insurance Fund | 4% | — | locked | governance release only |
+| Community & Ecosystem | 38% | 8% (airdrop) |, | 4y, seasonal, governance-approved |
+| DAO Treasury | 20% |, | 6m | 4y |
+| Core Contributors | 17% |, | 12m | 4y |
+| Protocol-Owned Liquidity | 13% | 13% |, | fully unlocked |
+| Early Backers | 8% |, | 12m | 3y |
+| Insurance Fund | 4% |, | locked | governance release only |
 
 **Float at launch: 21%.** Insiders (contributors + backers): 25%, nothing for 12 months.
 
@@ -94,7 +94,7 @@ cd sidequest-protocol/contracts && forge build && forge test
 cd zorpha-web && npm install && cp .env.example .env.local && npm run dev
 ```
 
-The web app builds and renders with no env vars set — unconfigured contracts are named in a banner
+The web app builds and renders with no env vars set, unconfigured contracts are named in a banner
 rather than silently rendering as zero balances.
 
 ## Deploying
@@ -106,7 +106,7 @@ pre-launch checklist. Then:
 bash sidequest-protocol/contracts/script/deploy-and-verify.sh
 ```
 
-`GOVERNANCE` must be a Safe and must not equal the deployer — both the shell script and the Solidity
+`GOVERNANCE` must be a Safe and must not equal the deployer; both the shell script and the Solidity
 script refuse to run otherwise. The token script ends by asserting the deploy key holds zero tokens
 and zero roles; if it does not, the run reverts rather than half-launching.
 

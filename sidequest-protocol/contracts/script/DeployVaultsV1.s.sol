@@ -31,7 +31,7 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 ///            reverted with AccessControlUnauthorizedAccount for every
 ///            production config where GOVERNANCE != deployer. The factory and
 ///            vaults are now deployed with the DEPLOYER as admin, wired, and
-///            only then handed to governance — with the deployer renouncing.
+///            only then handed to governance, with the deployer renouncing.
 ///
 ///         2. `MedianOracle` was constructed with `minQuorum = 3` but only one
 ///            updater was ever added, so `latestRoundData` reverted forever

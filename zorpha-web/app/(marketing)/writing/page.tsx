@@ -21,7 +21,7 @@ const POSTS: { href: string; date: string; title: string; blurb: string }[] = [
     date: '5 September 2026',
     title: 'Five ways to deploy to the wrong chain, four of them silent',
     blurb:
-      'Robinhood Chain’s testnet is 46630 and its mainnet is 4663. Moving a protocol between them, we found five ways to be pointed at the wrong one — and only the first produced an error. The rest returned an empty array and a green health check.',
+      'Robinhood Chain’s testnet is 46630 and its mainnet is 4663. Moving a protocol between them, we found five ways to be pointed at the wrong one; and only the first produced an error. The rest returned an empty array and a green health check.',
   },
 ];
 

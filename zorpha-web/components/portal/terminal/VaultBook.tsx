@@ -92,7 +92,7 @@ export interface BookRow {
 
 function compact(value: bigint, decimals: number): string {
   const n = Number(formatUnits(value, decimals));
-  if (!Number.isFinite(n)) return '—';
+  if (!Number.isFinite(n)) return ', ';
   if (n === 0) return '0';
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(2)}k`;
@@ -217,7 +217,7 @@ export function VaultBook({
           {address ? (
             <>
               {actionable} you can act on
-              {actionable === 0 && ' — the rest are visible but not yours to move'}
+              {actionable === 0 && '; the rest are visible but not yours to move'}
             </>
           ) : (
             'connect a wallet to see which are yours'
@@ -244,7 +244,7 @@ export function VaultBook({
           // would act on. "Empty" is a fact, not an alarm, so it stays in the
           // value column rather than becoming a warning.
           const attention = r.halted
-            ? { text: 'Halted — circuit breaker on', tone: 'text-rose-300' }
+            ? { text: 'Halted, circuit breaker on', tone: 'text-rose-300' }
             : r.feeAccrued && r.feeAccrued > 0n
               ? { text: 'Performance fee accrued', tone: 'text-amber-300' }
               : null;
@@ -276,7 +276,7 @@ export function VaultBook({
 
               <div className="flex items-baseline gap-1.5">
                 <span className="font-mono text-lg tabular-nums text-ink-100">
-                  {isLoading && tvl === undefined ? '···' : (tvl ?? '—')}
+                  {isLoading && tvl === undefined ? '···' : (tvl ?? ', ')}
                 </span>
                 <span className="font-mono text-2xs text-ink-500">
                   {r.assetSymbol ?? ''}

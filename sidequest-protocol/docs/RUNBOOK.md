@@ -1,4 +1,4 @@
-# Zorpha V1 — Operator Runbook
+# Zorpha V1, Operator Runbook
 
 This is the canonical runbook for the people running Zorpha V1. It mirrors
 the ZENTORY `docs/RUNBOOK.md` shape.
@@ -70,10 +70,10 @@ limit 10;
 
 If it's not there:
 
-1. Check the tx_hash on the RH explorer — was it actually mined?
-2. Check the indexer's `getLastIndexedBlock(vault_address)` for the vault — it
+1. Check the tx_hash on the RH explorer, was it actually mined?
+2. Check the indexer's `getLastIndexedBlock(vault_address)` for the vault; it
    might be lagging.
-3. Check the indexer's `chainId` assertion — if it's serving the wrong
+3. Check the indexer's `chainId` assertion, if it's serving the wrong
    chain, the worker bails out and exits non-zero.
 
 ### 2.3 Verify a reputation publish
@@ -110,7 +110,7 @@ the oracle path.
 
 **Action**:
 1. Use `redeemEmergency` to drain the vault by underlying balance
-   (oracle-bypassing). This will issue haircuts — the `haircutAssets` field
+   (oracle-bypassing). This will issue haircuts; the `haircutAssets` field
    on the `EmergencyRedeem` event makes them auditable.
 2. Root-cause the oracle or adapter failure.
 3. Once recovered, evaluate fees and consider a `writeDownAccruedFees` if
@@ -140,7 +140,7 @@ Merkle root is wrong).
    in V1.
 2. The fix is to deploy a new `MerkleDistributor` with the correct root
    and direct users to claim there.
-3. The wrong-root distributor becomes a sink — call `sweep(to)` after
+3. The wrong-root distributor becomes a sink, call `sweep(to)` after
    `claimDeadline` to recover the tokens.
 
 ## 4. Role rotation
@@ -165,7 +165,7 @@ See `contracts/script/deploy-and-verify.sh`, and `docs/DEPLOY-ENV.md` for what
 to set before running it and what it writes afterwards.
 
 The script is idempotent at the script level (re-running re-deploys
-everything), but the CREATE2 salts are hardcoded — to redeploy to the same
+everything), but the CREATE2 salts are hardcoded, to redeploy to the same
 addresses, pass the same env vars. To deploy to new addresses, change the
 salts.
 

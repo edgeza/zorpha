@@ -1,6 +1,6 @@
 # The timelock on adapter installs was advisory
 
-**Severity:** high — defeats the delay that protects depositor funds
+**Severity:** high, defeats the delay that protects depositor funds
 **Status:** fixed in the deploy handover; live testnet deployment still needs the re-handover below
 **Found:** 2 September 2026, by asking why a queued migration had to wait
 
@@ -8,7 +8,7 @@
 
 `YieldVault.setAdapter` is `onlyRole(ADAPTER_SETTER_ROLE)`, and `DeployVaultsV1`
 hands that role to the `Timelock` and to nobody else. Read on its own, that says
-repointing where depositor funds are held takes 48 hours — the window a
+repointing where depositor funds are held takes 48 hours; the window a
 depositor would need to exit ahead of a venue change they disagree with.
 
 It did not take 48 hours. OpenZeppelin's `AccessControl` makes
@@ -21,7 +21,7 @@ gov holds DEFAULT_ADMIN_ROLE        == true
 grantRole(ADAPTER_SETTER_ROLE, gov) from gov  -> SUCCEEDS
 ```
 
-Two transactions — grant, then call — and the delay is gone. Confirmed by
+Two transactions, grant, then call; and the delay is gone. Confirmed by
 simulation against the deployed testnet vault `0x521a90ba…`, not by reading.
 
 ## Why it matters more than it looks
@@ -30,20 +30,20 @@ The threat model is not a stranger. Nobody outside governance gains anything
 here. It is that **the guarantee the code advertised did not exist**:
 
 - if the governance Safe is compromised, the 48h window that was supposed to let
-  depositors exit provides none — funds can be moved to an attacker's venue in
+  depositors exit provides none, funds can be moved to an attacker's venue in
   one block
 - `updateDelay` on `TimelockController` requires `msg.sender == address(this)`,
   so shortening the delay genuinely does need the delay. The one place the
   timelock was airtight was protecting itself
 - an advisory delay is worse than no delay, because it stops anyone looking for
   the protection. A drill was written and passed asserting the Timelock refuses
-  early execution — true, and it proved the *Timelock* withholds while saying
+  early execution, true, and it proved the *Timelock* withholds while saying
   nothing about whether the *vault* requires the Timelock at all
 
 The same reasoning applies to every other role, since `DEFAULT_ADMIN_ROLE`
 administers all of them: governance could grant itself `UPDATER_ROLE` on the
 oracle, `KEEPER_ROLE` on the executor, and so on. Those are less severe because
-no delay was ever claimed for them — governance managing its own operators is
+no delay was ever claimed for them, governance managing its own operators is
 the intended design. `ADAPTER_SETTER_ROLE` is the one where a security property
 was asserted and not delivered.
 
@@ -76,7 +76,7 @@ vaults. `DEFAULT_ADMIN_ROLE` goes to the Timelock; governance keeps
 and the function asserts all three afterwards, because a handover that silently
 half-applied would leave exactly the state it exists to prevent.
 
-Governance keeping `RISK_COUNCIL_ROLE` is deliberate — the circuit breaker has
+Governance keeping `RISK_COUNCIL_ROLE` is deliberate; the circuit breaker has
 to be pullable in one block, and a delay on the emergency stop would be a worse
 bug than this one.
 
@@ -93,7 +93,7 @@ fee revenue, and the recipient is fixed, so this was accepted rather than
 worked around.
 
 The tidier alternative is to gate `claimFees` on `KEEPER_ROLE`, which is where
-`evaluateFees` already sits and which governance retains — routine operations on
+`evaluateFees` already sits and which governance retains, routine operations on
 a fixed recipient, with everything that changes a pointer left timelocked. That
 is a contract change, so it needs a vault redeploy and therefore a factory
 redeploy, since `VaultFactory` compiles vault bytecode into itself. It was not
@@ -105,7 +105,7 @@ auditor to push back on. Flagged rather than silently decided.
 `test/vaults/RoleEscalation.t.sol`, 8 tests. The first two are the pair that
 matters:
 
-- `test_OldHandover_GovEscalatesToSetAdapter_WithNoDelay` reproduces the bug —
+- `test_OldHandover_GovEscalatesToSetAdapter_WithNoDelay` reproduces the bug , 
   gov grants itself the role and repoints the adapter, and the test asserts it
   *succeeds*. A security test asserting the hole is open reads backwards, and is
   the point: it is the reason the deploy must not give gov admin
@@ -121,7 +121,7 @@ no path, and that the deployer is left with nothing.
 ## Still to do on the live testnet deployment
 
 The deploy script is fixed; the three already-deployed vaults are not. No
-redeploy is needed — the handover is repeatable:
+redeploy is needed; the handover is repeatable:
 
 ```
 # for each of spot 0x11ea3629, rotation 0x15257073, yield 0x521a90ba
@@ -137,7 +137,7 @@ skipped.
 
 ## Related
 
-- [[FINDINGS-EQUALISATION]] — the other case where a passing test asserted less
+- [[FINDINGS-EQUALISATION]]; the other case where a passing test asserted less
   than its name implied
-- `docs/BURNED-KEYS.md` — why a deployer left holding admin is not hypothetical
+- `docs/BURNED-KEYS.md`, why a deployer left holding admin is not hypothetical
   here

@@ -17,7 +17,7 @@ import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
 ///
 ///         Voting: the token carries ERC20Votes checkpoints, so holders have
 ///         real, measurable onchain voting weight. No Governor is wired at
-///         launch — see docs/GOVERNANCE.md for the honest statement of what
+///         launch, see docs/GOVERNANCE.md for the honest statement of what
 ///         that does and does not mean today.
 ///
 ///         Clock: checkpoints are keyed to `block.timestamp` (ERC-6372), not

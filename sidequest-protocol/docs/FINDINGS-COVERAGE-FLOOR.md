@@ -1,6 +1,6 @@
 # `minCoverageBps` is a minimum on the leader's exit, not on the vault
 
-**Severity:** medium — a stated protection binds in one direction only
+**Severity:** medium; a stated protection binds in one direction only
 **Status:** observed and drilled; **not fixed**, because the fix is a product decision
 **Found:** 3 September 2026, while writing the escrow floor drill
 
@@ -47,7 +47,7 @@ against a `minCoverageBps` of 500. Every one of those deposits succeeds, and
 
 An absolute buffer necessarily thins as a vault grows. Capping inflows on
 coverage would mean a successful vault stops accepting deposits until its leader
-posts more capital — which throttles exactly the vaults that are working, and
+posts more capital; which throttles exactly the vaults that are working, and
 hands the leader a veto over growth they may not want to fund.
 
 So the current behaviour is a defensible design. What is not defensible is the
@@ -58,7 +58,7 @@ gap between it and the words around it:
   read false at the moment someone deposits, with nothing in the deposit path
   mentioning it
 - the launch gate checks `minSeedEscrow` and coverage **at launch**, so coverage
-  is validated at the start and at the leader's exit, and never in between —
+  is validated at the start and at the leader's exit, and never in between , 
   which is the entire period a depositor is exposed
 
 ## Options, none of them free
@@ -84,12 +84,12 @@ auditor's, not a script author's.
 `script/testnet-leader-bond-drill.sh`, part B. It asserts the behaviour as it
 **is**, in both directions:
 
-- a large deposit dilutes coverage, and **succeeds** — the drill records this
+- a large deposit dilutes coverage, and **succeeds**; the drill records this
   rather than asserting a guarantee that does not exist
 - if the deposit crosses the floor, `adequatelyCovered` must report `false`.
   Coverage below the floor while that boolean still read true would be a
   reporting bug on top of the unenforced floor, and that is asserted
-- the leader's `executeWithdrawal` **is** refused with `WouldBreachMinimum` —
+- the leader's `executeWithdrawal` **is** refused with `WouldBreachMinimum` , 
   the one direction the floor binds
 
 Deliberately not asserted: that deposits are refused. Writing that assertion
@@ -98,5 +98,5 @@ a design decision by accident.
 
 ## Related
 
-- [[FINDINGS-ROLE-ESCALATION]] — the other case found this week where a
+- [[FINDINGS-ROLE-ESCALATION]]; the other case found this week where a
   protection was asserted in prose and enforced in one direction only

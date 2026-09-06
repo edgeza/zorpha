@@ -8,12 +8,12 @@ filled in by hand in a browser.
 
 Blockscout verifies ownership against the **contract deployer**, because
 `Zorpha` is `ERC20Votes, ERC20Permit` with no `owner()`, no admin role and no
-mint function — there is no other authority to check against.
+mint function; there is no other authority to check against.
 
     deployer: 0x90D5fE6a51CbDA18C3960966D5830Ba03B4fFB02
 
 Signing a message costs no gas, so that wallet's 0.00052 ETH is irrelevant.
-Connect it, sign, done. It is not a Safe owner and holds no funds — nothing is
+Connect it, sign, done. It is not a Safe owner and holds no funds; nothing is
 at risk in signing.
 
 ## Token facts
@@ -38,7 +38,7 @@ at risk in signing.
 
 **Do not submit a GitHub link.** `github.com/edgeza/zorpha` is private and
 returns 404 to anonymous visitors. A dead "source code" link on a token profile
-is worse than none — it is the same failure the whitepaper page already had and
+is worse than none; it is the same failure the whitepaper page already had and
 deliberately removed. If the repo is made public later, add it then.
 
 ## Images (all live, all 200)
@@ -48,7 +48,7 @@ deliberately removed. If the repo is made public later, add it then.
     256x256    https://www.zorpha.xyz/zorpha-256.png     <- use for both icons
     banner     https://www.zorpha.xyz/zorpha-banner.png  1280x430 (~2.98:1)
 
-DexScreener's header slot is 3:1. The banner is 1280x430, which is 2.977:1 —
+DexScreener's header slot is 3:1. The banner is 1280x430, which is 2.977:1 , 
 it will be cropped by about three pixels vertically. Not worth re-cutting.
 
 ## Short description (DexScreener, ~245 chars)
@@ -103,7 +103,7 @@ rather than a personal inbox.
 
 Verified 2026-09-05. Form: https://www.coingecko.com/en/coins/new
 
-## Prerequisites — both already satisfied
+## Prerequisites; both already satisfied
 
 - **CoinGecko has the chain as an asset platform**: `id: "robinhood"`,
   `chain_identifier: 4663`. A contract-linked listing is therefore possible.
@@ -129,7 +129,7 @@ Verified 2026-09-05. Form: https://www.coingecko.com/en/coins/new
 
 GitHub: leave blank, the repo is private and 404s.
 
-## Supply figures — the part that decides the outcome
+## Supply figures; the part that decides the outcome
 
     total supply       1,000,000,000
     max supply         1,000,000,000   (fixed; no mint function exists)
@@ -159,7 +159,7 @@ add, not demand.
 Submitting is free and a rejection costs little, so it is a reasonable thing to
 try. But the lever that changes the answer is real holders, not a better form.
 
-## Name collision — state the canonical contract explicitly
+## Name collision, state the canonical contract explicitly
 
 A GeckoTerminal search for "zorpha" returns FOUR pools. Only the first is real:
 
@@ -175,7 +175,7 @@ never eligible there.
 
 Their displayed liquidity of ~$4,090 and ~$4,139 is an artifact: GeckoTerminal
 values the unsold token side at the bootstrap price. The pools actually hold
-**0.000576 ETH and 0.000024 ETH — $1.49 combined at $2,483/ETH.** There is
+**0.000576 ETH and 0.000024 ETH, $1.49 combined at $2,483/ETH.** There is
 nothing to recover from them.
 
 The fourth entry is the retired 1% pool, drained to zero liquidity, which

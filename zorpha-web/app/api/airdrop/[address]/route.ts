@@ -12,7 +12,7 @@ import path from 'node:path';
  * `sidequest-protocol/scripts/generate-airdrop.ts`.
  *
  * It reads the combined file rather than the per-recipient ones on purpose.
- * Those are gitignored — thousands of tiny files are not worth committing —
+ * Those are gitignored, thousands of tiny files are not worth committing , 
  * which means a deployment only ever has what git tracked. Reading them at
  * runtime would 404 every single claim in production with "not eligible" and
  * nothing anywhere to explain it, while working perfectly in local dev where

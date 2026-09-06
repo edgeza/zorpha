@@ -1,4 +1,4 @@
--- 010 — list the mainnet vault, retire the testnet ones the portal was serving.
+-- 010, list the mainnet vault, retire the testnet ones the portal was serving.
 --
 -- WHAT WENT WRONG
 --
@@ -46,7 +46,7 @@ where lower(address) in (
 --
 --   name()   "Zorpha Steakhouse USDG"
 --   symbol() "zsUSDG"
---   asset()  0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168  (USDG, 6dp)
+--   asset()  0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168 (USDG, 6dp)
 --
 -- oracle is NULL because a yield vault prices from its ERC-4626 target rather
 -- than a feed -- that is why this vault could launch on a deployment with no

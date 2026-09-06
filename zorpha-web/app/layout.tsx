@@ -29,7 +29,7 @@ const sans = Schibsted_Grotesk({
  *
  * Newsreader is an editorial serif designed for reading on screens. It carries
  * real weights, so headings take their hierarchy from the type itself rather
- * than from size alone — which is what a single-weight display serif forces
+ * than from size alone; which is what a single-weight display serif forces
  * you into, since a synthesised bold smears its thin strokes.
  */
 const display = Newsreader({

@@ -1,7 +1,7 @@
 {
   "name": "@zorpha/indexer",
   "version": "1.0.0",
-  "description": "Zorpha receipts indexer — long-running service for Robinhood Chain",
+  "description": "Zorpha receipts indexer, long-running service for Robinhood Chain",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {

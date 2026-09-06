@@ -6,7 +6,7 @@ After studying Robinhood Chain itself, the projects in your chat, the current Ro
 
 My strongest concept is:
 
-> **RECEIPTS — an onchain “I called it before it happened” network.**
+> **RECEIPTS; an onchain “I called it before it happened” network.**
 >
 > Users publicly call a market **UP or DOWN before the move**, Robinhood Chain timestamps the call, Chainlink records the before-and-after prices, and the protocol permanently scores the result.
 >
@@ -32,7 +32,7 @@ The timing is unusually good. Robinhood Chain's public mainnet only launched on 
 
 More important than those numbers is *what Robinhood Chain is becoming*. Galaxy found that memecoins represented **79.2% of DEX volume as of July 27**, while RWA volume's share simultaneously increased from 0.39% in the chain's first week to 8.58% in the July 21–27 week. It also observed a distinctly Robinhood-native phenomenon: traders pairing memes directly with tokenized stocks such as NVDA, GME, MSFT and SpaceX exposure. citeturn17view4
 
-That intersection — **memes × trading culture × tokenized equities × verifiable financial data × AI** — is the territory I would attack.
+That intersection, **memes × trading culture × tokenized equities × verifiable financial data × AI**, is the territory I would attack.
 
 Not “another stock index.”
 
@@ -67,7 +67,7 @@ Those are exactly the things you *do not* want coupled to the first few weeks of
 
 Zentory's interesting intellectual property is actually relevant to the project I am proposing: Zentory already recognizes the problem with unverifiable performance screenshots and maintains a forward, timestamped track record rather than merely displaying backtests. Its own site explicitly contrasts immutable forward records with screenshots whose past can be selectively presented. citeturn18view2
 
-**Take that philosophical idea — proof before outcome — and compress it into something any degen understands in five seconds.**
+**Take that philosophical idea, proof before outcome; and compress it into something any degen understands in five seconds.**
 
 Do not move Zentory itself.
 
@@ -324,7 +324,7 @@ Profiles should show something like:
 
 For the global leaderboard, require a meaningful minimum sample before ranking someone prominently. That prevents one lucky prediction from becoming “#1 trader.”
 
-Every prediction — not merely the winner's chosen screenshots — remains in the public history.
+Every prediction; not merely the winner's chosen screenshots, remains in the public history.
 
 That creates a reputation system with a property Twitter/X cannot provide:
 
@@ -583,7 +583,7 @@ There is one major caveat: **Pools explicitly states that it is for memecoins an
 
 That is another reason I would keep the V1 token economically separate from the application.
 
-Should legal counsel ultimately decide that the token itself should become a genuine application utility token — for example, burning tokens for advanced functionality — then I would **not** casually pretend it remains a pure Pools memecoin. Deploy it through infrastructure appropriate for that asset instead.
+Should legal counsel ultimately decide that the token itself should become a genuine application utility token, for example, burning tokens for advanced functionality, then I would **not** casually pretend it remains a pure Pools memecoin. Deploy it through infrastructure appropriate for that asset instead.
 
 Do not bend the product to dodge terms.
 
@@ -799,7 +799,7 @@ But price calls can.
 
 A founder tweeting:
 
-> “I think $XYZ beats ETH over the next 24 hours — receipt attached.”
+> “I think $XYZ beats ETH over the next 24 hours, receipt attached.”
 
 is much more interesting than:
 

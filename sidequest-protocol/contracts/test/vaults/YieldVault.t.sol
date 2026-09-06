@@ -219,7 +219,7 @@ contract YieldVaultTest is Test {
     /// vault? See docs/FINDINGS-FEE-CLAIM-BACKING.md. There the fee claim is
     /// asset-denominated while the backing sits in cash, so a price move splits
     /// the two. The yield vault holds one leg and has no price, so a price move
-    /// cannot do it — but a venue *loss* can, and that is not exotic.
+    /// cannot do it; but a venue *loss* can, and that is not exotic.
     ///
     /// Answer: it did carry it. A venue loss splits the claim from its backing
     /// exactly as a price move does, and a venue taking a haircut is the ordinary

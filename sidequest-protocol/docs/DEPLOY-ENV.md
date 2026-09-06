@@ -51,7 +51,7 @@ also the governance key.
 (chain 4663, 243 tokens) contains no plain USDC. The stablecoins it carries are
 Paxos **USDG** (`0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168`, 6 decimals),
 USDe, and `syrupUSDC`. The vault contracts are written against a generic
-6-decimal ERC-20 and never hardcode USDC, so USDG works — but the naming
+6-decimal ERC-20 and never hardcode USDC, so USDG works; but the naming
 throughout the codebase says USDC, and the two must be reconciled before the
 vaults take real deposits. The bridge page already opens on USDG for this
 reason.
@@ -80,7 +80,7 @@ date -d '+90 days' +%s
 ### 0.4 A tokenised equity for phase B (`STOCK_TOKEN_1`)
 
 Only needed if you deploy vaults. Robinhood Chain mainnet carries tokenised
-equities — AAPL, TSLA, NVDA, MSFT, GOOGL and others — so pick the one whose
+equities, AAPL, TSLA, NVDA, MSFT, GOOGL and others; so pick the one whose
 mandate you actually want to run and use its address. On testnet, a mock
 18-decimal ERC-20 is fine.
 
@@ -155,8 +155,8 @@ web app reads:
 | `Executor` (phase B) | `NEXT_PUBLIC_STRATEGY_EXECUTOR_ADDRESS` |
 | `Reputation` (phase B) | `NEXT_PUBLIC_REPUTATION_REGISTRY_ADDRESS` |
 
-The write is a **merge**, not an overwrite. Anything the script does not own —
-`NEXT_PUBLIC_WC_PROJECT_ID`, the Supabase pair, `NEXT_PUBLIC_SITE_URL` — is
+The write is a **merge**, not an overwrite. Anything the script does not own , 
+`NEXT_PUBLIC_WC_PROJECT_ID`, the Supabase pair, `NEXT_PUBLIC_SITE_URL`, is
 carried through and re-appended under a separator, and the previous file is
 copied to `.env.local.bak` first. None of those three can be recovered from a
 deploy, so losing them to a redeploy would mean going back to the Reown and
@@ -221,8 +221,8 @@ publishing them after anyone can already tell whether they qualified.
 
 Run the whole thing on testnet (`CHAIN_ID=46630`) first, including phase B, and
 exercise the portal against it: connect a wallet, read a balance, claim an
-airdrop, view a receipt. The failure modes that matter — an unsatisfiable oracle
-quorum, a missing router, a treasury whose ownership was never accepted — all
+airdrop, view a receipt. The failure modes that matter; an unsatisfiable oracle
+quorum, a missing router, a treasury whose ownership was never accepted, all
 look identical to success until someone tries to use them.
 
 For mainnet, change `CHAIN_ID` to `4663`, point the RPC and explorer variables

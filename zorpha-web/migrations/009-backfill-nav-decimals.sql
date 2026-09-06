@@ -1,4 +1,4 @@
--- 009 — backfill nav_decimals, and stop rendering a NAV we cannot scale.
+-- 009, backfill nav_decimals, and stop rendering a NAV we cannot scale.
 --
 -- 007 added the column, left old rows null, and had the renderer fall back to
 -- 18 so that "rows written before this column keep exactly the behaviour they

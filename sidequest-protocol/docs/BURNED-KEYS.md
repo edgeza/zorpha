@@ -1,6 +1,6 @@
 # Keys that must never be used on mainnet
 
-Every key here has had its private key exposed in plaintext — pasted into a
+Every key here has had its private key exposed in plaintext, pasted into a
 terminal that was then shared, or printed by `cast wallet new` and copied along
 with the surrounding output. They are all fine on testnet, where nothing of
 value sits behind them. None of them may hold a role, a balance or a signing
@@ -11,15 +11,15 @@ these addresses holds a role on a mainnet deployment.
 
 | Address | Was | Exposed | Still used on testnet |
 | --- | --- | --- | --- |
-| `0xB4a7C2DeebB5EaDC34e120bC8a5708508DC17f4b` | deployer; `authorizedSigner` until rotated | private key pasted in full | yes — deploy key for 46630 |
-| `0x5EC41DBe5Ca00cB00B896570c5Ff8fFc274cB5F6` | manager signer (`zorpha-signer`) | printed by `cast wallet new`, copied with the surrounding terminal output | yes — signs testnet rebalances |
+| `0xB4a7C2DeebB5EaDC34e120bC8a5708508DC17f4b` | deployer; `authorizedSigner` until rotated | private key pasted in full | yes, deploy key for 46630 |
+| `0x5EC41DBe5Ca00cB00B896570c5Ff8fFc274cB5F6` | manager signer (`zorpha-signer`) | printed by `cast wallet new`, copied with the surrounding terminal output | yes, signs testnet rebalances |
 
 ## Why the signer being public does not invalidate the testnet drills
 
 The spot and rotation drills prove that the EIP-712 path works: that a
 correctly signed rebalance is accepted, that a replayed one reverts on the
 nonce, that an expired one reverts on the deadline, and that the rate limit
-bites. None of those depend on the signing key being secret — they depend on
+bites. None of those depend on the signing key being secret; they depend on
 the *signature* being checked. A public key signs just as validly.
 
 What a public signer would break is the security property on mainnet: anyone

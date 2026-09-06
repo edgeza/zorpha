@@ -34,7 +34,7 @@ import {ERC4626YieldAdapter} from "../adapters/ERC4626YieldAdapter.sol";
 ///                  funds anywhere except an approved venue
 ///
 ///         The bond is denominated in $ZOR and is a bond, not a toll. It buys
-///         no access to the product — depositors never need it — it is capital
+///         no access to the product, depositors never need it; it is capital
 ///         at risk for the right to operate a vault, forfeitable for
 ///         misconduct. First-loss capital is deliberately NOT in $ZOR: a
 ///         buffer whose price falls with the protocol's fortunes evaporates
@@ -290,8 +290,8 @@ contract VaultLauncher is AccessControl, ReentrancyGuard {
         );
 
         // Keep ADAPTER_SETTER_ROLE, give up everything else. This contract
-        // needs exactly one power over a launched vault — swapping the adapter
-        // between allowlisted venues on the leader's instruction — and holding
+        // needs exactly one power over a launched vault, swapping the adapter
+        // between allowlisted venues on the leader's instruction; and holding
         // DEFAULT_ADMIN_ROLE as well would leave it able to change the fee or
         // the fee recipient on every vault ever launched, with no function
         // that does so and no reason to be able to.

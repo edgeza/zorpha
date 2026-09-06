@@ -35,7 +35,7 @@
 
   /* Tabular figures where numbers are actually tabulated, and NOWHERE else.
      This used to sit on `body`, which is wrong for any text face whose `tnum`
-     set covers punctuation as well as digits — a tabular full stop is padded
+     set covers punctuation as well as digits; a tabular full stop is padded
      out to digit width so decimal columns line up, which is correct in a table
      and puts a visible gap in front of every full stop and comma in prose.
      Schibsted Grotesk does exactly that, to the tune of ~6px a mark. */
@@ -235,7 +235,7 @@
      red came from. This is the same atmospheric effect built from gradients
      instead: no external image to host, nothing for the CSP to allow, and it
      scales to any viewport without art direction. Animation is applied to
-     blurred blobs via transform (see .aurora-blob), not to these gradients —
+     blurred blobs via transform (see .aurora-blob), not to these gradients , 
      animating a large radial gradient repaints the whole layer every frame. */
   .aurora {
     background:

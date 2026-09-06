@@ -1,4 +1,4 @@
-# Zorpha launch runbook — testnet to mainnet
+# Zorpha launch runbook, testnet to mainnet
 
 Everything below was verified against Robinhood Chain on 1 September 2026, not
 assumed. Where something is unverified it says so.
@@ -13,7 +13,7 @@ conflating any two of them is how launches go wrong.
 | | What | Why separate |
 |---|---|---|
 | **Rabby** (you already have this) | Your personal wallet | Signs Safe transactions, and it is what you use to click around the portal. Never holds protocol authority. |
-| **Deployer key** | A throwaway EOA, private key on disk | `forge script` needs a raw private key — a browser extension cannot sign a deploy. This key ends the deploy holding **zero tokens and zero roles**; the script asserts it and reverts otherwise. |
+| **Deployer key** | A throwaway EOA, private key on disk | `forge script` needs a raw private key; a browser extension cannot sign a deploy. This key ends the deploy holding **zero tokens and zero roles**; the script asserts it and reverts otherwise. |
 | **Governance Safe** | Multisig at app.safe.global | Owns the Timelock, which owns everything else. `DeployZorphaToken` **refuses to run** if `GOVERNANCE` equals the deployer. |
 
 **Rabby is the right choice** and needs no change. It is an EIP-1193 injected
@@ -29,7 +29,7 @@ cast wallet new
 
 That prints an address and a private key. Fund the address with testnet gas,
 export the key into your shell for the deploy, and never commit it. It is
-disposable by design — after the deploy it controls nothing.
+disposable by design, after the deploy it controls nothing.
 
 ---
 
@@ -41,12 +41,12 @@ disposable by design — after the deploy it controls nothing.
 | RPC | `https://rpc.testnet.chain.robinhood.com/rpc` | `https://rpc.mainnet.chain.robinhood.com` |
 | RPC fallback | `https://robinhood-sepolia-rpc.publicnode.com` | `https://robinhood-rpc.publicnode.com` |
 | Explorer | `https://explorer.testnet.chain.robinhood.com` | `https://robinhoodchain.blockscout.com` |
-| Block time | **0.170s** (measured over 1,000 blocks) | — |
-| `getLogs` cap | **10,000 results**, not a block range | — |
+| Block time | **0.170s** (measured over 1,000 blocks) |, |
+| `getLogs` cap | **10,000 results**, not a block range |, |
 | Native token | Sepolia ETH | ETH |
 
 Note the `/rpc` path on testnet. Omit it and you get a **TLS handshake
-failure**, not a 404 — which is exactly why the original hostnames in this repo
+failure**, not a 404; which is exactly why the original hostnames in this repo
 (`testnet.rpc.robinhood.com`) looked plausible and never worked.
 
 Already deployed on testnet, verified by `eth_getCode`:
@@ -78,7 +78,7 @@ amounts as `1e6` (`BUYBACK_THRESHOLD_USDC=1000 * 1e6`), so an 18-decimal cash
 asset would make the buyback threshold effectively unreachable and misprice
 every vault denominated against it.
 
-> **Caveat.** Testnet tokens are permissionless — anyone can deploy something
+> **Caveat.** Testnet tokens are permissionless; anyone can deploy something
 > called TSLA. These were chosen on holder count plus correct decimals, which is
 > a heuristic, not verification. Confirm against Robinhood's own docs before
 > mainnet. Getting this wrong on testnet costs nothing; getting it wrong on
@@ -121,7 +121,7 @@ Go to **app.safe.global**, switch the network to Robinhood Testnet, connect
 Rabby, create a Safe.
 
 For testnet a 1-of-1 with your Rabby is fine. **For mainnet use at least 2-of-3
-with keys on separate devices** — a 1-of-1 Safe is a single point of failure
+with keys on separate devices**; a 1-of-1 Safe is a single point of failure
 wearing a multisig costume.
 
 Record the Safe address as `GOVERNANCE`.
@@ -183,7 +183,7 @@ export ORACLE_QUORUM=1
 forge script script/DeployVaultsV1.s.sol:DeployVaultsV1 --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast -vvv
 ```
 
-Leave `STOCK_FEED_1` / `STOCK_FEED_2` unset on testnet — there is no published
+Leave `STOCK_FEED_1` / `STOCK_FEED_2` unset on testnet; there is no published
 Chainlink testnet feed list, so the script wires the self-operated
 `MedianOracle`. `ORACLE_QUORUM=1` is acceptable for testnet only.
 
@@ -206,7 +206,7 @@ Two migrations, in order:
 - `supabase/migrations/001_initial.sql`
 - `supabase/migrations/002_indexer_state_and_counters.sql`
 
-002 is not optional. Without it the indexer throws on startup by design — the
+002 is not optional. Without it the indexer throws on startup by design; the
 old code silently fell back to an upsert that never incremented
 `total_rebalances`, so the leaderboard read zero forever.
 
@@ -227,7 +227,7 @@ RPC_URL_FALLBACK=https://robinhood-sepolia-rpc.publicnode.com
 CHAIN_ID=46630
 EXPLORER_URL=https://explorer.testnet.chain.robinhood.com
 SUPABASE_URL=https://<ref>.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=<service role key — Railway only, never the browser>
+SUPABASE_SERVICE_ROLE_KEY=<service role key, Railway only, never the browser>
 REPUTATION_REGISTRY_ADDRESS=0x<from 3.7>
 START_BLOCK=<the deploy block from 3.5>
 ```
@@ -239,7 +239,7 @@ Health: `/healthz` (liveness), `/readyz` (liveness + database).
 
 ### 3.11 Point the front end at it
 
-Fill the blanks you asked about — every one comes from a deploy output:
+Fill the blanks you asked about; every one comes from a deploy output:
 
 | Env var | Source |
 |---|---|
@@ -255,7 +255,7 @@ Fill the blanks you asked about — every one comes from a deploy output:
 | `NEXT_PUBLIC_REPUTATION_REGISTRY_ADDRESS` | 3.7 · `Reputation` |
 
 Plus `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the
-**anon** key — RLS makes it read-only; the service role key must never reach
+**anon** key, RLS makes it read-only; the service role key must never reach
 the browser).
 
 The portal names every unset address in a banner rather than rendering a
@@ -263,7 +263,7 @@ confident zero, so you can watch it clear as you fill them in.
 
 ### 3.12 Post-deploy actions only the Safe can do
 
-1. Timelock queues and executes `ProtocolTreasury.acceptOwnership()` —
+1. Timelock queues and executes `ProtocolTreasury.acceptOwnership()` , 
    `Ownable2Step` is deliberately two-phase.
 2. Safe calls `ZorphaVesting.fund(...)` with the real contributor and backer
    schedules. The deploy script does not do this on purpose: those are real
@@ -294,11 +294,11 @@ Do not skip to mainnet until every line passes.
 **Vesting**
 - [ ] Safe funds a schedule; beneficiary sees the right cliff and end date
 - [ ] Pre-cliff claim reverts; post-cliff releases the expected fraction
-- [ ] `getVotes(vestingContract) == 0` — unvested tokens must not vote
+- [ ] `getVotes(vestingContract) == 0`, unvested tokens must not vote
 
 **Vaults**
 - [ ] Post an oracle price, deposit, confirm shares minted
-- [ ] Redeem returns principal (this is audit finding V-01 — verify it live)
+- [ ] Redeem returns principal (this is audit finding V-01, verify it live)
 - [ ] Sign a rebalance, submit through the executor, receipt appears in the portal
 - [ ] Stale oracle → rebalance reverts rather than mispricing
 - [ ] Circuit breaker blocks deposits, redemptions still work
@@ -311,7 +311,7 @@ Do not skip to mainnet until every line passes.
 - [ ] `/readyz` returns 200
 - [ ] Receipts appear within a poll cycle
 - [ ] Leaderboard `total_rebalances` increments (proves migration 002 applied)
-- [ ] Restart the service — it resumes from the cursor, does not re-scan
+- [ ] Restart the service; it resumes from the cursor, does not re-scan
 
 **Wallets**
 - [ ] Rabby connects
@@ -325,7 +325,7 @@ Do not skip to mainnet until every line passes.
 
 Mainnet is **not** a redeploy with different env values. Four things change.
 
-### 5.1 Real oracles — the big one
+### 5.1 Real oracles; the big one
 
 Chainlink has **57 live feeds on chain 4663**, including 35 tokenised equities
 at 8 decimals. See `CHAINLINK-FEEDS-MAINNET.md`.
@@ -346,8 +346,8 @@ decides the price every vault marks its NAV against.
 ### 5.2 Real swap venue
 
 Robinhood Chain has Uniswap (per Robinhood's own integrations page). Deploy
-`RobinhoodChainRouterAdapter` — a real Uniswap V3 adapter already in this repo
-— against the live router, instead of `StubSwapAdapter`.
+`RobinhoodChainRouterAdapter`; a real Uniswap V3 adapter already in this repo
+, against the live router, instead of `StubSwapAdapter`.
 
 You need **two** instances: one per vault pair (equity ↔ USDC), and one for the
 buyback (USDC → ZOR). Grant each `VAULT_ROLE` to its caller.
@@ -374,7 +374,7 @@ Named honestly, because these will bite otherwise.
    it compiles, but no test exercises it. Until the buyback runs against it on
    testnet, "it should work" is the strongest claim available.
 2. **The buyback cannot run without a ZOR market.** No pool, no route, no
-   burn. Fee revenue accumulates in the contract meanwhile — recoverable via
+   burn. Fee revenue accumulates in the contract meanwhile, recoverable via
    the timelocked `withdrawUsdc`, which exists precisely so it cannot be
    stranded.
 3. **Legal pages are engineer-written templates**, labelled as such on the

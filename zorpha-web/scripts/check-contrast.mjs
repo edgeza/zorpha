@@ -5,7 +5,7 @@
  *
  * UI-tier colour lives in two places that must agree: the CSS custom
  * properties below (THRESHOLDS) in app/globals.css, and the `zor`/`ink`
- * scales in tailwind.config.mjs — which is what every real `text-*`,
+ * scales in tailwind.config.mjs; which is what every real `text-*`,
  * `border-*`, `bg-*` and `ring-*` utility across app/components actually
  * compiles to. This script reads both files, asserts tailwind's `zor.500`
  * agrees with `--zor-500` (the plan requires the two to agree), and runs
@@ -16,8 +16,8 @@
  * (4.5:1); every other UI-tier stop takes the 3.0 "large text / UI
  * component" floor.
  *
- * The graphic tier — `--zor-graphic-*` in globals.css, plus `tint` in
- * lib/brand.ts, which has no CSS custom property — is deliberately exempt
+ * The graphic tier, `--zor-graphic-*` in globals.css, plus `tint` in
+ * lib/brand.ts, which has no CSS custom property, is deliberately exempt
  * from those floors: those values live on WebGL and gradient surfaces that
  * carry no contrast obligation, and asserting a threshold on them would be
  * false precision. Instead, this script derives a denylist from those same
@@ -41,8 +41,8 @@ const THRESHOLDS = {
 };
 
 // `ink.200` is the body-text token (`body { @apply ... text-ink-200 }` in
-// globals.css) and must clear AA. Every other ink stop is UI chrome —
-// headings, labels, placeholders — and takes the shared 3.0 floor.
+// globals.css) and must clear AA. Every other ink stop is UI chrome , 
+// headings, labels, placeholders; and takes the shared 3.0 floor.
 const INK_MIN = { 100: 3.0, 200: 4.5, 300: 3.0, 400: 3.0, 500: 3.0, 600: 3.0 };
 
 // zor stops actually reachable as text/border/ring colour across
@@ -50,7 +50,7 @@ const INK_MIN = { 100: 3.0, 200: 4.5, 300: 3.0, 400: 3.0, 500: 3.0, 600: 3.0 };
 // border-zor-600, ring-zor-500, ...). `700` is unused anywhere in the
 // codebase; `900` appears exactly once, as a decorative card border (the
 // homepage's Final CTA panel), never as text or an interactive boundary.
-// Neither carries a contrast obligation, so — like the graphic tier — gating
+// Neither carries a contrast obligation, so, like the graphic tier, gating
 // on them would be false precision. Both are still parsed and reported below
 // for visibility, just not gated.
 const ZOR_GATED = new Set(['300', '400', '500', '600']);
@@ -146,7 +146,7 @@ if (!zorScale['500']) {
 } else if (cssHexes['--zor-500'] && zorScale['500'].toLowerCase() !== cssHexes['--zor-500'].toLowerCase()) {
   failures.push(
     'tailwind.config.mjs zor.500 (' + zorScale['500'] + ') does not match --zor-500 (' +
-    cssHexes['--zor-500'] + ') in ' + CSS_PATH + ' — the plan requires the two to agree.',
+    cssHexes['--zor-500'] + ') in ' + CSS_PATH + '; the plan requires the two to agree.',
   );
 }
 

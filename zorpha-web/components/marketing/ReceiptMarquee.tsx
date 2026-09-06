@@ -27,7 +27,7 @@ type Row = { vault: string; target: string; nav: string; manager: string; nonce:
 const SAMPLE: Row[] = [
   { vault: 'zqtAAPL', target: '70%', nav: '1.04182', manager: '0x8f2ab41c9d0e4c19', nonce: 42 },
   { vault: 'zqROT', target: '20 / 80', nav: '0.99871', manager: '0x3c71de90ab2f7741', nonce: 17 },
-  { vault: 'zqtUSDG', target: '—', nav: '1.00240', manager: '0x91b0ff23c7de5a08', nonce: 8 },
+  { vault: 'zqtUSDG', target: ', ', nav: '1.00240', manager: '0x91b0ff23c7de5a08', nonce: 8 },
   { vault: 'zqtAAPL', target: '0%', nav: '1.03994', manager: '0x8f2ab41c9d0e4c19', nonce: 41 },
   { vault: 'zqROT', target: '50 / 50', nav: '1.00113', manager: '0x3c71de90ab2f7741', nonce: 16 },
   { vault: 'zqtAAPL', target: '100%', nav: '1.02760', manager: '0x8f2ab41c9d0e4c19', nonce: 40 },

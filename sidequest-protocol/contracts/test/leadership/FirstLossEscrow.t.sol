@@ -117,7 +117,7 @@ contract FirstLossEscrowTest is Test {
         target.slash(1_500 * ONE); // 1,000 more than the buffer can cover
 
         // 8,500 raw, plus the whole 500 buffer, is 9,000. The depositor wears
-        // the 1,000 the buffer could not reach — and only that.
+        // the 1,000 the buffer could not reach; and only that.
         assertApproxEqAbs(vault.totalAssets(), 9_000 * ONE, 2, "buffer not fully applied");
 
         uint256 before = usdg.balanceOf(alice);

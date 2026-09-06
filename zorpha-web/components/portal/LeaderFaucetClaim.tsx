@@ -80,7 +80,7 @@ export function LeaderFaucetClaim() {
     return (
       <Callout tone="warn" title="The bond faucet is not deployed yet">
         <p>
-          Launching a vault needs a 10,000 $ZOR bond, and $ZOR has no mint function — the whole
+          Launching a vault needs a 10,000 $ZOR bond, and $ZOR has no mint function; the whole
           supply is minted at deploy. Until the faucet is live on this network, a bond has to come
           from governance directly.
         </p>
@@ -97,7 +97,7 @@ export function LeaderFaucetClaim() {
 
   const bond = ticket?.[0];
   const fmt = (v?: bigint) =>
-    v === undefined ? '—' : Number(formatUnits(v, zorDecimals)).toLocaleString('en-US');
+    v === undefined ? ', ' : Number(formatUnits(v, zorDecimals)).toLocaleString('en-US');
 
   const faucetZor = data?.[6]?.status === 'success' ? data[6].result : undefined;
   const faucetLauncher = data?.[7]?.status === 'success' ? data[7].result : undefined;
@@ -146,7 +146,7 @@ export function LeaderFaucetClaim() {
         <p className="mt-2 max-w-prose text-sm leading-relaxed text-ink-400">
           One bond and one seed per address, once. The bond is refundable through{' '}
           <Mono>reclaimBond</Mono> when your vault is empty, and forfeitable by governance for
-          misconduct — a market drawdown is not misconduct.
+          misconduct; a market drawdown is not misconduct.
         </p>
       </div>
 
@@ -160,13 +160,13 @@ export function LeaderFaucetClaim() {
         <div>
           <dt className="stat-label">Seed</dt>
           <dd className="mt-0.5 font-mono tabular-nums">
-            {ticket?.[1] === undefined ? '—' : Number(formatUnits(ticket[1], 6)).toLocaleString('en-US')} tUSDG
+            {ticket?.[1] === undefined ? ', ' : Number(formatUnits(ticket[1], 6)).toLocaleString('en-US')} tUSDG
           </dd>
         </div>
         <div>
           <dt className="stat-label">Claims left</dt>
           <dd className="mt-0.5 font-mono tabular-nums">
-            {remaining === undefined ? '—' : remaining.toString()}
+            {remaining === undefined ? ', ' : remaining.toString()}
           </dd>
         </div>
       </dl>
@@ -236,7 +236,7 @@ export function LeaderFaucetClaim() {
             {isPending ? 'Confirm in wallet…' : confirming ? 'Claiming…' : 'Claim a bond'}
           </button>
           <p className="text-xs text-ink-500">
-            You will also need a little testnet ETH for gas. This faucet does not provide it —
+            You will also need a little testnet ETH for gas. This faucet does not provide it , 
             that comes from Robinhood Chain&rsquo;s own faucet.
           </p>
         </div>

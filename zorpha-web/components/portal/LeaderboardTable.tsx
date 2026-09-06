@@ -52,7 +52,7 @@ export function LeaderboardTable({ managers }: { managers: ManagerRow[] }) {
                 {formatDate(manager.first_seen_at)}
               </td>
               <td className="px-4 py-3.5 text-right font-mono text-xs text-ink-400">
-                {manager.last_active_at ? formatRelative(manager.last_active_at) : '—'}
+                {manager.last_active_at ? formatRelative(manager.last_active_at) : ', '}
               </td>
             </tr>
           ))}

@@ -31,7 +31,7 @@ import {
  * Zorpha receipts indexer.
  *
  * Rewritten as a long-running service. The previous revision ran `main()` once
- * and called `process.exit(0)` — `POLL_INTERVAL_MS` was defined in config and
+ * and called `process.exit(0)`, `POLL_INTERVAL_MS` was defined in config and
  * never read, so there was no loop at all. On Railway that either looks like a
  * crash-loop or a job that completes and stops indexing, and the receipts feed
  * silently stops updating.

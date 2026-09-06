@@ -23,7 +23,7 @@ import {ReceiptRenderer} from "../lib/ReceiptRenderer.sol";
 ///         The signed rebalance target is a uint16 array of weights in bps
 ///         (sum must equal 10000). A rebalance walks the diff between the
 ///         current and target weights and emits a `Rebalanced` event with
-///         the full target distribution — the manager's rotation choice is
+///         the full target distribution; the manager's rotation choice is
 ///         the receipt.
 contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -36,7 +36,7 @@ contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
     uint8  public immutable baseDecimals;
 
     /// @notice The token basket. tokens[0] is also the underlying for ERC-4626
-    ///         semantics — depositors deposit `tokens[0]` and receive shares.
+    ///         semantics, depositors deposit `tokens[0]` and receive shares.
     IERC20[] public tokens;
 
     /// @notice One oracle per token. oracles[i] prices `tokens[i]` in 1e8 USD.
@@ -348,7 +348,7 @@ contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
     }
 
     /// @notice Set a new target weight distribution. The signed rebalance target
-    ///         is the array itself — each receipt carries the manager's chosen
+    ///         is the array itself; each receipt carries the manager's chosen
     ///         allocation across the basket.
     /// @dev    V1 does NOT actually execute swaps between token legs (no live
     ///         DEX for stock tokens yet). The receipt records the intended
@@ -401,7 +401,7 @@ contract RWRotationVault is ERC4626, AccessControl, ReentrancyGuard {
     // ─── Performance fee ────────────────────────────────────────────────────
     //
     // This vault stored `performanceFee`, `highWaterMark` and
-    // `performanceFeeAccrued`, and the deploy script configured a 20% fee — but
+    // `performanceFeeAccrued`, and the deploy script configured a 20% fee; but
     // nothing ever wrote to the accrual. Slither flagged
     // `performanceFeeAccrued` as assignable-to-constant, which is how a
     // never-charged fee looks from the outside. The protocol therefore earned

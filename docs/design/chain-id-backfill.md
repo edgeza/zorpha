@@ -2,22 +2,22 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use subagent-driven-development (recommended) or executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give every historical row a chain identifier — including the indexer's cursors — so the portal stops mixing two networks' data and a repointed indexer actually scans.
+**Goal:** Give every historical row a chain identifier, including the indexer's cursors; so the portal stops mixing two networks' data and a repointed indexer actually scans.
 
-**Architecture:** One migration adds `chain_id` to `rebalances`, `managers` and `reputation_publishes`, backfills every existing row to 46630, and widens the natural keys that are currently chain-blind. A second migration does the same for `indexer_cursor`, without which a repointed indexer resumes from a testnet block height and silently scans nothing. The migration guards its own central assumption — that all existing data is testnet — and aborts rather than mislabelling history. The TypeScript row types are updated in the same phase so the app compiles against the new schema.
+**Architecture:** One migration adds `chain_id` to `rebalances`, `managers` and `reputation_publishes`, backfills every existing row to 46630, and widens the natural keys that are currently chain-blind. A second migration does the same for `indexer_cursor`, without which a repointed indexer resumes from a testnet block height and silently scans nothing. The migration guards its own central assumption; that all existing data is testnet; and aborts rather than mislabelling history. The TypeScript row types are updated in the same phase so the app compiles against the new schema.
 
-**Tech Stack:** PostgreSQL (Supabase), TypeScript (`zorpha-web/lib/supabase.ts`). Migrations are plain `.sql` files applied by hand in the Supabase SQL editor — there is no runner in `package.json`.
+**Tech Stack:** PostgreSQL (Supabase), TypeScript (`zorpha-web/lib/supabase.ts`). Migrations are plain `.sql` files applied by hand in the Supabase SQL editor; there is no runner in `package.json`.
 
 **Spec:** `docs/design/chain-aware-portal-design.md`
 
 ## Global Constraints
 
-- Testnet chain id is **46630**. Mainnet is **4663**. These differ by one digit and are easy to transpose — read them carefully every time.
+- Testnet chain id is **46630**. Mainnet is **4663**. These differ by one digit and are easy to transpose, read them carefully every time.
 - The indexer is **stopped** and must stay stopped for this whole plan. Nothing writes to these tables while the migration runs.
 - Every existing row is testnet, and **block height is what proves it** -- not `START_BLOCK`. Mainnet 4663's head was `55,201,684` on 2026-09-05; the lowest row in `rebalances` is `112,370,875`. Mainnet has never produced a block that high, so no row can be a mainnet row. The guard threshold is `60,000,000`.
 - **Do NOT use `START_BLOCK` as a guard threshold.** It has held three different values (`0`, `111911103` on the local `.env`, `112522500` on Railway) and rows indexed under an earlier one sit legitimately below a later one. The first version of migration 011 asserted `block_number >= 112522500` and aborted on real data for exactly this reason.
 - Migrations live in `zorpha-web/migrations/`. The latest is `010`. This plan adds `011`.
-- Repo line endings are **LF**. Do not use Python text-mode writes on Windows — they emit CRLF.
+- Repo line endings are **LF**. Do not use Python text-mode writes on Windows; they emit CRLF.
 - **The schema is split across TWO migration directories.** `zorpha-web/migrations/` is not the whole story: `sidequest-protocol/supabase/migrations/` holds `001_initial.sql` and `002_indexer_state_and_counters.sql`, which declare the `reputation_publishes` unique constraint, the `indexer_cursor` table and the `bump_manager` / `advance_cursor` / `record_cursor_error` functions. Search both before concluding an object is undeclared. Still verify against the live database, since the two directories may themselves have drifted.
 - Do not delete testnet history. It is real history for 46630 and becomes correct once tagged.
 - **Every constraint this plan widens is an `ON CONFLICT` arbiter for a live write path, and widening it makes that write fail with `42P10: no unique or exclusion constraint matching ON CONFLICT`.** Five call sites, none of which this plan updates:
@@ -28,7 +28,7 @@
   | 011 (Task 1) | `indexer/src/supabase.ts:204` | `contract_address,manager_address,nonce` |
   | 012 (Task 3) | `advance_cursor()`, `002_indexer_state_and_counters.sql:97` | `(source_kind, source_address)` |
   | 012 (Task 3) | `record_cursor_error()`, `002_indexer_state_and_counters.sql:118` | `(source_kind, source_address)` |
-  These are runtime strings and SQL function bodies — `tsc` cannot see any of them, so Task 2's compile step will not catch one. Nothing breaks while the indexer stays stopped, which is why this plan is safe to land. **The indexer must not be restarted until a later plan fixes all five.** Keeping a three-argument `advance_cursor` overload does not help: the widened primary key breaks the `on conflict` inside the function body regardless of the overload's arity.
+  These are runtime strings and SQL function bodies, `tsc` cannot see any of them, so Task 2's compile step will not catch one. Nothing breaks while the indexer stays stopped, which is why this plan is safe to land. **The indexer must not be restarted until a later plan fixes all five.** Keeping a three-argument `advance_cursor` overload does not help: the widened primary key breaks the `on conflict` inside the function body regardless of the overload's arity.
 
 ---
 
@@ -46,7 +46,7 @@
 Create `zorpha-web/migrations/011-chain-id.sql`:
 
 ```sql
--- 011 — give every row a chain, so the portal stops mixing two networks.
+-- 011, give every row a chain, so the portal stops mixing two networks.
 --
 -- One Supabase project serves both Robinhood Chain deployments and no table
 -- said which one a row belonged to. Repointing the web app at mainnet changed
@@ -164,7 +164,7 @@ commit;
 
 The guard is the only thing standing between a wrong assumption and irreversibly mislabelled history, so prove it works before trusting it.
 
-In the Supabase SQL editor, run this **on its own** — it deliberately fails and rolls back, touching nothing:
+In the Supabase SQL editor, run this **on its own**; it deliberately fails and rolls back, touching nothing:
 
 ```sql
 begin;
@@ -214,7 +214,7 @@ union all select 'reputation_publishes', count(*) from public.reputation_publish
 
 Paste the whole of `011-chain-id.sql` into the Supabase SQL editor and run it.
 
-Expected: success, no `ABORT`. If it aborts, **stop** — some row predates the indexer's start block and the assumption behind this plan is wrong. Report that rather than lowering the threshold.
+Expected: success, no `ABORT`. If it aborts, **stop**, some row predates the indexer's start block and the assumption behind this plan is wrong. Report that rather than lowering the threshold.
 
 - [ ] **Step 5: Verify**
 
@@ -270,7 +270,7 @@ git commit -m "Give every row a chain, so the portal stops mixing two networks"
 The app must not compile against a schema it does not describe. Without this, a query that omits `chain_id` type-checks fine and silently reads both chains.
 
 **Files:**
-- Modify: `zorpha-web/lib/supabase.ts` — `RebalanceRow` (line 58), `ManagerRow` (line 79), `ReputationRow` (line 88)
+- Modify: `zorpha-web/lib/supabase.ts`, `RebalanceRow` (line 58), `ManagerRow` (line 79), `ReputationRow` (line 88)
 
 **Interfaces:**
 - Consumes: the `chain_id` column from Task 1.
@@ -302,13 +302,13 @@ Add the same field (the one-line form is fine on the other two) to `ManagerRow` 
 
 Run: `cd zorpha-web && npx tsc --noEmit`
 
-Expected: **errors** in any file that constructs one of these rows without `chain_id`. That is the point — those call sites are exactly what a later plan must fix. Record the list; it is the input to the query-filter plan.
+Expected: **errors** in any file that constructs one of these rows without `chain_id`. That is the point, those call sites are exactly what a later plan must fix. Record the list; it is the input to the query-filter plan.
 
 If there are **no** errors, nothing constructs these types literally, so the field is carried through from Supabase reads only. Note that in the report.
 
 - [ ] **Step 3: Resolve the breakage**
 
-For each error, add `chain_id` sourced from the connected chain — **do not** hardcode 46630 in application code. Import from the existing chain config:
+For each error, add `chain_id` sourced from the connected chain, **do not** hardcode 46630 in application code. Import from the existing chain config:
 
 ```ts
 import { activeChain } from '@/lib/chains';
@@ -344,9 +344,9 @@ const stored = await getCursor('vault', vault.address);
 const from = stored === null ? config.startBlock : stored + 1n;
 ```
 
-Stored cursors sit at testnet heights (~112,522,500). Point the indexer at mainnet, whose head is ~55.1M, and `from` becomes 112,522,501 — beyond the head, so every scan is empty and every cycle looks healthy. That is a worse failure than the honest crash the chain-id mismatch produces today.
+Stored cursors sit at testnet heights (~112,522,500). Point the indexer at mainnet, whose head is ~55.1M, and `from` becomes 112,522,501, beyond the head, so every scan is empty and every cycle looks healthy. That is a worse failure than the honest crash the chain-id mismatch produces today.
 
-**Read `sidequest-protocol/supabase/migrations/002_indexer_state_and_counters.sql:68-130` first** — it declares `indexer_cursor` (primary key `(source_kind, source_address)`), `advance_cursor(text, text, bigint)` and `record_cursor_error(text, text, text)` in full. The discovery step below is therefore a confirmation that the live database still matches the file, not an exploration of an unknown shape. Both cursor functions carry `on conflict (source_kind, source_address)` in their bodies and both must be rewritten when the key widens — see the ON CONFLICT table in Global Constraints.
+**Read `sidequest-protocol/supabase/migrations/002_indexer_state_and_counters.sql:68-130` first**; it declares `indexer_cursor` (primary key `(source_kind, source_address)`), `advance_cursor(text, text, bigint)` and `record_cursor_error(text, text, text)` in full. The discovery step below is therefore a confirmation that the live database still matches the file, not an exploration of an unknown shape. Both cursor functions carry `on conflict (source_kind, source_address)` in their bodies and both must be rewritten when the key widens, see the ON CONFLICT table in Global Constraints.
 
 **Files:**
 - Create: `zorpha-web/migrations/012-cursor-chain-scope.sql`
@@ -378,14 +378,14 @@ from pg_proc where proname = 'advance_cursor';
 select source_kind, source_address, last_block from public.indexer_cursor order by 1, 2;
 ```
 
-Record all four outputs in the report. **Every later step in this task depends on them**, and the SQL below assumes the shape implied by `indexer/src/supabase.ts:269-302` — `source_kind`, `source_address`, `last_block`, keyed on the first two. If reality differs, adapt the statements and say so in the report rather than forcing the assumed shape.
+Record all four outputs in the report. **Every later step in this task depends on them**, and the SQL below assumes the shape implied by `indexer/src/supabase.ts:269-302`, `source_kind`, `source_address`, `last_block`, keyed on the first two. If reality differs, adapt the statements and say so in the report rather than forcing the assumed shape.
 
 - [ ] **Step 2: Write the migration**
 
 Create `zorpha-web/migrations/012-cursor-chain-scope.sql`:
 
 ```sql
--- 012 — chain-scope the indexer cursors.
+-- 012, chain-scope the indexer cursors.
 --
 -- START_BLOCK is read only when no cursor exists (indexer/src/index.ts:107).
 -- The stored cursors are testnet heights (~112.5M). Repointing the indexer to
@@ -462,7 +462,7 @@ select oid::regprocedure from pg_proc where proname = 'advance_cursor';
 
 Expected: one group, `46630`, count matching Step 1's row count. Primary key `(chain_id, source_kind, source_address)`. Two `advance_cursor` signatures.
 
-**There must be no row with `chain_id = 4663`.** If one exists, something wrote a mainnet cursor while the indexer was meant to be stopped — stop and report it.
+**There must be no row with `chain_id = 4663`.** If one exists, something wrote a mainnet cursor while the indexer was meant to be stopped, stop and report it.
 
 - [ ] **Step 5: Commit**
 
@@ -481,6 +481,6 @@ git commit -m "Chain-scope the cursors, or a repointed indexer scans nothing"
 - `npx tsc --noEmit` and `npm run build` clean
 - The indexer is still stopped
 
-**Do not repoint the indexer as part of this plan.** Flipping `RPC_URL` to mainnet without also fixing `START_BLOCK` (currently `112522500`, above mainnet's head of ~55.1M) makes it scan from a block that does not exist — it would index nothing while reporting success. That is step 5 and gets its own plan.
+**Do not repoint the indexer as part of this plan.** Flipping `RPC_URL` to mainnet without also fixing `START_BLOCK` (currently `112522500`, above mainnet's head of ~55.1M) makes it scan from a block that does not exist; it would index nothing while reporting success. That is step 5 and gets its own plan.
 
-Steps 2–5 of the spec — query filters, the web-app chain guard, vault enumeration, and the indexer repoint — are separate plans.
+Steps 2–5 of the spec, query filters, the web-app chain guard, vault enumeration, and the indexer repoint, are separate plans.

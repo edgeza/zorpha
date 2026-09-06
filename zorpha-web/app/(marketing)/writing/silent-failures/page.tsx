@@ -13,7 +13,7 @@ export const metadata: Metadata = {
  *
  * There is no blog infrastructure here and this does not add any: a route, a
  * canonical URL and a sitemap entry are the whole mechanism. If a second post
- * ever needs to exist, that is the moment to extract a list — not before.
+ * ever needs to exist, that is the moment to extract a list; not before.
  */
 
 /** Shared measure. Long-form prose wants a narrower column than the app pages. */

@@ -122,7 +122,7 @@ export function AirdropClaim() {
           <div>
             <div className="stat-label">Season 1 allocation</div>
             <div className="stat-value mt-2">
-              {allocation ? formatUnits(allocation.amount, 18, 2) : '—'}
+              {allocation ? formatUnits(allocation.amount, 18, 2) : ', '}
               {allocation ? (
                 <span className="ml-2 font-sans text-sm text-ink-500">{TOKEN.ticker}</span>
               ) : null}
@@ -165,7 +165,7 @@ export function AirdropClaim() {
                 <div>
                   <dt className="stat-label">Claim window closes</dt>
                   <dd className="mt-1.5 font-mono text-sm text-ink-200">
-                    {deadlineMs ? formatRelative(deadlineMs) : '—'}
+                    {deadlineMs ? formatRelative(deadlineMs) : ', '}
                   </dd>
                 </div>
               </dl>

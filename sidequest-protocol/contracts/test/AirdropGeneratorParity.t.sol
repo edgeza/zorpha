@@ -22,7 +22,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 ///           npx tsx sidequest-protocol/scripts/generate-airdrop.ts \
 ///             --snapshot snap.csv --out ./out
 ///
-///         over a five-recipient snapshot — chosen odd so the odd-node
+///         over a five-recipient snapshot, chosen odd so the odd-node
 ///         promotion path is exercised rather than the tidy power-of-two case.
 ///         If the generator's encoding ever changes, this test fails.
 contract AirdropGeneratorParityTest is Test {
@@ -123,7 +123,7 @@ contract AirdropGeneratorParityTest is Test {
         dist.claim(3, R3, A3 + 1, _proof3());
     }
 
-    /// The odd-node promotion must not make the lone leaf forgeable — a
+    /// The odd-node promotion must not make the lone leaf forgeable; a
     /// duplicated-node tree builder would let index 4 be claimed twice under
     /// two different indices.
     function test_OddNodeLeafCannotBeClaimedUnderAnotherIndex() public {

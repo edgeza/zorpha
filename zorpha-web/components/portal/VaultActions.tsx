@@ -265,7 +265,7 @@ export function VaultActions({
         {busy
           ? 'Confirming…'
           : needsApproval
-            ? `Approve ${assetSymbol ?? 'asset'} — step 1 of 2`
+            ? `Approve ${assetSymbol ?? 'asset'}, step 1 of 2`
             : mode === 'deposit'
               ? 'Deposit'
               : 'Withdraw'}
@@ -303,7 +303,7 @@ export function VaultActions({
                   : 'Depositing…'
               : confirmed
                 ? lastAction === 'approve'
-                  ? 'Approved. Nothing has moved yet — press Deposit to send the second transaction.'
+                  ? 'Approved. Nothing has moved yet, press Deposit to send the second transaction.'
                   : lastAction === 'withdraw'
                     ? 'Withdrawn.'
                     : 'Deposited.'
