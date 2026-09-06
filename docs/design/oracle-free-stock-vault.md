@@ -150,7 +150,7 @@ than pricing one wrongly.
 | --- | --- | --- |
 | Spot vs TWAP | revert if the two differ by more than 200 bps | manipulation in progress, thin-pool wobble, a genuinely violent market |
 | Cardinality | revert if `observationCardinality` is below 300 | a pool with no usable history, e.g. SPY/USDG 0.01% and ZOR/USDG today |
-| Liquidity | revert if `pool.liquidity()` is below `1.2e19` | depth draining away, which is what makes the TWAP safe. Note `liquidity()` is IN-RANGE liquidity and moves as positions enter and leave range, so the floor is set well below the observed value rather than just under it |
+| Liquidity | revert if `pool.liquidity()` is below `5e18` | depth draining away, which is what makes the TWAP safe. `liquidity()` is IN-RANGE liquidity and moves FAR more violently than first assumed -- a $50k trade cuts it by 65% -- so the floor is set low. See "The liquidity floor, revised" below |
 | Observation age | revert if the newest observation is older than 4 hours | a quiet pool, where `observe` extrapolates from a price nobody has traded at |
 | Sanity | revert if the computed answer is not strictly positive | arithmetic or configuration error |
 
@@ -164,7 +164,7 @@ why.
     cashAsset                USDG  0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168  (6 dec)
     oracle                   UniswapV3TwapAdapter over 0xd4eb2120...14a3
     twap window              1800 s
-    minLiquidity             1.2e19   (~25% of the 5.0993e19 measured 6 Sep)
+    minLiquidity             5e18     (LOWERED from 1.2e19 on measurement; see below)
     minCardinality           300
     maxObservationAge        4 h
     maxSpotDivergenceBps     200
@@ -252,3 +252,42 @@ New, against a mainnet fork at a pinned block:
 Slice 2 is the public track record and the shareable artifact. Slice 3 is
 letting strangers launch. Neither is worth building before one real record
 exists.
+
+## The liquidity floor, revised 6 September 2026
+
+The floor above was originally `1.2e19`, reasoned as roughly a quarter of the
+`5.0993e19` observed on 6 September and therefore a wide margin. Measurement
+against the live pool showed that reasoning was wrong, because `liquidity()` is
+IN-RANGE liquidity and a single ordinary trade moves it a long way.
+
+Escalating single trades from a snapshot, `test/fork/StockVaultMainnet.t.sol`:
+
+    size (USDG)   in-range liq   spot divergence   guard at 1.2e19
+         50,000      1.342e19            4 bps     answered
+        100,000      1.342e19            8 bps     answered
+        250,000      9.391e18           28 bps     refused
+        500,000      7.784e18           67 bps     refused
+      1,000,000      4.149e18          177 bps     refused
+      2,000,000      7.483e13    (drained)         refused
+
+Two things follow.
+
+**A $50,000 trade cuts in-range liquidity by 65%**, from `3.85e19` to `1.342e19`.
+That is ordinary flow on a pool with $7M of depth, not an attack. At `1.2e19`
+the vault would have stopped rebalancing after any $250k trade by anybody —
+availability given up for no safety gain, since the price was still sound.
+
+**The divergence guard never fires on a single trade.** Even a $1M push moves
+spot only 177 bps, inside the 200 bps tolerance, because liquidity collapses
+first. The liquidity floor is doing the work the spec attributed to divergence.
+
+The floor is therefore `5e18`, chosen so that:
+
+- ordinary flow up to $500k leaves the vault able to rebalance (`7.784e18`);
+- the $1M case, which drains depth to `4.149e18`, is still refused — and that
+  size matters specifically, because at 177 bps it is the largest push the
+  divergence guard would let through.
+
+Anything below about `4.2e18` would neuter the check entirely. This is a
+constructor argument, so revising it means a new adapter and a timelocked
+`setOracle`, not an upgrade.

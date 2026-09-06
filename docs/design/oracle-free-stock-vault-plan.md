@@ -33,8 +33,10 @@ include this section.
 - Governance Safe (2-of-2): `0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4`
 - Timelock: `0x813D69B8e1DBE2E08bcB892BE203A6BCE99b36Fc`
 - ProtocolTreasury (fee recipient): `0x3D9FE37DC0D08BeD0CD48c74Cb344064df9fB3C6`
-- Adapter params: `twapWindow` 1800, `minCardinality` 300, `minLiquidity` 12000000000000000000
-  (1.2e19), `maxObservationAge` 14400, `maxSpotDivergenceBps` 200, `decimals()` 8
+- Adapter params: `twapWindow` 1800, `minCardinality` 300, **`minLiquidity` 5000000000000000000
+  (5e18)**, `maxObservationAge` 14400, `maxSpotDivergenceBps` 200, `decimals()` 8
+  — the floor was LOWERED from the spec's 1.2e19 on measurement; see "The liquidity
+  floor, revised" in the spec
 - Vault params: `maxOracleStaleness` 3600, `rebalanceThresholdBps` 100, `maxSlippageBps` 100,
   `performanceFeeBps` 1000, `emergencyRedeemCooldown` 0
 - Roles: `DEFAULT_ADMIN_ROLE` to the Timelock; `KEEPER_ROLE` and `RISK_COUNCIL_ROLE` to the Safe
@@ -506,7 +508,7 @@ contract UniswapV3TwapAdapterUnitTest is Test {
 
     uint32 constant WINDOW = 1800;
     uint16 constant MIN_CARDINALITY = 300;
-    uint128 constant MIN_LIQUIDITY = 12e18;
+    uint128 constant MIN_LIQUIDITY = 5e18;
     uint32 constant MAX_OBS_AGE = 4 hours;
     uint16 constant MAX_DIVERGENCE_BPS = 200;
 
@@ -1824,7 +1826,7 @@ contract StockVaultMainnetForkTest is Test {
 
     uint32 constant TWAP_WINDOW = 1800;
     uint16 constant MIN_CARDINALITY = 300;
-    uint128 constant MIN_LIQUIDITY = 12e18;
+    uint128 constant MIN_LIQUIDITY = 5e18;
     uint32 constant MAX_OBS_AGE = 4 hours;
     uint16 constant MAX_DIVERGENCE_BPS = 200;
 
@@ -2266,7 +2268,7 @@ contract DeployStockVault is Script {
 
     uint32 constant TWAP_WINDOW = 1800;
     uint16 constant MIN_CARDINALITY = 300;
-    uint128 constant MIN_LIQUIDITY = 12e18;
+    uint128 constant MIN_LIQUIDITY = 5e18;
     uint32 constant MAX_OBSERVATION_AGE = 4 hours;
     uint16 constant MAX_SPOT_DIVERGENCE_BPS = 200;
 
@@ -3252,12 +3254,18 @@ footer says a row at the zero address is worse than no row.
 - `StockPrice({ oracleAddress, symbol })` — declared Task 12, mounted with those exact prop
   names in the same task.
 
-**4. One risk the implementer must not silently absorb**
+**4. The liquidity floor was wrong, and is now 5e18**
 
-`minLiquidity` is 1.2e19. The spec calls that "~25% of the 5.0993e19 measured 6 Sep". In-range
-liquidity had already fallen to **2.7237e19** by that evening — the floor is still cleared,
-but at 2.3x rather than 4.2x. Task 6 asserts the headroom and says to **stop and report**
-rather than lower the floor, because where that floor sits is a spec decision.
+The spec set `minLiquidity` at 1.2e19, reasoning it was ~25% of the 5.0993e19 observed.
+Measurement in Task 7 showed the reasoning did not hold: `liquidity()` is IN-RANGE
+liquidity, and a **$50,000 trade cuts it by 65%** (3.85e19 to 1.342e19). At 1.2e19 the vault
+would have refused to rebalance after any $250k trade by anybody.
+
+It is **5e18** now, and the choice is bounded on both sides. Ordinary flow up to $500k
+leaves 7.784e18 and keeps working. A $1M push drains depth to 4.149e18 while moving spot
+only 177 bps — INSIDE the 200 bps divergence tolerance — so the liquidity floor is the only
+guard that catches that size, and anything below ~4.2e18 would neuter it. Full table in the
+spec under "The liquidity floor, revised".
 
 ---
 
