@@ -1818,7 +1818,7 @@ import {RobinhoodChainRouterAdapter} from "../../src/adapters/RobinhoodChainRout
 contract StockVaultMainnetForkTest is Test {
     address constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168; // token0, 6dp
     address constant NVDA = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC; // token1, 18dp
-    address constant POOL = 0xd4eB21209c4d6093F80b5B84f5c45cC093Ea14a3; // 0.05%
+    address constant POOL = 0xd4EB21209C4D6093f80B5b84f5C45cc093EA14a3; // 0.05%
     address constant SWAP_ROUTER_02 = 0xCaf681a66D020601342297493863E78C959E5cb2;
     uint24 constant FEE = 500;
 
@@ -1986,7 +1986,7 @@ RH_MAINNET_RPC_URL=https://rpc.mainnet.chain.robinhood.com \
   forge test --match-path 'test/fork/StockVaultMainnet.t.sol' -vv
 ```
 
-Expected: 7 passing. If `test_LivePoolClearsEveryGuardWithHeadroom` fails on liquidity,
+Expected: **7 passing**. If `test_LivePoolClearsEveryGuardWithHeadroom` fails on liquidity,
 **stop and report** — the floor of 1.2e19 was set against 5.0993e19 measured 6 September and
 in-range liquidity had already fallen to 2.7237e19 by that evening. A floor the live pool
 cannot clear is a vault that can never rebalance, and that is a decision for the spec, not
@@ -2257,7 +2257,7 @@ import {RobinhoodChainRouterAdapter} from "../src/adapters/RobinhoodChainRouterA
 contract DeployStockVault is Script {
     address constant NVDA = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC; // 18dp
     address constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168; // 6dp
-    address constant POOL = 0xd4eB21209c4d6093F80b5B84f5c45cC093Ea14a3; // 0.05%
+    address constant POOL = 0xd4EB21209C4D6093f80B5b84f5C45cc093EA14a3; // 0.05%
     address constant SWAP_ROUTER_02 = 0xCaf681a66D020601342297493863E78C959E5cb2;
     uint24 constant FEE = 500;
 
