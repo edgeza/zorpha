@@ -75,10 +75,23 @@ export default async function PortalDashboard() {
         <div className="card flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-semibold">Where this stands</h2>
+            {/*
+              This used to open "the vaults are open, but nothing has been
+              deposited and no manager has signed a rebalance". The block is
+              gated on `totalRebalances === 0`, which covers the second claim
+              and not the first -- so the moment the vault took its first
+              deposit, this paragraph began asserting something false on a page
+              headed "No figure on this page is hand-maintained".
+
+              The deposit clause is gone rather than made conditional: the
+              vault's own page reads `totalAssets` from the contract and says
+              exactly what is in it (components/portal/VaultTvl.tsx), and one
+              derived statement there beats a second hand-maintained one here.
+            */}
             <p className="mt-1 max-w-prose text-sm leading-relaxed text-ink-400">
-              The contracts are live and the vaults are open, but nothing has been deposited and
-              no manager has signed a rebalance, so the record below is genuinely empty rather
-              than unavailable. The first instruction anyone signs starts it.
+              The contracts are live and the vaults are open, but no manager has signed a
+              rebalance, so the record below is genuinely empty rather than unavailable. The
+              first instruction anyone signs starts it.
             </p>
           </div>
           <Link href="/portal/manage" className="btn-primary btn-sm shrink-0 self-start sm:self-auto">
