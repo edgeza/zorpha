@@ -25,7 +25,7 @@ whole Safe transaction reverts and the nonce does NOT advance.
 | *(deleted)* | queue Timelock -> ProtocolTreasury handover | 0 |
 | *(deleted)* | lock 800,000,000 ZOR in vesting, non-revocable | 1 |
 | *(deleted)* | add second Safe owner, threshold 2 | 2 |
-| *(deleted)* | first ZOR/USDG pool, concentrated band — drained by bots | 3 |
+| *(deleted)* | first ZOR/USDG pool, concentrated band, drained by bots | 3 |
 | `5-withdraw-position-1027313.json` | exit and burn that position | 4 |
 | `A-consume-nonce5-send-1-ZOR.json` | throwaway to clear a stuck nonce | 5 |
 | `6-new-pool-03pct-fullrange.json` | ZOR/USDG 0.3% pool, FULL RANGE | 6 |
@@ -43,7 +43,7 @@ at the time, which is the reason this file exists.
 
 | File | Notes |
 |---|---|
-| `3-treasury-execute.json` | Executable from 2026-09-06 22:15:12 UTC. Until it runs, the deploy key `0x90D5fE…FB02` still owns ProtocolTreasury and can call `rescue()`. Nonce has moved well past 3 — set it manually. |
+| `3-treasury-execute.json` | Executable from 2026-09-06 22:15:12 UTC. Until it runs, the deploy key `0x90D5fE…FB02` still owns ProtocolTreasury and can call `rescue()`. Nonce has moved well past 3, so set it manually. |
 | `B-lower-seed-minimum.json` | Superseded: its `setParams` call was folded into `C` as action 0. |
 
 ## Liquidity, one standing rule
