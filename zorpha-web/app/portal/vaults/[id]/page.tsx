@@ -5,6 +5,7 @@ import { getVault, listRebalancesForVault } from '@/lib/queries';
 import { ReceiptCard } from '@/components/portal/ReceiptCard';
 import { VaultActions } from '@/components/portal/VaultActions';
 import { VaultApyPanel } from '@/components/portal/VaultApy';
+import { VaultTvl } from '@/components/portal/VaultTvl';
 import { EmptyState, SpecRow } from '@/components/ui/Primitives';
 import { explorerAddress } from '@/lib/contracts';
 import { formatAddress, formatDate } from '@/lib/format';
@@ -135,6 +136,14 @@ export default async function VaultDetailPage({
               decided on. It reads live from the venue rather than from any
               figure stored here -- see components/portal/VaultApy.tsx. */}
           <VaultApyPanel vaultAddress={vault.address} />
+
+          {/* Size, under the rate and above the deposit box. The page quoted a
+              yield, a fee, a mandate and a manager and never said how large the
+              vault was -- the one figure a depositor needs that none of the
+              others imply. Read from the contract, not the indexer: a vault
+              that has taken deposits but never rebalanced has no indexed rows
+              at all, which is this vault's exact state. */}
+          <VaultTvl vaultAddress={vault.address} assetAddress={asset} />
 
           {/* No assetSymbol or assetDecimals: VaultActions reads both from the
               token. This used to pass
