@@ -19,7 +19,7 @@ const ROLES: { contract: string; key: keyof typeof contracts | null; holder: str
       contract: 'Timelock',
       key: 'timelock',
       holder: 'Governance Safe',
-      powers: 'Queues and executes every privileged action after a 48-hour delay.',
+      powers: 'Queues and executes privileged actions after a 48-hour delay. Holds the vault’s admin, keeper and risk-council roles, but NOT its adapter setter.',
     },
     {
       contract: 'Buyback',
@@ -50,6 +50,25 @@ const ROLES: { contract: string; key: keyof typeof contracts | null; holder: str
       key: 'vesting',
       holder: 'Governance Safe',
       powers: 'Create schedules, revoke revocable schedules. Cannot touch vested tokens.',
+    },
+    // Added 6 Sep 2026. This table claimed to show who holds power over what and
+    // omitted the two contracts that hold the only power in the protocol which is
+    // NOT behind the timelock. An audit of on-chain roles found ADAPTER_SETTER_ROLE
+    // on the vault sitting with the launcher rather than the Timelock, which no
+    // page here disclosed.
+    {
+      contract: 'Vault launcher',
+      key: 'vaultLauncher',
+      holder: 'Governance Safe',
+      powers:
+        'Approve or remove yield venues, and slash a leader bond. Holds ADAPTER_SETTER_ROLE on every vault it launches, so a leader can move between approved venues with no delay.',
+    },
+    {
+      contract: 'zsUSDG vault',
+      key: 'yieldVault',
+      holder: 'Timelock',
+      powers:
+        'Admin, keeper and risk-council roles, all timelocked. Its adapter is set by the launcher above, not from here.',
     },
   ];
 

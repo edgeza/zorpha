@@ -609,10 +609,29 @@ ZOR.burn(zorBurned)          // reduces totalSupply`}
               <H2 n="8" id="governance">
                 Governance
               </H2>
+              {/*
+                This claimed "there is no path that takes effect immediately", which an
+                audit of on-chain roles on 6 September found to be false: the vault's
+                ADAPTER_SETTER_ROLE is held by the VaultLauncher rather than the Timelock,
+                so `reallocate` switches a vault's venue with no delay. The design is
+                sound -- the launcher builds the adapter itself against an allowlisted
+                target, so a leader can never name the contract that holds the money --
+                but the exception has to be stated rather than absorbed into "every".
+              */}
               <P>
-                Every privileged action in the protocol is queued in a 48-hour timelock owned by a
-                multisig. There is no path that takes effect immediately, so any change is visible
-                on-chain for two days before it can execute.
+                Fees, roles, mandates and vault administration are queued in a 48-hour timelock
+                owned by a multisig, so those changes are visible on-chain for two days before
+                they can execute.
+              </P>
+              <P>
+                One path is deliberately not timelocked. A vault leader can move their vault
+                between yield venues that governance has already approved, and that takes effect
+                at once. The launcher constructs the replacement adapter itself against the
+                approved target, so a leader cannot point a vault at a contract of their own
+                choosing; what they can do is switch between approved ones without waiting two
+                days. Today a single venue is approved, Steakhouse USDG, and the approver and the
+                vault leader are the same multisig, so that allowlist constrains nobody but
+                itself. A second, independent leader is what would make it a real limit.
               </P>
               <P>
                 The token contract itself has no privileged function, so there is nothing to queue

@@ -92,7 +92,7 @@ const GROUPS: { heading: string; items: QA[] }[] = [
       },
       {
         q: 'What can the team change without warning?',
-        a: 'Nothing. Every privileged action is queued in a 48-hour timelock, so you get two days of on-chain notice. The token contract itself has no admin function at all, so there is nothing to queue against it.',
+        a: 'Almost nothing, with one exception worth naming. The token contract has no admin function at all, so there is nothing to queue against it, and fees, roles and mandates are queued in a 48-hour timelock that gives two days of on-chain notice. The exception is the yield venue: a vault leader can move a vault between venues that governance has already approved, and that takes effect immediately. The launcher constructs the new adapter itself against the approved target, so a leader can never point a vault at a contract of their own choosing, but they do not wait two days to switch between approved ones. Today one venue is approved, Steakhouse USDG, and governance and the vault leader are the same multisig.',
       },
     ],
   },
