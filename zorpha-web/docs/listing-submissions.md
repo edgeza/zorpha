@@ -8,12 +8,12 @@ filled in by hand in a browser.
 
 Blockscout verifies ownership against the **contract deployer**, because
 `Zorpha` is `ERC20Votes, ERC20Permit` with no `owner()`, no admin role and no
-mint function; there is no other authority to check against.
+mint function — there is no other authority to check against.
 
     deployer: 0x90D5fE6a51CbDA18C3960966D5830Ba03B4fFB02
 
 Signing a message costs no gas, so that wallet's 0.00052 ETH is irrelevant.
-Connect it, sign, done. It is not a Safe owner and holds no funds; nothing is
+Connect it, sign, done. It is not a Safe owner and holds no funds — nothing is
 at risk in signing.
 
 ## Token facts
@@ -38,7 +38,7 @@ at risk in signing.
     GitHub        https://github.com/edgeza/zorpha
 
 **Submit the GitHub link.** UPDATED 6 Sep 2026: the repository was made public
-that morning; the API reports `private: false`; so the link now resolves for
+that morning — the API reports `private: false` — so the link now resolves for
 anonymous visitors and is worth including. For a project whose whole claim is
 that its record can be checked rather than taken on trust, readable source is
 among the strongest signals a listing can carry.
@@ -60,7 +60,7 @@ its own. What changed is the fact, not the rule.
     256x256    https://www.zorpha.xyz/zorpha-256.png     <- use for both icons
     banner     https://www.zorpha.xyz/zorpha-banner.png  1280x430 (~2.98:1)
 
-DexScreener's header slot is 3:1. The banner is 1280x430, which is 2.977:1 , 
+DexScreener's header slot is 3:1. The banner is 1280x430, which is 2.977:1 —
 it will be cropped by about three pixels vertically. Not worth re-cutting.
 
 ## Short description (DexScreener, ~245 chars)
@@ -115,7 +115,7 @@ rather than a personal inbox.
 
 Verified 2026-09-05. Form: https://www.coingecko.com/en/coins/new
 
-## Prerequisites; both already satisfied
+## Prerequisites — both already satisfied
 
 - **CoinGecko has the chain as an asset platform**: `id: "robinhood"`,
   `chain_identifier: 4663`. A contract-linked listing is therefore possible.
@@ -139,10 +139,10 @@ Verified 2026-09-05. Form: https://www.coingecko.com/en/coins/new
 | Contact email | info@zorpha.xyz |
 | Logo | `public/zorpha-200.png` (200x200 PNG, generated for CoinGecko's spec) |
 
-GitHub: `https://github.com/edgeza/zorpha`, public since 6 Sep 2026. If this
+GitHub: `https://github.com/edgeza/zorpha` — public since 6 Sep 2026. If this
 submission was filed before then with the field blank, amend it.
 
-## Supply figures; the part that decides the outcome
+## Supply figures — the part that decides the outcome
 
     total supply       1,000,000,000
     max supply         1,000,000,000   (fixed; no mint function exists)
@@ -150,29 +150,57 @@ submission was filed before then with the field blank, amend it.
     ZorphaVesting        800,000,000   non-revocable lock
     MerkleDistributor     80,000,000   airdrop, unclaimed
     InsuranceFund         40,000,000   governance release only
-    Safe (2-of-2)         38,331,895   treasury
-    protocol-owned LP     37,642,939   both Uniswap positions are Safe-owned
+    Safe (2-of-2)         16,311,116   treasury
+    protocol-owned LP     40,360,868   all three Uniswap positions are Safe-owned
 
-    genuine third-party    4,025,166   = 0.40% of supply, about $35
+    genuine third-party   23,328,016   = 2.33% of supply     <- report THIS
 
-**Circulating supply should be reported as ~4,025,166, not 41,668,105.** The
-larger figure counts the protocol-owned liquidity, but the Safe holds those LP
-NFTs and can withdraw them, so it is treasury-controlled by CoinGecko's
-definition. Claiming it as circulating would be the kind of thing that gets a
-submission rejected and the project remembered for it.
+**Circulating supply is the third-party figure, not the residual.** The
+governance Safe and the protocol-owned liquidity are both treasury-controlled --
+the Safe holds those LP NFTs and can withdraw them at will -- so neither counts
+as circulating under CoinGecko's definition. `ON_CHAIN_CUSTODY` in
+`lib/tokenomics.ts` uses a broader sense of the word and says so in its own note;
+the two are not in conflict, but do not copy that 80,000,000 into a listing form.
+
+**THIS NUMBER MOVES. Recompute it before every submission.** It was 4,025,166 on
+5 Sep and 23,328,016 the next morning -- a 5.8x change from a single $198 buy,
+because at this size one purchase is a large fraction of the float. Any earlier
+submission quoting 4,025,166 is now understated by roughly 19,300,000 tokens and
+should be amended.
+
+Recompute with:
+
+    total supply
+      - ZorphaVesting        0x81613D9914F7b4c02c897941757a99BC191De88e
+      - MerkleDistributor    0x1045AeCaCad091eC791815Be8c28DA12Ed94D4E3
+      - InsuranceFund        0x9D3B787a3492b4fe6D2a2C12062a4164263522Fd
+      - governance Safe      0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4
+      - ZOR/USDG pool        0x42AeA5CF1534498Db2f66F14bB9B9BeD2aB98d8d
+      = circulating
+
+Every one of those is a plain `balanceOf` on the ZOR contract, so the figure can
+always be rebuilt from chain rather than trusted from this file.
 
 ## Honest read on the odds
 
-Everything procedural is in place. What is missing is distribution: 0.40% of
-supply is held by three addresses totalling $35, and every trader who has bought
-so far has round-tripped and left. CoinGecko weighs genuine holder distribution
-and organic volume, and the $2,712 of 24h volume is bot churn from the liquidity
-add, not demand.
+Everything procedural is in place. Distribution is thin but no longer nil:
+2.33% of supply sits with four external addresses, and on 6 Sep one of them --
+`0x44e4208f7806e009beff792f7c323ff1b359d308` -- bought 19,302,849 ZOR for $198
+unprompted and has held it since. That is the first buy on this pool that was
+not a bot round-tripping within the hour, and it arrived the day after the pool
+became tradeable at a sane slippage.
+
+This paragraph previously read "every trader who has bought so far has
+round-tripped and left", which was true when written and stopped being true the
+next morning. CoinGecko weighs genuine holder distribution and organic volume,
+so the distinction matters to the application: one holder who stayed is a
+different claim from none.
 
 Submitting is free and a rejection costs little, so it is a reasonable thing to
-try. But the lever that changes the answer is real holders, not a better form.
+try. But the lever that changes the answer is more holders like that one, not a
+better form.
 
-## Name collision, state the canonical contract explicitly
+## Name collision — state the canonical contract explicitly
 
 A GeckoTerminal search for "zorpha" returns FOUR pools. Only the first is real:
 
@@ -188,7 +216,7 @@ never eligible there.
 
 Their displayed liquidity of ~$4,090 and ~$4,139 is an artifact: GeckoTerminal
 values the unsold token side at the bootstrap price. The pools actually hold
-**0.000576 ETH and 0.000024 ETH, $1.49 combined at $2,483/ETH.** There is
+**0.000576 ETH and 0.000024 ETH — $1.49 combined at $2,483/ETH.** There is
 nothing to recover from them.
 
 The fourth entry is the retired 1% pool, drained to zero liquidity, which

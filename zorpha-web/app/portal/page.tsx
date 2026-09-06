@@ -40,11 +40,16 @@ export default async function PortalDashboard() {
 
       {/*
         A zero next to a label reads as a broken feed unless something says
-        otherwise. "Vaults live 3 / Managers 0 / Receipts indexed 0" is the
-        protocol's true state -- three vaults deployed, nobody deposited,
-        nothing rebalanced -- but presented bare it looks like an indexer that
-        fell over, which is exactly the wrong conclusion. Each zero now carries
-        the condition that would change it.
+        otherwise. "Vaults live 1 / Managers 0 / Receipts indexed 0" is the
+        protocol's true state on mainnet -- one yield vault deployed, holding a
+        deposit, never rebalanced -- but presented bare it looks like an indexer
+        that fell over, which is exactly the wrong conclusion. Each zero now
+        carries the condition that would change it.
+
+        The counts above are read; this comment is not, so it drifts. It said
+        "three vaults deployed, nobody deposited" until 6 Sep 2026, describing
+        the testnet deployment and a vault that had since taken 4.5 USDG. The
+        rendered copy beside it had the same bug and was fixed the same day.
       */}
       <section className="grid grid-cols-2 gap-5 sm:grid-cols-4">
         <Stat label="Vaults live" value={vaults.length} sub="Deployed and verified" />
