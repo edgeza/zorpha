@@ -10,7 +10,7 @@
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc --noEmit",
     "start:keeper": "node dist/oracle-keeper.js",
-    "test": "node --import tsx --test src/**/*.test.ts"
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

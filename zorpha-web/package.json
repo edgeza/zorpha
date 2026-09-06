@@ -17,7 +17,7 @@
     "check:env": "node scripts/check-env.mjs",
     "check:contrast": "node scripts/check-contrast.mjs",
     "check:routes": "node scripts/crawl-routes.mjs",
-    "test": "node --import tsx --test lib/**/*.test.ts"
+    "test": "node --import tsx --test \"lib/**/*.test.ts\""
   },
   "dependencies": {
     "@coinbase/wallet-sdk": "^4.3.7",
