@@ -59,9 +59,26 @@ events they emitted.
 | 15 | 56739485 | `K-adapter-admin-to-timelock.json` | swap adapter admin to the Timelock |
 | 16 | 56853183 | `L-raise-seed-minimum.json` | `minSeedEscrow` 90 -> 1,000 USDG |
 | 17 | 56864010 | `L-second-rebalance.json` | second rebalance of the NVDA vault |
+| 18 | 56896762 | `B-lower-seed-minimum.json` | `minSeedEscrow` 1,000 -> 90 USDG. Reversed 16 minutes later |
+| 19 | 56906350 | `L-raise-seed-minimum.json` | `minSeedEscrow` 90 -> 1,000 USDG. Current value |
 
 Two files are prefixed `L`. They are distinct batches at nonces 16 and 17; the
 table is the tiebreaker.
+
+`B-lower-seed-minimum.json` used to sit under "Never executed" with a note that
+nonce 16 had reversed it. Both halves were wrong. It ran at nonce 18, which is
+three nonces after the one said to have reversed it, and the reversal was nonce
+19. The file's own description had recorded the execution correctly since #45
+while this table still called it unexecuted, which is the same failure the
+reconstruction above was written to fix: a ledger that disagrees with the
+artifact it indexes teaches people to trust neither.
+
+Nonces 18 and 19 undid each other inside sixteen minutes. Neither was careless
+on its own. `B` was re-proposed with a fork test proving it still executed
+cleanly, and `L` carried out the standing decision that 1,000 USDG is the
+launch floor. What was missing was any signal, on either file, that the other
+existed, and that signal now lives in `B`'s `meta.name`, which is the string
+the Transaction Builder shows on the review screen.
 
 ### Three corrections made on 7 September 2026
 
@@ -88,10 +105,9 @@ is single-sided.
 
 | File | Notes |
 | --- | --- |
-| `B-lower-seed-minimum.json` | Superseded: its `setParams` call was folded into `C` as action 0. Nonce 16 has since reversed it. |
 | `E-add-liquidity-100usdg.json` | **No onchain trace.** Position `#1034952` has exactly one `IncreaseLiquidity`, at its creation in nonce 6. The full-range position was never topped up, so the 100 USDG this batch would have added to it is not in the pool. The 100 USDG that did go in belongs to `F`, which is a separate concentrated position. |
 
-That second row matters for any claim about market depth. Every USDG ever
+That row matters for any claim about market depth. Every USDG ever
 placed on the quote side of this pair totals 788.57 across four mints, less
 212.40 returned by the burn in nonce 10, so 576. There is no batch waiting to
 change that.
