@@ -133,3 +133,34 @@ test('LAST_MEASURED still matches the chain', async (t) => {
     drift('insurance fund', insurance, LAST_MEASURED.insurance),
   );
 });
+
+// --- the guard that stops a wrong supply figure -----------------------------
+
+/**
+ * Not a test of readCustody itself, which needs a network and a module mock.
+ * This pins the ARITHMETIC that made its missing guard dangerous, so the
+ * consequence is documented in a form that runs.
+ *
+ * lib/custody-onchain.ts read `vesting` and `insurance` without checking them.
+ * `normalise` returns the zero address for an unset env var and
+ * `balanceOf(0x0)` returns zero rather than reverting, so an unset vesting
+ * address fed 0 into custodyFrom. Circulating is the remainder, so it absorbed
+ * the whole 800,000,000 and the page would have published 88% circulating,
+ * labelled as measured from chain.
+ */
+test('a zero vesting balance inflates circulating to 88%, which is why every address is now checked', () => {
+  const rows = custodyFrom({ vesting: 0, safe: 96_311_116, insurance: 40_000_000 });
+  const circulating = rows.find((c) => c.label === 'Circulating')!.tokens;
+
+  assert.equal(circulating, 880_000_000);
+  assert.equal((circulating / TOKEN.maxSupply) * 100, 88);
+  // Still internally consistent, which is exactly what made it dangerous:
+  // nothing about the table looks wrong.
+  assert.equal(rows.reduce((s, c) => s + c.tokens, 0), TOKEN.maxSupply);
+});
+
+test('the real balances give 8%, so the two are impossible to confuse by eye', () => {
+  const rows = custodyFrom(LAST_MEASURED);
+  const circulating = rows.find((c) => c.label === 'Circulating')!.tokens;
+  assert.equal((circulating / TOKEN.maxSupply) * 100, 8);
+});
