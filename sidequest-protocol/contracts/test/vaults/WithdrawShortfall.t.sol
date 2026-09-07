@@ -156,11 +156,18 @@ contract WithdrawShortfallTest is Test {
         console2.log("asset leg as % of NAV      ", legShare);
     }
 
-    /// The mitigation batch L applies: with the position all in the asset, no
+    /// The mitigation batch L applies, in the case where it fully works: with
+    /// the position all in the asset AND the cash leg landing on zero, no
     /// withdrawal needs a conversion, so every size clears.
-    function test_FullyLongVault_IsExitableAtEverySize() public {
+    ///
+    /// Landing on zero is where this harness happens to end up. Mainnet landed
+    /// on one unit, which is a different case, tested below. The original
+    /// version of this test was named IsExitableAtEverySize and was read as a
+    /// general guarantee about batch L; it is not one.
+    function test_FullyLongVault_CashLegZero_IsExitableAtEverySize() public {
         vm.prank(keeper);
         vault.rebalanceTo(10000);
+        assertEq(cash.balanceOf(address(vault)), 0, "this case is specifically the zero cash leg");
 
         uint256 shares = vault.balanceOf(alice);
         for (uint256 pct = 10; pct <= 100; pct += 10) {
@@ -169,6 +176,78 @@ contract WithdrawShortfallTest is Test {
             vault.redeem((shares * pct) / 100, alice, alice);
             vm.revertToState(snap);
         }
+    }
+
+    /// And the case mainnet actually landed in: fully long, with exactly one
+    /// unit of cash left behind. Everything up to 90% clears, and the last exit
+    /// cannot.
+    ///
+    /// The mechanism is not the venue fee that breaks a 50/50 vault, and no
+    /// performance fee is involved: this harness is built with
+    /// performanceFeeBps 0. One unit of cash is worth billions of asset wei, so
+    /// it counts toward `totalAssets` and the full exit owes it; but converting
+    /// that back rounds to nothing:
+    ///
+    ///     cashToAsset(1)            4310344827
+    ///     assetToCash(4310344827)            0
+    ///
+    /// so `_withdraw` swaps zero, buys nothing, and the transfer is short by the
+    /// whole amount. Measured identically on the live vault after batch L:
+    /// cashToAsset(1) = 4301763552, assetToCash of it = 0, largest exit
+    /// 55,399,995,696,251,520,585,413 of 55,400,000,000,000,000,000,000 shares.
+    function test_FullyLongVault_OneUnitOfDust_CannotFullyExit() public {
+        vm.prank(keeper);
+        vault.rebalanceTo(10000);
+        // The dust mainnet was left holding. Minted rather than contrived from a
+        // swap, because the amount is the point and not how it got there.
+        cash.mint(address(vault), 1);
+
+        uint256 shares = vault.balanceOf(alice);
+        uint256 leg = stock.balanceOf(address(vault));
+        uint256 owed = vault.previewRedeem(shares);
+        uint256 shortfall = owed - leg;
+
+        assertEq(shortfall, vault.cashToAsset(1), "the shortfall is exactly the dust's asset value");
+        assertEq(vault.assetToCash(shortfall), 0, "and converting it back rounds to nothing");
+
+        vm.prank(alice);
+        (bool ok, bytes memory err) = address(vault).call(
+            abi.encodeCall(vault.redeem, (shares, alice, alice))
+        );
+        assertFalse(ok, "the full exit cannot clear");
+        assertEq(bytes4(err), IERC20Errors.ERC20InsufficientBalance.selector, "wrong revert");
+
+        // But the shortfall is dust, so all but the last sliver comes out.
+        vm.prank(alice);
+        vault.redeem((shares * 90) / 100, alice, alice);
+    }
+
+    /// How much is actually stranded, to the wei, so "cannot fully exit" is not
+    /// mistaken for "cannot exit". Binary search for the largest exit that
+    /// clears, the same way the live vault was measured.
+    function test_FullyLongVault_OneUnitOfDust_StrandsOnlyDust() public {
+        vm.prank(keeper);
+        vault.rebalanceTo(10000);
+        cash.mint(address(vault), 1);
+
+        uint256 shares = vault.balanceOf(alice);
+        uint256 lo = 0;
+        uint256 hi = shares;
+        while (lo < hi) {
+            uint256 mid = lo + (hi - lo + 1) / 2;
+            uint256 snap = vm.snapshotState();
+            vm.prank(alice);
+            (bool ok,) = address(vault).call(abi.encodeCall(vault.redeem, (mid, alice, alice)));
+            vm.revertToState(snap);
+            if (ok) lo = mid; else hi = mid - 1;
+        }
+
+        uint256 stranded = shares - lo;
+        assertGt(stranded, 0, "something must be stranded, or there is no bug here");
+        // Under one basis point of supply. The live vault measured 0 bps.
+        assertLt((stranded * 10000) / shares, 1, "stranded should be dust, not a real position");
+        console2.log("largest exit", lo);
+        console2.log("stranded    ", stranded);
     }
 
     /// Not something a tighter slippage bound fixes. A vault built with zero
