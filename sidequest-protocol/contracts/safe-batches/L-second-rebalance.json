@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 1788783386513,
+  "meta": {
+    "name": "L - second rebalance, 50% to 100% NVDA, restores withdrawals",
+    "description": "Receipt two. Moves the NVDA vault from 50% to 100% exposure. WHY 100%, AND WHY THIS IS NOT A VIEW ON NVDA: the vault cannot currently be withdrawn from above 40% of the position, and going fully long is what makes it exitable again. SpotVaultMinimal._withdraw covers a shortfall by buying asset with the cash leg, rounds the conversion down into cash units, and lets the fill come back up to maxSlippageBps short of what it needs; the transfer on the next line then demands the full amount and reverts. Measured against this vault on a mainnet fork, 7 September 2026: redeem 40% ok, redeem 50% reverts ERC20InsufficientBalance(vault, 27710798703467998, 27710807884585675), short by 9,181,117,677 wei on a 0.0277 NVDA leg. The swap runs and buys asset; it buys slightly less than the transfer requires. So the vault is exitable only up to its asset leg, and the cash half cannot be withdrawn at all. Targets compared on the same fork, cash leg left and whether a full exit works: 10000 leaves 1 unit and works; 9999 leaves 1287 and fails; 9950 leaves 64343 and fails; 9500 leaves 643429 and fails; 5000, where it stands now, leaves 6437074 and fails. 10000 is the only target that clears, because it is the only one where no withdrawal needs a conversion. THIS TREATS THE SYMPTOM. The bug is in a deployed immutable contract and is not fixable by configuration: maxSlippageBps is immutable, and a vault built with zero tolerance cannot rebalance at all. The fix is an accounting change in slice 2, recorded in docs/design/oracle-free-stock-vault.md, and the vault must not be opened to deposits before it lands. Nothing is at risk today: totalSupply equals this Safe's share balance, so the Safe is the only holder. SECONDARY EFFECTS, both real but neither the reason. Receipt one went from fully long to 50%, which sold NVDA, so this is the first time the cash-to-asset direction of the swap adapter runs on mainnet. And it is the first exercise of the price stamp added in migration 014: receipt one predates the column and its block is long past the window the RPC serves, so if this lands with underlying_price set and exact true, that path works end to end. The move is 0.027724018 NVDA against a 1% rebalance threshold, so it clears and emits a receipt rather than writing the target silently. Preconditions checked: the oracle answers 23,218,402,582, so none of the five guards is refusing; KEEPER_ROLE is on this Safe; the vault holds both legs. Replayed as this Safe in test/fork/SecondRebalanceBatch.t.sol. NOTE: Safe nonces execute in order.",
+    "txBuilderVersion": "1.16.5"
+  },
+  "transactions": [
+    {
+      "to": "0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413",
+      "value": "0",
+      "data": "0x12a41f0a0000000000000000000000000000000000000000000000000000000000002710",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}

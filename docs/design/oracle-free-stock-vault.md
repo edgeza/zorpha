@@ -291,3 +291,64 @@ The floor is therefore `5e18`, chosen so that:
 Anything below about `4.2e18` would neuter the check entirely. This is a
 constructor argument, so revising it means a new adapter and a timelocked
 `setOracle`, not an upgrade.
+
+## The cash leg is unreachable on withdrawal, found 7 September 2026
+
+Not a design decision. A bug in `SpotVaultMinimal`, which this slice ships
+unmodified and which is now deployed and immutable at
+`0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413`.
+
+`_withdraw` covers a shortfall by buying asset with the cash leg:
+
+```solidity
+uint256 cashIn = assetToCash(shortfall);                          // rounds DOWN
+uint256 minOut = (shortfall * (10000 - maxSlippageBps)) / 10000;  // permits < shortfall
+_swap(address(cashAsset), asset(), cashIn, minOut);
+super._withdraw(caller, receiver, owner, assets, shares);         // transfers the FULL assets
+```
+
+The swap is allowed to come back short of `shortfall`, and then the transfer
+demands all of it. So the tolerance that keeps the swap from reverting is
+exactly what makes the transfer revert. Measured against the live vault at its
+50/50 position:
+
+```
+redeem  40%   ok
+redeem  50%   ERC20InsufficientBalance(vault, 27710798703467998,
+                                              27710807884585675)
+```
+
+short by 9,181,117,677 wei on a 0.0277 NVDA leg. The swap ran and bought asset;
+it bought slightly less than the following transfer required. **The vault is
+exitable only up to its asset leg**: the cash half cannot be withdrawn at all.
+
+Why the 334-test suite is green through this: `test/vaults/SpotVaultMinimal.t.sol`
+fills through `MockSpotAdapter`, which executes at the oracle price exactly, so
+there is no venue cost to come short by; and it pairs an 8-decimal asset with
+6-decimal cash, where one cash unit is 100 asset units and `previewRedeem`'s own
+truncation absorbs the rounding. The live pair is 18-decimal against 6-decimal,
+where one USDG unit is 4.3e9 NVDA wei. The decimal gap is the mechanism.
+`test/vaults/WithdrawShortfall.t.sol` reproduces it off live state with an
+18/6 pair and a venue charging the pool's real 5bps.
+
+Not fixable by configuration. `maxSlippageBps` is immutable, and setting it to
+zero does not help; it stops the vault trading at all, because `rebalanceTo`
+then requires a fill at the oracle price that no fee-charging venue will give.
+
+**Mitigation applied, batch L.** `rebalanceTo(10000)` moves the position fully
+into the asset, so no withdrawal needs a conversion and every exit size clears.
+This treats the symptom; the vault remains broken for any target that leaves a
+real cash leg, which is every interesting one.
+
+**The fix belongs to slice 2, and is not purely a rounding fix.** Grossing
+`cashIn` up by the slippage allowance and requiring `minOut == shortfall` was
+tried against the reproduction: exits go from 0–50% to 0–95%, and 100% still
+fails. The last exit needs the vault to sell its entire cash leg, and a venue
+that charges cannot return full oracle-priced NAV for it. The final withdrawal
+has to bear the venue cost, which means `assets` must come down rather than the
+swap going up, an accounting change to `previewRedeem`/`maxWithdraw` rather than a
+one-line correction.
+
+No third-party funds are exposed today: `totalSupply` equals the governance
+Safe's balance, so the Safe is the only shareholder. The vault must not be
+opened to deposits until this is fixed.
