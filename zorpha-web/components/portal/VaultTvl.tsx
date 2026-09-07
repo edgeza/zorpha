@@ -1,7 +1,7 @@
 'use client';
 
 import { useReadContracts } from 'wagmi';
-import { erc20Abi, vaultAbi } from '@/lib/contracts';
+import { erc20Abi, vaultAbi, onProtocolChain } from '@/lib/contracts';
 import { formatUnits } from '@/lib/format';
 
 /**
@@ -50,8 +50,8 @@ export function VaultTvl({ vaultAddress }: { vaultAddress: `0x${string}` }) {
 
   const vault = useReadContracts({
     contracts: [
-      { abi: vaultAbi, address: vaultAddress, functionName: 'totalAssets' },
-      { abi: vaultAbi, address: vaultAddress, functionName: 'asset' },
+      { ...onProtocolChain, abi: vaultAbi, address: vaultAddress, functionName: 'totalAssets' },
+      { ...onProtocolChain, abi: vaultAbi, address: vaultAddress, functionName: 'asset' },
     ],
     query,
   });
@@ -65,8 +65,8 @@ export function VaultTvl({ vaultAddress }: { vaultAddress: `0x${string}` }) {
   // balance above keeps refetching.
   const token = useReadContracts({
     contracts: [
-      { abi: erc20Abi, address: assetAddress, functionName: 'decimals' },
-      { abi: erc20Abi, address: assetAddress, functionName: 'symbol' },
+      { ...onProtocolChain, abi: erc20Abi, address: assetAddress, functionName: 'decimals' },
+      { ...onProtocolChain, abi: erc20Abi, address: assetAddress, functionName: 'symbol' },
     ],
     query: { ...query, enabled: Boolean(assetAddress) },
   });

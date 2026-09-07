@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { contracts, zorAbi, isDeployed, explorerAddress } from '@/lib/contracts';
+import { contracts, zorAbi, isDeployed, explorerAddress, onProtocolChain } from '@/lib/contracts';
 import { formatUnits, formatCompactUnits, formatAddress } from '@/lib/format';
 import { TOKEN } from '@/lib/tokenomics';
 import { ZERO_ADDRESS } from '@/lib/contracts';
@@ -13,6 +13,7 @@ export function TokenPanel() {
   const enabled = deployed && Boolean(address);
 
   const { data: balance } = useReadContract({
+    ...onProtocolChain,
     abi: zorAbi,
     address: contracts.zor,
     functionName: 'balanceOf',
@@ -21,6 +22,7 @@ export function TokenPanel() {
   });
 
   const { data: totalSupply } = useReadContract({
+    ...onProtocolChain,
     abi: zorAbi,
     address: contracts.zor,
     functionName: 'totalSupply',
@@ -28,6 +30,7 @@ export function TokenPanel() {
   });
 
   const { data: maxSupply } = useReadContract({
+    ...onProtocolChain,
     abi: zorAbi,
     address: contracts.zor,
     functionName: 'MAX_SUPPLY',
@@ -35,6 +38,7 @@ export function TokenPanel() {
   });
 
   const { data: votes } = useReadContract({
+    ...onProtocolChain,
     abi: zorAbi,
     address: contracts.zor,
     functionName: 'getVotes',
@@ -43,6 +47,7 @@ export function TokenPanel() {
   });
 
   const { data: delegatee, refetch: refetchDelegate } = useReadContract({
+    ...onProtocolChain,
     abi: zorAbi,
     address: contracts.zor,
     functionName: 'delegates',

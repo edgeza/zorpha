@@ -2,7 +2,7 @@
 
 import { useAccount, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { erc20Abi, formatUnits } from 'viem';
-import { contracts, leaderFaucetAbi, isDeployed, explorerUrl } from '@/lib/contracts';
+import { contracts, leaderFaucetAbi, isDeployed, explorerUrl, onProtocolChain } from '@/lib/contracts';
 import { isMainnet } from '@/lib/chains';
 import { Callout, Mono } from '@/components/ui/Primitives';
 
@@ -42,20 +42,27 @@ export function LeaderFaucetClaim() {
     // `hasClaimed` needs an address and there may not be one yet.
     allowFailure: true,
     contracts: [
-      { abi: leaderFaucetAbi, address: faucet, functionName: 'ticket' },
-      { abi: leaderFaucetAbi, address: faucet, functionName: 'claimsRemaining' },
+      { ...onProtocolChain, abi: leaderFaucetAbi, address: faucet, functionName: 'ticket' },
+      { ...onProtocolChain, abi: leaderFaucetAbi, address: faucet, functionName: 'claimsRemaining' },
       {
+        ...onProtocolChain,
         abi: leaderFaucetAbi,
         address: faucet,
         functionName: 'hasClaimed',
         args: [address ?? '0x0000000000000000000000000000000000000000'],
       },
-      { abi: erc20Abi, address: contracts.zor, functionName: 'balanceOf', args: [address ?? '0x0000000000000000000000000000000000000000'] },
-      { abi: erc20Abi, address: contracts.zor, functionName: 'decimals' },
-      { abi: erc20Abi, address: contracts.zor, functionName: 'symbol' },
+      {
+        ...onProtocolChain,
+        abi: erc20Abi,
+        address: contracts.zor,
+        functionName: 'balanceOf',
+        args: [address ?? '0x0000000000000000000000000000000000000000'],
+      },
+      { ...onProtocolChain, abi: erc20Abi, address: contracts.zor, functionName: 'decimals' },
+      { ...onProtocolChain, abi: erc20Abi, address: contracts.zor, functionName: 'symbol' },
       // Which deployment this faucet belongs to.
-      { abi: leaderFaucetAbi, address: faucet, functionName: 'zor' },
-      { abi: leaderFaucetAbi, address: faucet, functionName: 'launcher' },
+      { ...onProtocolChain, abi: leaderFaucetAbi, address: faucet, functionName: 'zor' },
+      { ...onProtocolChain, abi: leaderFaucetAbi, address: faucet, functionName: 'launcher' },
     ],
     query: { enabled: deployed },
   });

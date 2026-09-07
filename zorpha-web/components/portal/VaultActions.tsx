@@ -7,7 +7,13 @@ import {
   useWriteContract,
   useWaitForTransactionReceipt,
 } from 'wagmi';
-import { erc20Abi, vaultAbi, VAULT_DEPOSITS_ENABLED, explorerTx } from '@/lib/contracts';
+import {
+  erc20Abi,
+  vaultAbi,
+  VAULT_DEPOSITS_ENABLED,
+  explorerTx,
+  onProtocolChain,
+} from '@/lib/contracts';
 import { formatUnits, parseUnits } from '@/lib/format';
 import { Callout } from '@/components/ui/Primitives';
 
@@ -49,6 +55,7 @@ export function VaultActions({
    * contract about what the contract wants.
    */
   const { data: assetAddress } = useReadContract({
+    ...onProtocolChain,
     abi: vaultAbi,
     address: vaultAddress,
     functionName: 'asset',
@@ -67,11 +74,13 @@ export function VaultActions({
   // Reading them is also the only thing that can be right for a
   // leader-launched vault, whose asset is whatever venue the leader chose.
   const { data: readDecimals } = useReadContract({
+    ...onProtocolChain,
     abi: erc20Abi,
     address: assetAddress,
     functionName: 'decimals',
   });
   const { data: readSymbol } = useReadContract({
+    ...onProtocolChain,
     abi: erc20Abi,
     address: assetAddress,
     functionName: 'symbol',
@@ -83,6 +92,7 @@ export function VaultActions({
   // erc20Abi, not vaultAbi: the vault's shares ARE an ERC-20 and vaultAbi does
   // not declare decimals().
   const { data: readShareDecimals } = useReadContract({
+    ...onProtocolChain,
     abi: erc20Abi,
     address: vaultAddress,
     functionName: 'decimals',
@@ -97,6 +107,7 @@ export function VaultActions({
   const scalesKnown = assetDecimals !== undefined && shareDecimals !== undefined;
 
   const { data: assetBalance, refetch: refetchAssetBalance } = useReadContract({
+    ...onProtocolChain,
     abi: erc20Abi,
     address: assetAddress,
     functionName: 'balanceOf',
@@ -105,6 +116,7 @@ export function VaultActions({
   });
 
   const { data: shareBalance, refetch: refetchShareBalance } = useReadContract({
+    ...onProtocolChain,
     abi: vaultAbi,
     address: vaultAddress,
     functionName: 'balanceOf',
@@ -113,6 +125,7 @@ export function VaultActions({
   });
 
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
+    ...onProtocolChain,
     abi: erc20Abi,
     address: assetAddress,
     functionName: 'allowance',
