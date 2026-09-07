@@ -58,6 +58,31 @@ export function ReceiptCard({ row }: { row: RebalanceRow }) {
               : ', '}
           </dd>
         </div>
+        {/* Migration 014. The receipt already said what the manager decided
+            and what the vault was worth; without this it did not say what the
+            thing they decided about was worth, so nobody could score the call
+            without going and finding the price elsewhere.
+
+            `exact` is rendered, not just used. The price at a receipt's block
+            is readable for tens of minutes and then the node refuses, so a
+            receipt indexed late carries the head's price instead. That is
+            still worth showing, and it is not the price at signing, and the
+            difference has to be visible or the column is a liability. */}
+        {row.underlying_price && row.underlying_price_decimals != null ? (
+          <div>
+            <dt className="stat-label">
+              {row.underlying_price_exact === false ? 'Underlying, later' : 'Underlying'}
+            </dt>
+            <dd className="mt-1 font-mono text-sm tabular-nums">
+              ${formatUnits(row.underlying_price, row.underlying_price_decimals, 2)}
+              {row.underlying_price_exact === false ? (
+                <span className="ml-1.5 font-sans text-2xs text-ink-500">
+                  read at block {row.underlying_price_block?.toLocaleString('en-US')}, not this one
+                </span>
+              ) : null}
+            </dd>
+          </div>
+        ) : null}
         <div>
           <dt className="stat-label">Manager</dt>
           <dd className="mt-1 font-mono text-sm">

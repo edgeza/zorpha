@@ -198,3 +198,62 @@ test('a mainnet vault produces mainnet receipts, with nothing ambient to get wro
   assert.equal(row.chain_id, 4663);
   assert.notEqual(row.chain_id, 46630, 'one transposed digit is the whole bug');
 });
+
+// ─── Migration 014: the underlying's price on the receipt ───────────────────
+
+test('a spot receipt carries the price of the thing the decision was about', () => {
+  const row = toRebalanceRow(SPOT, log({ targetBps: 5000 }), TS, 18, {
+    answer: '23202156199',
+    decimals: 8,
+    block: 56_651_597,
+    exact: true,
+  });
+
+  assert.equal(row.underlying_price, '23202156199');
+  assert.equal(row.underlying_price_decimals, 8);
+  assert.equal(row.underlying_price_block, 56_651_597);
+  assert.equal(row.underlying_price_exact, true);
+});
+
+test('an inexact price keeps the block it was actually read at', () => {
+  // The indexer fell behind the archive window, so the price is the head's,
+  // not the receipt's. The row has to say so: the whole reason `exact` is
+  // stored rather than derived is that a late price must never render as the
+  // price at signing.
+  const row = toRebalanceRow(SPOT, log({ targetBps: 0 }), TS, 18, {
+    answer: '23239307505',
+    decimals: 8,
+    block: 56_790_611,
+    exact: false,
+  });
+
+  assert.equal(row.underlying_price_exact, false);
+  assert.notEqual(row.underlying_price_block, Number(log({}).blockNumber));
+  assert.equal(row.underlying_price_block, 56_790_611);
+});
+
+test('no feed means null, not zero, so the renderer shows nothing', () => {
+  // Every yield receipt takes this path, and so does a spot receipt whose
+  // oracle refused on one of its five guards. A price of 0 would render as a
+  // worthless underlying; null renders as no claim.
+  const row = toRebalanceRow(YIELD, log({ navPerShare: 1n }), TS, 6);
+  assert.equal(row.underlying_price, null);
+  assert.equal(row.underlying_price_decimals, null);
+  assert.equal(row.underlying_price_block, null);
+  assert.equal(row.underlying_price_exact, null);
+});
+
+test('the price is stored raw, so a large answer cannot be lost to a float', () => {
+  // Stored as text for the same reason nav_per_share is: these are uint256
+  // answers and an 18-decimal feed overflows a JS number long before it
+  // overflows the type.
+  const huge = (10n ** 30n).toString();
+  const row = toRebalanceRow(SPOT, log({ targetBps: 10000 }), TS, 18, {
+    answer: huge,
+    decimals: 18,
+    block: 1,
+    exact: true,
+  });
+  assert.equal(row.underlying_price, huge);
+  assert.equal(typeof row.underlying_price, 'string');
+});

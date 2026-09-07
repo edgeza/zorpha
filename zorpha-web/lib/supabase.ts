@@ -90,6 +90,16 @@ export type RebalanceRow = {
   /** Scale of nav_per_share. Null on rows indexed before migration 007,
    *  where 18 is the historical fallback. */
   nav_decimals?: number | null;
+  /** What the underlying was worth when this receipt was signed. Null on rows
+   *  indexed before migration 014, on every yield receipt, and whenever the
+   *  price feed refused. */
+  underlying_price?: string | null;
+  underlying_price_decimals?: number | null;
+  underlying_price_block?: number | null;
+  /** False when the price was read later than this receipt's own block. The
+   *  public RPC keeps roughly 5,000 to 20,000 blocks of state, so a receipt
+   *  indexed late cannot have an exact price and must not claim one. */
+  underlying_price_exact?: boolean | null;
   nonce: number;
   commitment: string | null;
 };

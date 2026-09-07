@@ -89,6 +89,17 @@ export type RebalanceRow = ChainScoped & {
    *  rotation. Stored per receipt so a row can be read without joining a
    *  mutable table beside it -- see migration 007. */
   nav_decimals?: number | null;
+  /** What the underlying was worth when this receipt was signed. Raw integer
+   *  answer from the vault's price feed, at `underlying_price_decimals`.
+   *  See migration 014: it is captured at index time or not at all, because
+   *  the public RPC serves state for only tens of minutes. */
+  underlying_price?: string | null;
+  underlying_price_decimals?: number | null;
+  /** The block the price was read at. Equal to block_number when exact. */
+  underlying_price_block?: number | null;
+  /** False when the price was read later than the receipt's own block, so an
+   *  approximate figure can never be rendered as an exact one. */
+  underlying_price_exact?: boolean | null;
   nonce: number;
   commitment?: string | null;
 };

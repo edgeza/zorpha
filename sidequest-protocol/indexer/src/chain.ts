@@ -396,3 +396,120 @@ export async function navDecimalsFor(
     return undefined;
   }
 }
+
+/**
+ * What the vault's price feed said, and honestly when.
+ *
+ * `answer` is the raw integer the feed returned, at `decimals`. `block` is the
+ * block it was actually read at, and `exact` says whether that was the
+ * receipt's own block.
+ */
+export interface UnderlyingPrice {
+  answer: string;
+  decimals: number;
+  block: number;
+  exact: boolean;
+}
+
+/**
+ * Read the underlying's price for a receipt, at the receipt's own block if the
+ * node will still serve it.
+ *
+ * THE WINDOW THIS IS FIGHTING
+ *
+ * Measured 7 September 2026 against the public RPC: state is served for
+ * somewhere between 5,000 and 20,000 blocks and refused beyond it with
+ * "metadata is not found". At roughly 0.15s blocks that is twelve to fifty
+ * minutes. So a receipt's exact price is readable for tens of minutes after it
+ * is signed and then gone permanently: there is no archive node and the feed
+ * keeps no history of its own.
+ *
+ * The indexer normally runs well inside that, so the common path returns an
+ * exact price. When it has fallen behind, or is backfilling something old, the
+ * read at the receipt's block fails and this falls back to the head, records
+ * WHICH block it used, and marks the row inexact. An approximate price with its
+ * block attached is useful; an approximate price presented as the price at
+ * signing would be worse than none, which is why `exact` is stored rather than
+ * inferred from whether the numbers happen to match.
+ *
+ * Undefined when there is no feed at all, or the feed refuses. A yield vault
+ * has no oracle, and the TWAP adapter reverts on any of five guards, so a
+ * receipt with no price is an ordinary outcome rather than an error.
+ */
+export async function underlyingPriceFor(
+  vaultAddress: `0x${string}`,
+  vaultType: 'spot' | 'rotation' | 'yield',
+  blockNumber: bigint,
+): Promise<UnderlyingPrice | undefined> {
+  // Only the spot vault prices a single underlying against cash. A rotation
+  // vault has one feed per leg, which is a different shape and not this
+  // column's job; a yield vault has none.
+  if (vaultType !== 'spot') return undefined;
+
+  const client = getPublicClient();
+
+  const oracleAbi = [
+    {
+      name: 'latestRoundData',
+      type: 'function',
+      stateMutability: 'view',
+      inputs: [],
+      outputs: [
+        { type: 'uint80' },
+        { type: 'int256' },
+        { type: 'uint256' },
+        { type: 'uint256' },
+        { type: 'uint80' },
+      ],
+    },
+    { name: 'decimals', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] },
+  ] as const;
+
+  let oracle: `0x${string}`;
+  let decimals: number;
+  try {
+    oracle = await client.readContract({
+      address: vaultAddress,
+      abi: [
+        { name: 'oracle', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+      ] as const,
+      functionName: 'oracle',
+    });
+    decimals = Number(
+      await client.readContract({ address: oracle, abi: oracleAbi, functionName: 'decimals' }),
+    );
+  } catch {
+    return undefined;
+  }
+
+  const read = async (at?: bigint) => {
+    const res = (await client.readContract({
+      address: oracle,
+      abi: oracleAbi,
+      functionName: 'latestRoundData',
+      ...(at === undefined ? {} : { blockNumber: at }),
+    })) as readonly [bigint, bigint, bigint, bigint, bigint];
+    return res[1];
+  };
+
+  // The receipt's own block first. This is the answer worth having.
+  try {
+    const answer = await read(blockNumber);
+    if (answer > 0n) {
+      return { answer: answer.toString(), decimals, block: Number(blockNumber), exact: true };
+    }
+  } catch {
+    // Out of the archive window, or the feed refused at that block. Fall
+    // through rather than giving up: a late price is still worth recording as
+    // long as the row says it is late.
+  }
+
+  try {
+    const head = await client.getBlockNumber();
+    const answer = await read();
+    if (answer <= 0n) return undefined;
+    return { answer: answer.toString(), decimals, block: Number(head), exact: false };
+  } catch {
+    return undefined;
+  }
+}
