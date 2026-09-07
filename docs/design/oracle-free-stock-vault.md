@@ -335,10 +335,46 @@ Not fixable by configuration. `maxSlippageBps` is immutable, and setting it to
 zero does not help; it stops the vault trading at all, because `rebalanceTo`
 then requires a fill at the oracle price that no fee-charging venue will give.
 
-**Mitigation applied, batch L.** `rebalanceTo(10000)` moves the position fully
-into the asset, so no withdrawal needs a conversion and every exit size clears.
-This treats the symptom; the vault remains broken for any target that leaves a
-real cash leg, which is every interesting one.
+**Mitigation applied, batch L, and what it actually achieved.** Receipt 2
+executed `rebalanceTo(10000)` at block 56,864,010, moving the position fully
+into the asset. Measured against the vault afterwards:
+
+```
+largest exit that clears   55,399,995,696,251,520,585,413 shares
+of a supply of             55,400,000,000,000,000,000,000
+unreachable value          4,301,763,552 wei NVDA, about $0.000001
+```
+
+against roughly 6.44 USDG, half the vault, before it. So the cliff moved from
+40% of NAV to 99.99999%, which is what the batch was for.
+
+It is not true, as this document first said and as the pull request that added
+it claimed, that every exit size then clears. A full exit still reverts. The
+position ended on a cash leg of exactly one unit, and one unit of a 6-decimal
+cash asset is billions of wei of an 18-decimal one, so it counts toward
+`totalAssets` and a full exit owes it, while converting it back rounds away:
+
+```
+cashToAsset(1)             4301763552
+assetToCash(4301763552)             0
+```
+
+`_withdraw` therefore swaps zero, buys nothing, and the transfer is short by the
+whole amount. This is the dust round-trip recorded against Task 7, not the
+venue-fee shortfall above, and no performance fee is involved either way.
+`test/vaults/WithdrawShortfall.t.sol` covers both cases: a fully long vault
+whose cash leg lands on zero exits at every size, and one holding a single unit
+does not.
+
+The claim was based on a fork run before the batch, which reported the full exit
+succeeding at this target. That run's block is long past the window the RPC
+serves, so it cannot be repeated and the discrepancy is unexplained. It should
+not have been written down as a guarantee on the strength of a single
+measurement that the live result then contradicted.
+
+Either way this treats the symptom. The vault remains broken for any target
+leaving a real cash leg, which is every interesting one, and now also cannot be
+emptied to zero.
 
 **The fix belongs to slice 2, and is not purely a rounding fix.** Grossing
 `cashIn` up by the slippage allowance and requiring `minOut == shortfall` was
