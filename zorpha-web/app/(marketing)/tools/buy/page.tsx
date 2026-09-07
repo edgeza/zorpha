@@ -19,120 +19,142 @@ export const metadata: Metadata = {
  */
 const ZOR_ADDRESS = '0x9684AFe2422a0B03719201c78959b6B70e8d4ae8';
 
-const FACTS = [
-  {
-    k: 'Wallets',
-    v: 'Any',
-    note: 'MetaMask, Coinbase Wallet, Safe, and every wallet reachable over WalletConnect, which is most of them. The widget reads what you already hold and prices the route from there.',
-  },
-  {
-    k: 'Origin',
-    v: '70 chains',
-    note: 'Ethereum, Arbitrum, Base, Optimism, Polygon, BNB, Solana and Bitcoin among them. You do not need anything on Robinhood Chain first.',
-  },
-  {
-    k: 'Routing',
-    v: 'Best of all',
-    note: 'Quotes are compared across every major bridge and DEX aggregator and only the best-priced route is shown, rather than inviting you to hand-pick a thin one.',
-  },
-  {
-    k: 'Custody',
-    v: 'None',
-    note: 'Every leg settles onchain from your own wallet. Zorpha never holds your funds at any point, and cannot.',
-  },
-];
+/**
+ * Three claims, no prose. The long-form detail these used to carry now sits in
+ * one sentence in the fine print, which keeps the hero to a single focal
+ * point: an earlier version of this page put four explained facts in a grid
+ * below the widget and everything on the screen ended up the same weight.
+ */
+const CLAIMS = [
+  { k: 'Origin', v: '70 chains' },
+  { k: 'Wallets', v: 'Any' },
+  { k: 'Custody', v: 'Yours' },
+] as const;
 
 export default function BuyPage() {
   return (
     <>
-      {/* ─── Title ────────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden border-b border-void-700">
-        <div className="spotlight absolute inset-0 -z-10" aria-hidden="true" />
-        <div className="shell py-14 sm:py-16">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="badge">Tools</span>
-            <span className="badge font-mono">chain {robinhoodMainnet.id}</span>
+      {/* ─── Hero ─────────────────────────────────────────────────────────── */}
+      <section className="relative overflow-hidden">
+        {/* Ambient only. `grid-lines` is masked to fade out below the fold and
+            `spotlight` throws the violet cast from above, both procedural, so
+            the hero costs no image request and nothing to lay out. */}
+        <div className="spotlight absolute inset-0 -z-20" aria-hidden="true" />
+        <div className="grid-lines absolute inset-0 -z-10" aria-hidden="true" />
+
+        <div className="shell py-16 sm:py-24">
+          <div className="grid items-center gap-12 lg:grid-cols-[1fr,minmax(0,420px)] lg:gap-16">
+            {/* The words. Staggered with the site's own five-delay utilities
+                rather than a new keyframe; `prefers-reduced-motion` is handled
+                globally in globals.css, which collapses these to their final
+                state instead of hiding them. */}
+            <div>
+              <div className="fade-in-1 flex flex-wrap items-center gap-2">
+                <span className="badge">Buy {TOKEN.ticker}</span>
+                <span className="badge font-mono">chain {robinhoodMainnet.id}</span>
+              </div>
+
+              {/*
+                Deliberately not gradient-filled. The site's `text-gradient` is
+                tempting here and it would make four accented things compete on
+                one screen; the hero holds on size and the display serif alone,
+                which leaves the violet free to mark the widget and the one
+                number that matters.
+              */}
+              <h1 className="fade-in-2 mt-7 text-4xl leading-[1.05] sm:text-6xl lg:text-7xl">
+                Any wallet.
+                <br />
+                Any chain.
+                <br />
+                One step.
+              </h1>
+
+              <p className="lede fade-in-3 mt-7 max-w-lg">
+                Pay with whatever you already hold, wherever it sits. The best route is worked out
+                for you, and the whole cost is on this page before you sign anything.
+              </p>
+
+              <dl className="fade-in-4 mt-10 flex flex-wrap gap-x-10 gap-y-5">
+                {CLAIMS.map((c) => (
+                  <div key={c.k}>
+                    <dt className="stat-label">{c.k}</dt>
+                    <dd className="mt-1.5 text-lg text-ink-100">{c.v}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+
+            {/* The widget, framed as the object you act on.
+
+                `min-w-0` is load-bearing: a grid item defaults to min-width
+                auto and the widget carries a 360px min-width, so without it
+                the track refuses to shrink and the whole page scrolls sideways
+                on a phone. The negative margin cancels the shell padding at
+                that size to give the widget the full viewport, which is the
+                same wrapper the bridge page uses, and the frame only appears
+                from `sm` up because a glowing ring bleeding off both edges of
+                a phone reads as a rendering fault. */}
+            <div className="fade-in-5 relative -mx-5 min-w-0 sm:mx-0">
+              <div
+                aria-hidden="true"
+                className="absolute -inset-8 -z-10 rounded-full bg-zor-700/20 blur-3xl"
+              />
+              <div className="sm:rounded-card sm:shadow-glow">
+                <BridgePanel toToken={ZOR_ADDRESS} />
+              </div>
+            </div>
           </div>
-          <h1 className="mt-6 max-w-3xl text-3xl leading-tight sm:text-5xl">
-            Buy {TOKEN.ticker} from anywhere
-          </h1>
-          <p className="lede mt-5 max-w-2xl">
-            Connect any wallet, pay with whatever you already hold on whichever chain it sits on, and
-            the best route is worked out for you. One signature, no bridging first, no account.
-          </p>
         </div>
       </section>
 
-      {/* ─── The widget, and what it will cost ────────────────────────────── */}
-      <section className="shell py-12 sm:py-16">
-        <div className="grid gap-8 lg:grid-cols-[420px,1fr] lg:items-start lg:gap-12">
-          {/* `min-w-0` is load-bearing: a grid item defaults to min-width auto
-              and the widget carries a 360px min-width, so without it the track
-              refuses to shrink and the whole page scrolls sideways on a phone.
-              The negative margin cancels the shell's padding at that size, which
-              gives the widget the full viewport. Same wrapper as the bridge
-              page, which hit this first. */}
-          <div className="-mx-5 min-w-0 sm:mx-0">
-            <BridgePanel toToken={ZOR_ADDRESS} />
-          </div>
-
-          <div className="flex flex-col gap-6">
+      {/* ─── What it costs ────────────────────────────────────────────────── */}
+      <section className="border-t border-void-700 bg-void-900/40">
+        <div className="shell py-14 sm:py-20">
+          <h2 className="text-2xl sm:text-3xl">What it costs</h2>
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-ink-400">
+            {TOKEN.ticker} trades against a single pool, and that pool is small. These are not
+            warnings about a hypothetical worst case. They are the prices you get, computed from the
+            pool a moment ago.
+          </p>
+          <div className="mt-12">
             <BuyCost />
-
-            {/*
-              The honest paragraph. It sits beside the widget rather than below
-              it because a cost disclosure a reader has to scroll to find is a
-              disclosure designed not to be read.
-            */}
-            <div className="card p-5">
-              <h2 className="text-sm font-semibold">Read this before you buy</h2>
-              <p className="mt-3 text-sm leading-relaxed text-ink-400">
-                {TOKEN.ticker} trades against a single pool, and that pool is small. The table above
-                is not a warning about a hypothetical worst case; it is the price you will get at
-                each size, computed from the pool a moment ago. A larger order costs
-                disproportionately more, so several small purchases beat one large one.
-              </p>
-              <p className="mt-3 text-sm leading-relaxed text-ink-400">
-                The contracts are deployed and source-verified, and the external audit is still
-                outstanding. See the{' '}
-                <Link href="/roadmap" className="link-quiet">
-                  roadmap
-                </Link>{' '}
-                for what is finished and what is not, and{' '}
-                <Link href="/token" className="link-quiet">
-                  the token page
-                </Link>{' '}
-                for where every token sits. Nothing here is investment advice, and you should not
-                buy more than you are willing to lose entirely.
-              </p>
-            </div>
           </div>
         </div>
       </section>
 
-      {/* ─── Facts ────────────────────────────────────────────────────────── */}
+      {/* ─── Fine print ───────────────────────────────────────────────────── */}
       <section className="border-t border-void-700">
-        <div className="shell grid gap-6 py-12 sm:grid-cols-2 lg:grid-cols-4">
-          {FACTS.map((f) => (
-            <div key={f.k}>
-              <p className="font-mono text-2xs uppercase tracking-wide text-ink-500">{f.k}</p>
-              <p className="mt-2 text-xl">{f.v}</p>
-              <p className="mt-2 text-sm leading-relaxed text-ink-400">{f.note}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ─── Onward ───────────────────────────────────────────────────────── */}
-      <section className="border-t border-void-700">
-        <div className="shell py-12">
-          <p className="text-sm leading-relaxed text-ink-400">
-            Moving assets across without buying {TOKEN.ticker}?{' '}
-            <Link href="/tools/bridge" className="link-quiet">
-              The bridge
-            </Link>{' '}
-            does the same routing to any token on any supported chain.
-          </p>
+        <div className="shell grid gap-x-16 gap-y-6 py-14 lg:grid-cols-[minmax(0,1fr),minmax(0,1.25fr)]">
+          <h2 className="text-lg text-ink-300">Before you buy</h2>
+          <div className="space-y-4 text-sm leading-relaxed text-ink-400">
+            <p>
+              Any wallet reachable over WalletConnect works, which is most of them, MetaMask,
+              Coinbase Wallet and Safe included. Origin chains include Ethereum, Arbitrum, Base,
+              Optimism, Polygon, BNB and Solana, and you do not need anything on Robinhood Chain
+              first. Every leg settles onchain from your own wallet, so Zorpha never holds your
+              funds and cannot.
+            </p>
+            <p>
+              The contracts are deployed and source-verified, and the external audit is still
+              outstanding. See the{' '}
+              <Link href="/roadmap" className="link-quiet">
+                roadmap
+              </Link>{' '}
+              for what is finished and what is not, and{' '}
+              <Link href="/token" className="link-quiet">
+                the token page
+              </Link>{' '}
+              for where every token sits. Nothing here is investment advice, and you should not buy
+              more than you are willing to lose entirely.
+            </p>
+            <p>
+              Moving assets across without buying {TOKEN.ticker}?{' '}
+              <Link href="/tools/bridge" className="link-quiet">
+                The bridge
+              </Link>{' '}
+              does the same routing to any token on any supported chain.
+            </p>
+          </div>
         </div>
       </section>
     </>
