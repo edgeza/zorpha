@@ -218,12 +218,14 @@ export default function ProtocolPage() {
               days to pull is not a brake. DEFAULT_ADMIN is the Timelock, so fees, roles
               and the venue still are delayed.
 
-              One asymmetry, stated because it is real rather than because it is tidy:
-              the swap adapter's OWN admin is the Safe, not the Timelock. That role only
-              grants and revokes the vault's permission to use it, so the Safe can stop
-              that vault trading -- which it can already do with the breaker it holds --
-              and cannot point the vault at a different venue, because `setSwapAdapter`
-              is on the vault and the vault's admin is the Timelock.
+              There WAS a fourth exception here, and it is gone. The swap adapter's own
+              admin sat with the Safe rather than the Timelock, so the sentence above
+              needed a caveat: the Safe could revoke the vault's permission to use the
+              venue, even though it could never repoint it. Batch K moved that admin to
+              the Timelock on 7 September 2026, so the claim now holds without one. The
+              paragraph is kept as a note rather than deleted because "we said it was
+              timelocked and it was not, and then we fixed it" is the more useful thing
+              for a reader to know than a page that reads as though it was always true.
             */}
             <SpecRow label="Admin delay">
               Fees, roles, mandates and a vault&rsquo;s own admin are queued in a 48-hour
