@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { readCustody } from '@/lib/custody-onchain';
+import { readTraction } from '@/lib/traction-onchain';
 import type { Metadata } from 'next';
 import { AllocationChart } from '@/components/marketing/AllocationChart';
 import { SupplyCurve } from '@/components/marketing/SupplyCurve';
@@ -38,7 +39,7 @@ export const metadata: Metadata = {
 export const revalidate = 300;
 
 export default async function TokenPage() {
-  const custody = await readCustody();
+  const [custody, traction] = await Promise.all([readCustody(), readTraction()]);
   return (
     <>
       {/* ─── Header ───────────────────────────────────────────────────────── */}
@@ -52,8 +53,9 @@ export default async function TokenPage() {
           <p className="lede mt-6 max-w-2xl">
             {TOKEN.name} is the governance and fee-capture token of the protocol. It is not a
             staking product, it pays no yield, and it is never required to use a vault. What it does
-            have is a fixed supply, a real vote, and a share of protocol revenue that is spent
-            buying it back and destroying it.
+            have is a fixed supply, a real vote, and a design in which protocol revenue is spent
+            buying it back and destroying it. How much of that has happened so far is read from
+            the chain further down, and today the answer is none of it.
           </p>
 
           <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -64,7 +66,18 @@ export default async function TokenPage() {
               sub="Measured onchain, not planned"
             />
             <Stat label="Insider share" value={`${INSIDER_PCT}%`} sub="Policy: contributors and backers" />
-            <Stat label="Fees to burn" value="50%" tone="verified" sub="Of all protocol revenue" />
+            <Stat
+              label="Fees to burn"
+              value="50%"
+              tone={traction.burnedZor > 0 ? 'verified' : undefined}
+              sub={
+                traction.source === 'unavailable'
+                  ? 'Policy. Burn total unread'
+                  : traction.burnedZor > 0
+                    ? `Of revenue. ${formatCompact(traction.burnedZor)} burned so far`
+                    : 'Policy. Nothing burned yet'
+              }
+            />
           </div>
         </div>
       </section>
@@ -293,6 +306,65 @@ export default async function TokenPage() {
               <span className="font-mono text-ink-300">totalSupply</span> reduction rather than a
               transfer to a dead address.
             </p>
+            {/*
+              What the mechanism above has actually done, next to the
+              description of it.
+
+              Every sentence in that lede is true about the contracts and none
+              of it had happened: no fee has accrued, no revenue has been
+              converted, nothing has been burned. A reader doing diligence
+              found that out by reading the chain and asked why the page did
+              not say so. It does now, and it reads the figures rather than
+              asserting them, so the first real fee corrects this block without
+              anyone remembering to.
+            */}
+            <div className="mt-8 card-pad">
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <h3 className="text-base font-semibold text-ink-100">
+                  What has actually happened
+                </h3>
+                <span className="font-mono text-2xs text-ink-500">
+                  {traction.source === 'chain' ? 'read from chain' : 'unread'}
+                </span>
+              </div>
+
+              {traction.source === 'unavailable' ? (
+                <p className="mt-3 text-sm leading-relaxed text-ink-400">
+                  These figures could not be read just now, because {traction.reason}. They are
+                  unavailable rather than zero, and those are different things.
+                </p>
+              ) : (
+                <>
+                  <dl className="mt-4 flex flex-wrap gap-x-10 gap-y-4">
+                    <div>
+                      <dt className="stat-label">Burned to date</dt>
+                      <dd className="mt-1.5 font-mono text-lg text-ink-100">
+                        {formatCompact(traction.burnedZor)} {TOKEN.ticker}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="stat-label">Fee accrued, unpaid</dt>
+                      <dd className="mt-1.5 font-mono text-lg text-ink-100">
+                        {traction.feeAccruedRaw === 0n ? 'none' : 'some'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="stat-label">Deposits from outside</dt>
+                      <dd className="mt-1.5 font-mono text-lg text-ink-100">
+                        {traction.externalPct.toFixed(1)}%
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <p className="mt-5 text-sm leading-relaxed text-ink-400">
+                    {traction.externalPct === 0
+                      ? `Every share of the flagship vault is held by the governance Safe, which is also its only depositor so far. So there is no outside capital to charge a performance fee on, no fee has accrued, and the buyback has had nothing to convert. A burn is the only way ${TOKEN.ticker}'s supply can move, since no mint function exists, so "burned to date" is exact rather than reported.`
+                      : `A performance fee is charged only on gains above a high-water mark, so revenue follows deposits rather than time. Burned to date is exact: a burn is the only way ${TOKEN.ticker}'s supply can move, because no mint function exists.`}
+                  </p>
+                </>
+              )}
+            </div>
+
             <div className="mt-8">
               <Link href="/portal/governance" className="btn-primary">
                 See the live burn ledger
