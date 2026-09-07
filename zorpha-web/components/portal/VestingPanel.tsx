@@ -7,7 +7,7 @@ import {
   useWriteContract,
   useWaitForTransactionReceipt,
 } from 'wagmi';
-import { contracts, vestingAbi, isDeployed, explorerTx } from '@/lib/contracts';
+import { contracts, vestingAbi, isDeployed, explorerTx, onProtocolChain } from '@/lib/contracts';
 import { formatUnits, formatDate, formatRelative } from '@/lib/format';
 import { TOKEN } from '@/lib/tokenomics';
 import { Callout, EmptyState } from '@/components/ui/Primitives';
@@ -28,6 +28,7 @@ export function VestingPanel() {
   const enabled = deployed && Boolean(address);
 
   const { data: schedule } = useReadContract({
+    ...onProtocolChain,
     abi: vestingAbi,
     address: contracts.vesting,
     functionName: 'scheduleOf',
@@ -36,6 +37,7 @@ export function VestingPanel() {
   });
 
   const { data: claimable, refetch: refetchClaimable } = useReadContract({
+    ...onProtocolChain,
     abi: vestingAbi,
     address: contracts.vesting,
     functionName: 'claimable',
@@ -44,6 +46,7 @@ export function VestingPanel() {
   });
 
   const { data: vestedTotal, refetch: refetchVested } = useReadContract({
+    ...onProtocolChain,
     abi: vestingAbi,
     address: contracts.vesting,
     functionName: 'vestedTotal',

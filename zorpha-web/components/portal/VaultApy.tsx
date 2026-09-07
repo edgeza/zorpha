@@ -1,13 +1,11 @@
 'use client';
 
 import { useReadContract, useReadContracts } from 'wagmi';
-import {
-  vaultAbi,
+import { vaultAbi,
   yieldAdapterAbi,
   morphoVaultV2Abi,
   multicall3TimestampAbi,
-  MULTICALL3_ADDRESS,
-} from '@/lib/contracts';
+  MULTICALL3_ADDRESS, onProtocolChain } from '@/lib/contracts';
 import { apyFromAccrual, formatApy, type VaultApy } from '@/lib/apy';
 import { bpsToPct } from '@/lib/format';
 
@@ -48,8 +46,8 @@ function useVaultApy(vaultAddress: `0x${string}`): Measurement {
   // component knows it has nothing to say about them.
   const vault = useReadContracts({
     contracts: [
-      { abi: vaultAbi, address: vaultAddress, functionName: 'adapter' },
-      { abi: vaultAbi, address: vaultAddress, functionName: 'performanceFee' },
+      { ...onProtocolChain, abi: vaultAbi, address: vaultAddress, functionName: 'adapter' },
+      { ...onProtocolChain, abi: vaultAbi, address: vaultAddress, functionName: 'performanceFee' },
     ],
   });
 
@@ -60,6 +58,7 @@ function useVaultApy(vaultAddress: `0x${string}`): Measurement {
 
   // Hop 2.
   const { data: target } = useReadContract({
+    ...onProtocolChain,
     abi: yieldAdapterAbi,
     address: adapter,
     functionName: 'target',
@@ -73,10 +72,11 @@ function useVaultApy(vaultAddress: `0x${string}`): Measurement {
   // blocks overstates the rate on short windows.
   const accrual = useReadContracts({
     contracts: [
-      { abi: morphoVaultV2Abi, address: target, functionName: '_totalAssets' },
-      { abi: morphoVaultV2Abi, address: target, functionName: 'lastUpdate' },
-      { abi: morphoVaultV2Abi, address: target, functionName: 'accrueInterestView' },
+      { ...onProtocolChain, abi: morphoVaultV2Abi, address: target, functionName: '_totalAssets' },
+      { ...onProtocolChain, abi: morphoVaultV2Abi, address: target, functionName: 'lastUpdate' },
+      { ...onProtocolChain, abi: morphoVaultV2Abi, address: target, functionName: 'accrueInterestView' },
       {
+        ...onProtocolChain,
         abi: multicall3TimestampAbi,
         address: MULTICALL3_ADDRESS,
         functionName: 'getCurrentBlockTimestamp',

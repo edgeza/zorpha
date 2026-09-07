@@ -1,7 +1,7 @@
 'use client';
 
 import { useReadContract } from 'wagmi';
-import { contracts, buybackAbi, isDeployed, explorerAddress } from '@/lib/contracts';
+import { contracts, buybackAbi, isDeployed, explorerAddress, onProtocolChain } from '@/lib/contracts';
 import { formatUnits, formatCompactUnits, formatAddress } from '@/lib/format';
 import { TOKEN } from '@/lib/tokenomics';
 
@@ -22,12 +22,14 @@ export function BuybackPanel() {
   // reverts with an empty reason there while `totalUsdcSpent` returns 0. One
   // of the two always resolves, before and after a redeploy.
   const { data: usdgSpentNew } = useReadContract({
+    ...onProtocolChain,
     abi: buybackAbi,
     address: contracts.buyback,
     functionName: 'totalUsdgSpent',
     query: { enabled: deployed, retry: false },
   });
   const { data: usdgSpentLegacy } = useReadContract({
+    ...onProtocolChain,
     abi: buybackAbi,
     address: contracts.buyback,
     functionName: 'totalUsdcSpent',
@@ -36,6 +38,7 @@ export function BuybackPanel() {
   const usdcSpent = usdgSpentNew ?? usdgSpentLegacy;
 
   const { data: zorBurned } = useReadContract({
+    ...onProtocolChain,
     abi: buybackAbi,
     address: contracts.buyback,
     functionName: 'totalZorBurned',
@@ -43,6 +46,7 @@ export function BuybackPanel() {
   });
 
   const { data: threshold } = useReadContract({
+    ...onProtocolChain,
     abi: buybackAbi,
     address: contracts.buyback,
     functionName: 'minBuybackThreshold',

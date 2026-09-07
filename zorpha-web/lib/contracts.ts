@@ -16,6 +16,31 @@
  */
 
 import { erc20Abi, erc4626Abi } from 'viem';
+import { activeChain } from './chains';
+
+/**
+ * Pins a read to the chain this deployment targets.
+ *
+ * A wagmi read with no `chainId` runs against `config.state.chainId`, which
+ * follows whatever network the connected wallet is on. Every contract in this
+ * app lives on one chain, so a read that silently moves with the wallet is
+ * never what was meant: connect on the testnet and a mainnet build reads
+ * testnet, where these addresses hold nothing, and the panels go quiet with no
+ * indication why.
+ *
+ * Ordering the registered chains active-first fixed the disconnected default.
+ * This fixes the connected one, and says out loud that these reads are about a
+ * particular chain rather than about the visitor's current network. Spread it
+ * into the options of a `useReadContract`, or into each entry of a
+ * `useReadContracts` array:
+ *
+ *     useReadContract({ ...onProtocolChain, abi, address, functionName })
+ *
+ * Writes deliberately do NOT take this. A transaction has to be signed on the
+ * chain the wallet is actually on, and WalletButton already offers the switch
+ * when it is the wrong one.
+ */
+export const onProtocolChain = { chainId: activeChain.id } as const;
 
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
 

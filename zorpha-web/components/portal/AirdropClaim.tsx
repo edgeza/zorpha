@@ -7,12 +7,10 @@ import {
   useWriteContract,
   useWaitForTransactionReceipt,
 } from 'wagmi';
-import {
-  contracts,
+import { contracts,
   merkleDistributorAbi,
   isDeployed,
-  explorerTx,
-} from '@/lib/contracts';
+  explorerTx, onProtocolChain } from '@/lib/contracts';
 import { formatUnits, formatDateTime, formatRelative } from '@/lib/format';
 import { TOKEN } from '@/lib/tokenomics';
 import { Callout } from '@/components/ui/Primitives';
@@ -80,6 +78,7 @@ export function AirdropClaim() {
   const allocation = lookup.status === 'eligible' ? lookup.allocation : undefined;
 
   const { data: claimed, refetch: refetchClaimed } = useReadContract({
+    ...onProtocolChain,
     abi: merkleDistributorAbi,
     address: contracts.merkleDistributor,
     functionName: 'isClaimed',
@@ -88,6 +87,7 @@ export function AirdropClaim() {
   });
 
   const { data: deadline } = useReadContract({
+    ...onProtocolChain,
     abi: merkleDistributorAbi,
     address: contracts.merkleDistributor,
     functionName: 'claimDeadline',
