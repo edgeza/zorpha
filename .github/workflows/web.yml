@@ -83,6 +83,19 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # The CSP names every RPC host LI.FI calls from the browser to read a
+      # visitor's balances. When LI.FI rotates an endpoint, the policy starts
+      # blocking a chain and nothing says so: the SDK settles those reads with
+      # Promise.allSettled and a blocked balance looks exactly like an empty
+      # wallet. That shipped once already, on 7 September 2026, and a tester
+      # with USDT on BSC was told they held nothing.
+      #
+      # This re-fetches LI.FI's list and fails if the committed allowlist has
+      # drifted. It passes when li.quest is unreachable, because an outage is
+      # not drift and a check that goes red on flakes stops being read.
+      - name: RPC allowlist is current
+        run: npm run check:rpc-allowlist
+
       # `npm test` predates this workflow and was never wired into it, so the
       # APY arithmetic the portal renders was reaching production with its
       # tests run only on a developer's machine.
