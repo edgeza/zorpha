@@ -61,8 +61,8 @@ export const VAULT_CLASSES: readonly VaultClass[] = [
 ] as const;
 
 /**
- * Which symbol to show. Mainnet is not deployed, so this reads testnet today
- * and flips on one environment variable rather than an edit.
+ * Which symbol to show. Flips on one environment variable rather than an edit,
+ * which is what let mainnet symbols appear the day mainnet went live.
  */
 export function vaultSymbol(v: VaultClass): string {
   return process.env.NEXT_PUBLIC_NETWORK === 'mainnet' ? v.symbolMainnet : v.symbolTestnet;

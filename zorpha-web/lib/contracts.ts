@@ -88,9 +88,14 @@ export function isExpectedAbsence(key: ContractKey, chainId: number = CHAIN_ID):
     // Written and tested, deliberately not deployed on 4663. lib/deployment.ts
     // NOT_ON_MAINNET carries the reasoning and the public disclosure; the
     // whitepaper and /protocol say so too. Absent by decision, not by fault.
-    case 'oracle':
+    //
+    // `oracle` and `spotVault` USED to be in this list and are not any more.
+    // Both went live on 4663 on 6 September 2026: the spot vault is zqNVDA at
+    // 0xB129495f..., priced by a UniswapV3TwapAdapter at 0xaBefb351... that
+    // reads the NVDA/USDG pool directly. The oracle problem was REMOVED rather
+    // than deferred, so an unset address for either is now a real
+    // misconfiguration and the banner must say so rather than excuse it.
     case 'strategyExecutor':
-    case 'spotVault':
     case 'rotationVault':
     case 'reputationRegistry':
       return true;

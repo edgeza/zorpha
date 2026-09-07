@@ -106,11 +106,14 @@ export default function WhitepaperPage() {
               404 to every visitor who clicked it -- a button labelled "Read the
               contracts" that let nobody read the contracts.
 
-              It now points at the deployment section below, where all nine
-              mainnet addresses are listed and each links to its source-verified
-              page on the explorer. That is where the contracts are genuinely
-              readable, and verified source is better evidence than a repository
-              anyway: it is provably the source of the deployed bytecode.
+              It now points at the deployment section below, where every mainnet
+              address is listed and each links to its page on the explorer. That
+              is where the contracts are genuinely readable, and verified source
+              is better evidence than a repository anyway: it is provably the
+              source of the deployed bytecode.
+
+              No count here on purpose. It said "all nine" and was wrong three
+              days later, when the stock vault added three more.
             */}
             <a href="#deployment" className="btn">
               Read the contracts
@@ -223,8 +226,12 @@ export default function WhitepaperPage() {
 
               <p className="mt-7 max-w-3xl text-sm leading-relaxed text-ink-300">
                 Sections 3 and 4 describe the oracle, the strategy executor and three vault types in
-                the present tense. One vault type is live on mainnet. Read those sections as the
-                design, and this list as the deployment.
+                the present tense. Two vault types are live on mainnet, and neither prices the way
+                those sections say. The yield vault reads its ERC-4626 target directly. The stock
+                vault reads a 30-minute time-weighted average of the same Uniswap pool it trades
+                against, which is why no MedianOracle is deployed and no updater set is funded:
+                that requirement was removed rather than met. Read those sections as the design,
+                and this list as the deployment.
               </p>
             </div>
 

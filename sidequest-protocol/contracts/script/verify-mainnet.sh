@@ -15,6 +15,33 @@
 # finished.
 #
 # Safe to re-run: anything already verified reports as such and is counted.
+#
+# IF forge's OWN VERIFIER STOPS WORKING, and on 7 September 2026 it did:
+# `forge verify-contract` sends its own User-Agent, and Cloudflare now answers
+# it with the "Just a moment" challenge page. forge then reports
+# "Failed to deserialize content: expected value at line 1 column 1", which
+# reads like a malformed payload and is not. The explorer is fine; the request
+# is being challenged before it arrives.
+#
+# The fallback that works is the v2 API driven by curl with a full browser
+# User-Agent plus Accept and Referer headers. Get the standard-json input from
+# forge itself, which needs RH_EXPLORER_URL and RH_EXPLORER_API_KEY set even
+# though it sends nothing:
+#
+#   forge verify-contract <addr> <path:Name> --show-standard-json-input > Name.json
+#   cast abi-encode "<ctor sig>" <args...> | sed 's/^0x//' > Name.ctor
+#
+#   curl -A "<full Chrome UA>" #     -H "Accept: application/json, text/plain, */*" #     -H "Referer: $EXPLORER/address/<addr>/contract-verification" #     -F compiler_version=v0.8.28+commit.7893614a -F license_type=mit #     -F autodetect_constructor_args=false -F constructor_args=<hex> #     -F "files[0]=@Name.json;type=application/json" #     "$EXPLORER/api/v2/smart-contracts/<addr>/verification/via/standard-input"
+#
+# The `;type=application/json` matters: without it Blockscout answers 200
+# {"message":"JSON files not found"} and silently does nothing.
+#
+# Two rate limits, and they are separate. GET on /api/v2/smart-contracts
+# recovers in under a minute. The verification POST answers 429 for far longer,
+# and a burst of retries extends it, so back off in minutes rather than
+# seconds. Strip CR from any hex read out of a file first: a trailing  makes
+# the calldata an odd number of digits and the error shows a string that looks
+# perfectly correct.
 set -euo pipefail
 
 RPC="${RH_MAINNET_RPC_URL:-https://rpc.mainnet.chain.robinhood.com}"
@@ -37,6 +64,9 @@ declare -A SRC=(
   [ZorphaVesting]=src/ZorphaVesting.sol:ZorphaVesting
   [VaultFactory]=src/VaultFactory.sol:VaultFactory
   [VaultLauncher]=src/leadership/VaultLauncher.sol:VaultLauncher
+  [UniswapV3TwapAdapter]=src/oracle/UniswapV3TwapAdapter.sol:UniswapV3TwapAdapter
+  [SpotVaultMinimal]=src/vaults/SpotVaultMinimal.sol:SpotVaultMinimal
+  [RobinhoodChainRouterAdapter]=src/adapters/RobinhoodChainRouterAdapter.sol:RobinhoodChainRouterAdapter
 )
 
 declare -A CTOR=(
@@ -49,6 +79,9 @@ declare -A CTOR=(
   [ZorphaVesting]="constructor(address,address)"
   [VaultFactory]="constructor(address)"
   [VaultLauncher]="constructor(address,address,address,address,address)"
+  [UniswapV3TwapAdapter]="constructor(address,address,address,uint32,uint16,uint128,uint32,uint16)"
+  [SpotVaultMinimal]="constructor(address,address,address,uint256,string,string,uint16,uint16,uint256,address,address,uint256)"
+  [RobinhoodChainRouterAdapter]="constructor(address,address,address,uint24,address)"
 )
 
 bold "Verifying the mainnet deployment"
@@ -63,7 +96,7 @@ FAILED=0
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-for script in DeployZorphaToken DeployMinimal; do
+for script in DeployZorphaToken DeployMinimal DeployStockVault; do
   BC="broadcast/$script.s.sol/$CHAIN_ID/run-latest.json"
   if [[ ! -f "$BC" ]]; then warn "no broadcast for $script, skipping"; continue; fi
 
