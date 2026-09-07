@@ -144,42 +144,43 @@ submission was filed before then with the field blank, amend it.
 
 ## Supply figures: the part that decides the outcome
 
-    total supply       1,000,000,000
-    max supply         1,000,000,000   (fixed; no mint function exists)
+**Run the script. This file deliberately carries no figure.**
 
-    ZorphaVesting        800,000,000   non-revocable lock
-    MerkleDistributor     80,000,000   airdrop, unclaimed
-    InsuranceFund         40,000,000   governance release only
-    Safe (2-of-2)         16,311,116   treasury
-    protocol-owned LP     40,360,868   all three Uniswap positions are Safe-owned
+    node scripts/circulating-supply.mjs
 
-    genuine third-party   23,328,016   = 2.33% of supply     <- report THIS
+It reads every excluded holder from chain and prints the number in the shape a
+form wants, with each subtraction labelled.
 
-**Circulating supply is the third-party figure, not the residual.** The
-governance Safe and the protocol-owned liquidity are both treasury-controlled --
-the Safe holds those LP NFTs and can withdraw them at will -- so neither counts
-as circulating under CoinGecko's definition. `ON_CHAIN_CUSTODY` in
-`lib/tokenomics.ts` uses a broader sense of the word and says so in its own note;
-the two are not in conflict, but do not copy that 80,000,000 into a listing form.
+WHY THERE IS NO NUMBER HERE ANY MORE. There was one, with a warning in bold
+directly under it that the figure moves and must be recomputed before every
+submission. The warning was correct and it did not help. The file said
+23,328,016 and said to report that; by the time anyone read it the real figure
+was 27,423,500, because ZOR bought out of the pool leaves the pool and becomes
+float. At this size a single purchase is a large fraction of the float, so any
+number committed to a document is wrong within days. A note saying "recompute
+this" next to a number is an invitation to copy the number.
 
-**THIS NUMBER MOVES. Recompute it before every submission.** It was 4,025,166 on
-5 Sep and 23,328,016 the next morning -- a 5.8x change from a single $198 buy,
-because at this size one purchase is a large fraction of the float. Any earlier
-submission quoting 4,025,166 is now understated by roughly 19,300,000 tokens and
-should be amended.
+WHAT COUNTS AS CIRCULATING, AND WHY IT IS THE STRICTER SENSE
 
-Recompute with:
+CoinGecko excludes anything locked, reserved, or held by the team, treasury or
+foundation. For $ZOR that means the vesting contract, the insurance fund, the
+governance Safe, the leader bond, and the protocol-owned liquidity: the Safe
+holds those Uniswap LP NFTs and can withdraw them at will, so tokens sitting in
+the pool are treasury-controlled rather than public float.
 
-    total supply
-      - ZorphaVesting        0x81613D9914F7b4c02c897941757a99BC191De88e
-      - MerkleDistributor    0x1045AeCaCad091eC791815Be8c28DA12Ed94D4E3
-      - InsuranceFund        0x9D3B787a3492b4fe6D2a2C12062a4164263522Fd
-      - governance Safe      0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4
-      - ZOR/USDG pool        0x42AeA5CF1534498Db2f66F14bB9B9BeD2aB98d8d
-      = circulating
+`ON_CHAIN_CUSTODY` in `lib/tokenomics.ts` uses a broader sense for the website,
+counting the Safe's own float and protocol-owned liquidity as circulating, and
+says so in its own note. The two are not in conflict; they answer different
+questions.
 
-Every one of those is a plain `balanceOf` on the ZOR contract, so the figure can
-always be rebuilt from chain rather than trusted from this file.
+**Do not copy the site's 8% into a listing form, and do not copy the script's
+figure onto the site.** Roughly 8% against roughly 2.7% is a large enough gap
+that mixing them up is the kind of discrepancy a reviewer notices, and being
+asked to explain it is worse than either number.
+
+If a form asks how it was derived, the script's output is the answer: every line
+is a plain `balanceOf` on the ZOR contract, so a reviewer can rebuild it without
+trusting this repository.
 
 ## Honest read on the odds
 
