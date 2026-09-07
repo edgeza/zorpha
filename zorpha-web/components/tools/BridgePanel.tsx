@@ -24,10 +24,10 @@ const BridgeWidget = dynamic(() => import('@/components/tools/BridgeWidget'), {
   ),
 });
 
-export function BridgePanel() {
+export function BridgePanel({ toToken }: { toToken?: string } = {}) {
   return (
     <div className="mx-auto w-full max-w-[420px] lg:mx-0">
-      <BridgeWidget />
+      <BridgeWidget toToken={toToken} />
     </div>
   );
 }

@@ -37,6 +37,7 @@ const COLUMNS: { heading: string; links: { href: string; label: string; external
         { href: '/whitepaper', label: 'Whitepaper' },
         { href: '/protocol', label: 'How it works' },
         { href: '/protocol#vaults', label: 'Vaults' },
+        { href: '/tools/buy', label: 'Buy $ZOR' },
         { href: '/tools/bridge', label: 'Zorpha Bridging' },
         { href: '/roadmap', label: 'Roadmap' },
         { href: '/writing', label: 'Writing' },

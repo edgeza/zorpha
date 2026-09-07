@@ -17,6 +17,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/faq', priority: 0.7, changeFrequency: 'monthly' },
     { path: '/writing', priority: 0.6, changeFrequency: 'monthly' },
     { path: '/writing/silent-failures', priority: 0.6, changeFrequency: 'monthly' },
+    { path: '/tools/buy', priority: 0.8, changeFrequency: 'monthly' },
     { path: '/tools/bridge', priority: 0.6, changeFrequency: 'monthly' },
     { path: '/legal/terms', priority: 0.3, changeFrequency: 'monthly' },
     { path: '/legal/privacy', priority: 0.3, changeFrequency: 'monthly' },
