@@ -146,8 +146,9 @@ export function AirdropClaim() {
           {lookup.status === 'not-eligible' ? (
             <p className="text-sm leading-relaxed text-ink-400">
               No wallet has a Season 1 allocation yet. The criteria above are published now and the
-              90 day window is open: qualifying just means depositing into the zsUSDG vault and holding
-              it for the tier&apos;s duration. Allocations resolve once the window closes and a second
+              90 day window is open until 00:00 UTC on 6 December 2026: qualifying just means
+              depositing into the zsUSDG vault and holding it for the tier&apos;s duration, which
+              means the 60 day tier stops being reachable after 7 October. Allocations resolve once the window closes and a second
               distributor is deployed against the snapshot. There is no form to fill in and no way to
               register.
             </p>

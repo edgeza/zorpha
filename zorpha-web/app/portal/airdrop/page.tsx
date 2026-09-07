@@ -14,6 +14,31 @@ export const metadata: Metadata = { title: 'Airdrop' };
  */
 const SEASON_1_TOKENS = 8_000_000;
 
+/**
+ * The measurement window, in UTC.
+ *
+ * Published because the snapshot tool takes its block range from whoever runs
+ * it. Without dates on the page, the protocol would hold unbounded discretion
+ * over both ends of the clock that decides an immutable Merkle root, and a
+ * depositor could not tell whether the 60 day tier still fits. Anyone can now
+ * check a block's timestamp against these two instants and see whether the
+ * range fed to the snapshot matched what was promised.
+ *
+ * Opens at midnight UTC on the day the criteria published rather than at the
+ * exact commit, which is the generous reading. It costs nothing: the only
+ * deposit standing at publication was 4.50 USDG, well under the 25 USDG floor.
+ */
+const WINDOW_OPENS = Date.UTC(2026, 8, 7);
+const WINDOW_CLOSES = Date.UTC(2026, 11, 6);
+
+const utc = (ms: number) =>
+  new Date(ms).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+
 export default function AirdropPage() {
   const community = ALLOCATIONS.find((a) => a.key === 'community')!;
   const tranche = tokensFor(community.tgeBps);
@@ -36,7 +61,7 @@ export default function AirdropPage() {
           and the snapshot runs.
         </p>
         <p className="mt-3 text-sm leading-relaxed text-ink-400">
-          Two tiers, measured over a 90 day window. Depositing at least 25 USDG into the Zorpha Steakhouse USDG vault (zsUSDG)
+          Two tiers, measured over a 90 day window that opened at 00:00 UTC on {utc(WINDOW_OPENS)} and closes at 00:00 UTC on {utc(WINDOW_CLOSES)}. Depositing at least 25 USDG into the Zorpha Steakhouse USDG vault (zsUSDG)
           and holding it for 30 continuous days earns 15,000 {TOKEN.ticker}. At least 250 USDG held
           for 60 continuous days earns 40,000 {TOKEN.ticker}. Tier 2 is a cap, not a rate: more
           capital earns no more than 40,000. The protocol reserves the right to exclude wallets it

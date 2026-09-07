@@ -1,3 +1,13 @@
 # Shell scripts run under Git Bash and WSL; CRLF breaks the shebang and every
 # quoted string. Enforce LF regardless of the editor or tool that wrote them.
 *.sh text eol=lf
+
+# Vendored dependencies are exempt from that rule, and this is not cosmetic.
+# The OpenZeppelin scripts under contracts/lib were committed with CRLF before
+# the rule above existed. Git then normalises them to LF on checkout and diffs
+# that against the CRLF blobs in HEAD, so all 17 report as modified forever:
+# no checkout, stash, reset or core.fileMode change settles it, and every pull
+# aborts with "local changes would be overwritten". They are OpenZeppelin's own
+# release tooling and nothing in this repository runs them, so the shebang
+# argument above does not apply. Leave their bytes alone.
+sidequest-protocol/contracts/lib/** -text
