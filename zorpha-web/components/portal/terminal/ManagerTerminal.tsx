@@ -36,6 +36,7 @@ import { WalletButton } from '@/components/portal/WalletButton';
 import { SpotRebalance, RotationRebalance, YieldRebalance } from './RebalancePanel';
 import { LeaderActions } from './LeaderActions';
 import { VaultBook } from './VaultBook';
+import { StockPrice } from '@/components/portal/StockPrice';
 
 /**
  * The manager terminal.
@@ -619,7 +620,37 @@ export function ManagerTerminal() {
             {isLoading ? (
               <p className="text-sm text-ink-500">Reading the vault…</p>
             ) : selected.kind === 'spot' ? (
-              <SpotRebalance
+              <div className="flex flex-col gap-6">
+                {/*
+                  The oracle address comes from the VAULT's own `oracle()` view,
+                  read above as spotOracleAddr, not from NEXT_PUBLIC_ORACLE_ADDRESS.
+                  Config can drift from the chain; the vault cannot drift from
+                  what it actually prices against, so a chart sourced this way
+                  can never show one feed while NAV uses another.
+                */}
+                <StockPrice oracleAddress={spotOracleAddr} symbol={assetSymbol} />
+
+                {/*
+                  Required by the design doc, and placed next to the control
+                  rather than in a footnote because that is where the decision
+                  gets made.
+                */}
+                <Callout tone="warn" title="This vault trades around the clock. The stock it tracks does not.">
+                  <p>
+                    {assetSymbol || 'The underlying'} the equity trades 09:30 to 16:00 New York
+                    time on weekdays. {assetSymbol || 'The underlying'} the token trades all the
+                    time. A rebalance at 03:00 on a Sunday prices against a market with no
+                    underlying reference and thin flow, and the token can drift from the equity it
+                    represents.
+                  </p>
+                  <p className="mt-2">
+                    There is no market-hours restriction here and no widened off-hours tolerance:
+                    the guards are identical at every hour. Trading then is allowed, and it is your
+                    judgement.
+                  </p>
+                </Callout>
+
+                <SpotRebalance
                 vault={selected.address}
                 canKeep={roles.keeper}
                 reasonCannot={reasonCannotKeep}
@@ -633,7 +664,8 @@ export function ManagerTerminal() {
                 thresholdBps={spotThreshold}
                 slippageBps={spotSlippage}
                 onDone={refetchAll}
-              />
+                />
+              </div>
             ) : selected.kind === 'rotation' ? (
               <RotationRebalance
                 vault={selected.address}
