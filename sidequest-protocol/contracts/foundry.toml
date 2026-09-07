@@ -11,6 +11,17 @@ fuzz.runs = 256
 fuzz.max_test_rejects = 65536
 block_gas_limit = 30000000
 
+# Read-only access to the Safe batch directory, so a test can execute the
+# ARTIFACT a signer will actually upload rather than a Solidity restatement of
+# it. Those are not the same evidence: a restatement agrees with itself while
+# the file carries a wrong address, a stale amount, or hex truncated by a stray
+# carriage return, and the file is the thing that gets signed.
+#
+# Read-only and scoped to one directory on purpose. A test has no business
+# writing here, and { access = "read-write", path = "./" } would hand every
+# test in the suite the whole tree.
+fs_permissions = [{ access = "read", path = "./safe-batches" }]
+
 # Robinhood Chain is Arbitrum Nitro, which applies the 24,576-byte contract
 # limit to BROTLI-COMPRESSED code, not raw. VaultFactory is 45,085 raw bytes --
 # it inlines three vault creationCodes -- and the chain accepts it: an
