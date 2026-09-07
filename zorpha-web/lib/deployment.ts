@@ -36,6 +36,11 @@ export const LIVE_VAULTS: { name: string; address: string; role: string }[] = [
     address: '0x3829bC787d4eB15Ec855A6cA33e1492a9103d130',
     role: 'Yield vault routing USDG to Steakhouse USDG, with a first-loss escrow ahead of depositors',
   },
+  {
+    name: 'Zorpha NVDA Long/Flat (zqNVDA)',
+    address: '0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413',
+    role: 'Long/flat equity vault priced from a chain TWAP rather than an oracle updater set. Deployed 6 September 2026, holding nothing yet',
+  },
 ];
 
 /**
@@ -44,9 +49,8 @@ export const LIVE_VAULTS: { name: string; address: string; role: string }[] = [
  * this list is what stops that reading as a claim about 4663.
  */
 export const NOT_ON_MAINNET: { name: string; note: string }[] = [
-  { name: 'MedianOracle', note: 'Priced vaults need it. Running one on mainnet means funding an independent updater set, which is a recurring cost the protocol does not yet carry.' },
+  { name: 'MedianOracle', note: 'An updater set reporting a median price. Running one on mainnet means funding independent updaters, a recurring cost the protocol does not yet carry. The NVDA vault above sidesteps it by reading a chain TWAP instead, which is why that vault shipped and this contract did not.' },
   { name: 'StrategyExecutor', note: 'The signed-rebalance path. Not deployed because the vaults it drives are not deployed.' },
-  { name: 'Spot vault (long/flat)', note: 'Prices a Stock Token against cash, so it depends on the oracle above.' },
   { name: 'Rotation vault (basket)', note: 'Reweights a basket against a base asset, so it depends on the oracle above.' },
   { name: 'ReputationRegistry', note: 'Manager commitments. Deferred with the manager-bonding design it belongs to.' },
 ];

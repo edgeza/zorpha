@@ -53,7 +53,7 @@ const PHASES: Phase[] = [
     items: [
       'Done: public testnet with real managers signing real rebalances. One of those receipts is the worked example on the home page, and it verifies in the reader’s own browser',
       'Not yet: external audit of the token and vault layers',
-      'Not yet: a multi-key oracle updater set and a median quorum above one. There is no oracle on mainnet at all; the one vault live there prices from its ERC-4626 target instead',
+      'Not yet: a multi-key oracle updater set and a median quorum above one. No MedianOracle is deployed on 4663. The two vaults live there price without one: the yield vault reads its ERC-4626 target, and the NVDA long/flat vault reads a chain TWAP',
     ],
     gate: 'External audit report published, including any accepted risks.',
   },

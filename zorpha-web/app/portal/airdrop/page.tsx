@@ -26,9 +26,7 @@ export default function AirdropPage() {
           {formatCompact(tranche)} {TOKEN.ticker}, or {community.tgeBps / 100}% of max supply, is
           funded on-chain and held by governance. Season 1 uses {formatCompact(SEASON_1_TOKENS)} of
           that; the remaining {formatCompact(tranche - SEASON_1_TOKENS)} is not part of Season 1 and
-          stays with governance for later seasons. If more wallets qualify than{' '}
-          {formatCompact(SEASON_1_TOKENS)} covers, the window closes at the cap and the overflow sets
-          Season 2&apos;s starting point instead.
+          stays with governance for later seasons.
         </p>
         <p className="mt-3 text-sm leading-relaxed text-ink-400">
           Claims are meant to be pull-based: nothing sent to your wallet without you asking for it.
