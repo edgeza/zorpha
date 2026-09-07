@@ -6,13 +6,27 @@ import {VaultLauncher} from "../../src/leadership/VaultLauncher.sol";
 
 /// @notice Replay safe-batches/B-lower-seed-minimum.json as the Safe.
 ///
-/// The batch is being run a second time because a stale queued proposal reset
-/// minSeedEscrow to the launcher's constructor default on 7 September 2026. Its
-/// safety property is that the other four arguments are passed at their current
-/// on-chain values, so re-running it changes one field and nothing else. That
-/// property is only true as long as those values have not moved since the batch
-/// was written, which is exactly what this asserts, from the artifact rather
-/// than from a copy of the calldata.
+/// Batch B lowers the launch escrow floor to 90 USDG. It is NOT the current
+/// policy: the floor was deliberately set to 1,000 USDG on 7 September 2026 and
+/// that is what the launcher holds. The batch stays because it is a correct,
+/// re-runnable artifact, and this test proves it stays correct, so the choice
+/// between the two numbers is a decision rather than a piece of work.
+///
+/// What this asserts is a property of the BATCH, not of the chain's current
+/// settings: it moves the escrow floor to 90 USDG and leaves the other four
+/// parameters alone. That is what makes it safe to sign. An earlier version of
+/// this file also asserted the launcher's live value, which is the wrong shape
+/// for a test: a fork test pinning a governance parameter goes red every time
+/// governance legitimately changes it, and this one did exactly that within the
+/// hour.
+///
+/// It reads the JSON off disk rather than a copy of the calldata, so it
+/// exercises the file that would be signed.
+///
+/// ON READING THE SAFE QUEUE, since guessing at it caused a wrong diagnosis
+/// here. The pending queue is not on chain and `cast` cannot see it, only
+/// nonces and past executions. It lives in Safe's hosted Transaction Service:
+/// see safe-batches/README.md for the endpoints.
 contract SeedMinimumBatchTest is Test {
     address constant SAFE = 0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4;
     address constant LAUNCHER = 0x9eD12842A222aeD986E768b3D50aDCf89691159A;
@@ -56,45 +70,5 @@ contract SeedMinimumBatchTest is Test {
         assertEq(l.minCoverageBps(), covBefore, "coverage must not move");
         assertEq(l.leaderFeeShareBps(), feeShareBefore, "leader fee share must not move");
         assertEq(l.performanceFeeBps(), perfBefore, "performance fee must not move");
-    }
-
-    /// Now a regression guard rather than a pre-flight check.
-    ///
-    /// It read `minSeedEscrow == 1_000_000_000` while the batch was waiting to
-    /// be signed, so a stale batch could not be signed on the strength of a
-    /// green suite. Batch B then executed at block 56,896,762
-    /// (tx 0x2f871e61adfc8fa02c2d1bb6a60fd43c2651b7910fbd772f6422a17edac3d518),
-    /// so the useful thing to watch became the opposite: that the value stays.
-    ///
-    /// THIS TEST IS CURRENTLY RED AGAINST MAINNET, DELIBERATELY.
-    ///
-    /// Sixteen minutes after batch B landed, a second queued proposal carrying
-    /// the launcher's constructor defaults executed at block 56,906,350
-    /// (tx 0x9f1c0c53505d511ee24bc2e2c249927566af03dba5686c96bfdf3a75ffaa8839)
-    /// and put minSeedEscrow back to 1,000 USDG. That is the second time the
-    /// same parameter has been reverted by a proposal older than the work it
-    /// undid; the first was at block 56,853,183.
-    ///
-    /// So this asserts the value the protocol intends, not the value on chain,
-    /// and stays red until the Safe queue is cleared of those entries and batch
-    /// B is run again. Weakening it to match the current state would delete the
-    /// only automated record that this keeps happening.
-    ///
-    /// It does not gate CI: .github/workflows/contracts.yml sets no fork RPC, so
-    /// every test in test/fork skips there. That is a real limitation of this
-    /// guard, not a convenience. It bites when someone runs the suite against
-    /// mainnet, and nowhere else.
-    function test_SeedMinimumIsStillNinetyUSDG() public {
-        if (!forked) { vm.skip(true); }
-        VaultLauncher l = VaultLauncher(LAUNCHER);
-        assertTrue(
-            l.hasRole(l.GOVERNANCE_ROLE(), SAFE),
-            "the Safe must hold GOVERNANCE_ROLE, or a correction needs the Timelock instead"
-        );
-        assertEq(
-            l.minSeedEscrow(),
-            90_000_000,
-            "seed minimum is off 90 USDG: check the Safe queue for a stale setParams before re-running batch B"
-        );
     }
 }

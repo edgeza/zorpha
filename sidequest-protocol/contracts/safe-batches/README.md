@@ -102,3 +102,48 @@ Keep the FULL-RANGE position `#1034952` in place. Concentrated bands (`F`, `G`,
 `H`) hold a finite amount of ZOR at a price anyone can compute, and one was
 emptied end-to-end in six minutes on 4 September. Full range cannot be drained
 that way, and it is what stops a repeat.
+
+## Reading the queue, and what "stale" actually means
+
+The Safe's pending queue is **not on chain**. `cast` can read the current nonce
+and past executions and nothing else, so a claim about what is queued has to
+come from Safe's hosted Transaction Service. Find it from the config API rather
+than hardcoding a guess:
+
+```bash
+curl https://safe-config.safe.global/api/v1/chains/4663/
+# -> transactionService  https://api.safe.global/tx-service/robinhood
+```
+
+Then, in PowerShell (`curl` there is an alias for `Invoke-WebRequest`, which
+prompts about HTML parsing; `Invoke-RestMethod` parses the JSON and does not):
+
+```powershell
+$s='0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4'
+$u="https://api.safe.global/tx-service/robinhood/api/v1/safes/$s/multisig-transactions"
+
+# pending
+(Invoke-RestMethod "$u/?executed=false").results |
+  Select-Object nonce,to,confirmationsRequired,submissionDate
+
+# executed, with BOTH dates
+(Invoke-RestMethod "$u/?executed=true&limit=12").results |
+  Select-Object nonce,to,submissionDate,executionDate,proposer
+```
+
+Two things this settles that guesswork got wrong on 7 September 2026:
+
+**A transaction is only "stale" if `submissionDate` is far from
+`executionDate`.** `VaultLauncher.setParams` reverted the launch escrow floor
+twice that day, and it was diagnosed as old queue entries firing as the nonce
+advanced. The service showed every one of them proposed 19 to 30 seconds before
+executing, with both owners signing. They were deliberate and current. The cost
+of guessing was two needless on-chain transactions and a false security alarm.
+
+**An entry below the current nonce can never execute.** Safe requires a
+transaction's nonce to equal the Safe's nonce, so a proposal at nonce 5 while
+the Safe sits at 20 is dead. It still shows in the queue. Deleting it is
+tidiness, not remediation.
+
+After executing any batch, re-read the values it set. Both reverts above
+returned success, so no failed transaction existed anywhere to notice.
