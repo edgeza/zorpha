@@ -61,7 +61,7 @@ export const ON_CHAIN_CUSTODY: {
     label: 'Season 1 airdrop, held by governance',
     tokens: 80_000_000,
     note:
-      'Claimed from the Merkle distributor by the governance Safe, its sole eligible claimant. Not yet distributed: per-wallet Season 1 criteria are unpublished, and paying them out needs a second distributor built from a real recipient list.',
+      'Claimed from the Merkle distributor by the governance Safe, its sole eligible claimant. Not yet distributed: the Season 1 criteria are published and the 90 day window is open, but paying allocations out needs a second distributor built from the recipient list the snapshot produces once the window closes.',
     address: '0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4',
   },
   {
@@ -118,7 +118,7 @@ export const ALLOCATIONS: Allocation[] = [
     shape: 'seasonal',
     color: 'var(--zor-500)',
     rationale:
-      'The largest single bucket, and deliberately so. 8% of supply is already funded on-chain for the Season 1 airdrop, held by governance until the season criteria are published and voted. The remaining 30% is released season by season against published criteria, each season approved by governance rather than dripped automatically. Emissions that nobody votes for are just inflation with extra steps.',
+      'The largest single bucket, and deliberately so. 8% of supply is already funded on-chain for the Season 1 airdrop, held by governance until the window closes and a second distributor is funded against the snapshot. The remaining 30% is released season by season against published criteria, each season approved by governance rather than dripped automatically. Emissions that nobody votes for are just inflation with extra steps.',
   },
   {
     key: 'treasury',

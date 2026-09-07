@@ -66,7 +66,7 @@ const PHASES: Phase[] = [
       'Done: mainnet deployment, source-verified, with the whole supply distributed and the deploy key holding nothing',
       'Done: protocol-owned liquidity paired into the ZOR/USDG market',
       'Done: the first vault live over a real external yield source, with its rate read from the chain',
-      'Not yet: Season 1 airdrop claims. The criteria are published and the 90 day measurement window is open. Season 1 was approved by the governance Safe under its 48 hour timelock, which is the mechanism that exists today; token holder voting arrives with the Governor in Phase 4',
+      'Not yet: Season 1 airdrop claims. The criteria are published and the 90 day measurement window is open. The criteria were set by the team; the 2 of 2 governance Safe controls the tranche and is the only address that can execute a distribution once the window closes. Token holder voting arrives with the Governor in Phase 4',
       'Not yet: the buyback swap route. The burn ledger is live in the portal, but the router is unset, so no revenue has been converted',
     ],
     gate: 'Remaining: the external audit above, and the Season 1 window to close.',
