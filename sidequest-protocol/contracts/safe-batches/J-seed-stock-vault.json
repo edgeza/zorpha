@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 1788764078010,
+  "meta": {
+    "name": "J - seed the NVDA vault and sign the first rebalance",
+    "description": "Seeds the NVDA long/flat vault and signs its first manager instruction, producing receipt number one. The Safe holds USDG and no NVDA, and the vault is denominated in NVDA, so the batch acquires the asset first: approve 13.000000 USDG to SwapRouter02, swap it for NVDA through the 0.05% pool, approve 0.0554 NVDA to the vault, deposit it, then rebalanceTo(5000). WHY THE SWAP FLOOR AND THE DEPOSIT ARE THE SAME NUMBER: a Safe batch cannot read the swap's output and pass it to the deposit, so amountOutMinimum becomes the contract. Clear 0.0554 NVDA and the deposit is guaranteed to have the tokens; miss it and the swap reverts and takes the whole batch atomically. Rehearsed against a mainnet fork at $231.998 the swap returned 0.055993705636607964 NVDA, so the floor sits about 1.06% below, which is room for NVDA to move between signing and execution. Anything above the floor stays in the Safe as change, about 0.00059 NVDA. rebalanceTo(5000) rather than 0 or 10000: depositing NVDA leaves the vault already fully long, so asking for 100% would fall under the 1% rebalance threshold, write the target, emit nothing and produce no receipt at all. Half and half is a real trade, it leaves both legs visible so the NAV computation can be checked from the chain, and it reads as a manager decision rather than a no-op. Rehearsal result: 55,400,000,000,000,000,000,000 shares to the Safe, NVDA leg 0.0277, USDG leg 6.424650, navPerShare 0.999817390063707707, rebalanceCount 1. NOTE: Safe nonces execute in order.",
+    "txBuilderVersion": "1.16.5"
+  },
+  "transactions": [
+    {
+      "to": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+      "value": "0",
+      "data": "0x095ea7b3000000000000000000000000caf681a66d020601342297493863e78c959e5cb20000000000000000000000000000000000000000000000000000000000c65d40",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0xCaf681a66D020601342297493863E78C959E5cb2",
+      "value": "0",
+      "data": "0x04e45aaf0000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d168000000000000000000000000d0601ce157db5bdc3162bbac2a2c8af5320d9eec00000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000c75e64ccf3ce6e2f40939ab58255681769bcf8c40000000000000000000000000000000000000000000000000000000000c65d4000000000000000000000000000000000000000000000000000c4d201a88e80000000000000000000000000000000000000000000000000000000000000000000",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+      "value": "0",
+      "data": "0x095ea7b3000000000000000000000000b129495f0ad616edd2f28b3b49470fc1f0fad41300000000000000000000000000000000000000000000000000c4d201a88e8000",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413",
+      "value": "0",
+      "data": "0x6e553f6500000000000000000000000000000000000000000000000000c4d201a88e8000000000000000000000000000c75e64ccf3ce6e2f40939ab58255681769bcf8c4",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413",
+      "value": "0",
+      "data": "0x12a41f0a0000000000000000000000000000000000000000000000000000000000001388",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}
