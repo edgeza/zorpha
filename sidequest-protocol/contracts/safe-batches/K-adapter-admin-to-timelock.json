@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 1788773786002,
+  "meta": {
+    "name": "K - swap adapter admin to the Timelock",
+    "description": "Moves the swap adapter's DEFAULT_ADMIN_ROLE from the governance Safe to the Timelock, so the claim that the venue a vault trades through is timelocked holds without a caveat. Two steps, renounce last, same shape as batch I. WHAT THIS ROLE ACTUALLY CONTROLS, because it is less than it sounds: the adapter has exactly one gated function, swap(), restricted to VAULT_ROLE, and DEFAULT_ADMIN's whole power is deciding who holds that. swap() does safeTransferFrom(msg.sender) and sets recipient: msg.sender, over one fixed asset/cash pair, asserts no residual and clears its own approval. So a rogue VAULT_ROLE holder can only swap their OWN tokens through one pair, and the vault clears its approval after every rebalance, leaving no standing allowance. The adapter holds no funds and has no rescue, sweep or config setter. SO THIS BUYS NO SECURITY, and it is worth saying that rather than implying otherwise. Revoking the vault's VAULT_ROLE would stop it rebalancing, but the Safe already holds RISK_COUNCIL_ROLE and can halt the vault directly, so no power is being given up that the Safe does not retain elsewhere. What it buys is that the disclosure on /protocol needs no asymmetry paragraph. The cost is that re-granting VAULT_ROLE later becomes a 48-hour proposal. NOTE: Safe nonces execute in order.",
+    "txBuilderVersion": "1.16.5"
+  },
+  "transactions": [
+    {
+      "to": "0x8E50FC336f87b454cc44a89dA3a7267412B045dc",
+      "value": "0",
+      "data": "0x2f2ff15d0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000813d69b8e1dbe2e08bcb892be203a6bce99b36fc",
+      "contractMethod": null,
+      "contractInputsValues": null
+    },
+    {
+      "to": "0x8E50FC336f87b454cc44a89dA3a7267412B045dc",
+      "value": "0",
+      "data": "0x36568abe0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c75e64ccf3ce6e2f40939ab58255681769bcf8c4",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}
