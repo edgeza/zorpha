@@ -182,7 +182,11 @@ export default function BridgeWidget({ toToken = TO_TOKEN }: BridgeWidgetProps =
         },
       },
     }),
-    [fee],
+    // `toToken` is read inside the config, so it belongs here. It is a
+    // constant per page today, which is why a stale memo has never shown up,
+    // but a caller that varied it would silently keep pointing the widget at
+    // the previous token.
+    [fee, toToken],
   );
 
   return <LiFiWidget integrator={INTEGRATOR} config={config} />;

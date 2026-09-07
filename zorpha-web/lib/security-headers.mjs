@@ -32,6 +32,8 @@
  * never disagree.
  */
 
+import { LIFI_RPC_SOURCES } from './rpc-allowlist.generated.mjs';
+
 /** Origin of a URL, or null if it is absent or unparseable. */
 function originOf(url) {
   if (!url) return null;
@@ -64,6 +66,30 @@ export function connectSrc(env = process.env) {
 
     // LI.FI powers the bridge page.
     'https://li.quest',
+
+    /**
+     * And the RPC endpoints LI.FI calls from the browser on the visitor's
+     * behalf.
+     *
+     * Quoting a route only needs li.quest above. Reading what the visitor
+     * already holds does not: @lifi/sdk-provider-ethereum builds a viem
+     * transport per chain from that chain's own RPC URLs and fetches them
+     * directly, so a USDT balance on BSC is a request to
+     * bsc-dataseed.binance.org from the browser.
+     *
+     * Those were all blocked until 7 September 2026, and the block was
+     * invisible. LI.FI settles the per-chain reads with `Promise.allSettled`
+     * and surfaces a rejection only under its own debug flag, so a blocked
+     * balance is indistinguishable from an empty wallet. The buy page shipped
+     * telling people it would pick up what they hold, and showed every one of
+     * them a balance of zero.
+     *
+     * Generated from LI.FI's published chain list rather than typed here, for
+     * the same reason the configured RPC origin is added below: a hand-kept
+     * list of 117 endpoints across 70 chains is a list that drifts, and drift
+     * here is silent.
+     */
+    ...LIFI_RPC_SOURCES,
 
     // WalletConnect / Reown AppKit. `pulse` and `explorer-api` are separate
     // hosts from `api.web3modal.org` and were both being blocked, which is why

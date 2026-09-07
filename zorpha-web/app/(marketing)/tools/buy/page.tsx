@@ -130,9 +130,9 @@ export default function BuyPage() {
             <p>
               Any wallet reachable over WalletConnect works, which is most of them, MetaMask,
               Coinbase Wallet and Safe included. Origin chains include Ethereum, Arbitrum, Base,
-              Optimism, Polygon, BNB and Solana, and you do not need anything on Robinhood Chain
-              first. Every leg settles onchain from your own wallet, so Zorpha never holds your
-              funds and cannot.
+              Optimism, Polygon and BNB, and you do not need anything on Robinhood Chain first.
+              Every leg settles onchain from your own wallet, so Zorpha never holds your funds and
+              cannot.
             </p>
             <p>
               The contracts are deployed and source-verified, and the external audit is still
