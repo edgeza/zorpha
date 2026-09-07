@@ -1,6 +1,6 @@
 'use client';
 
-import { createConfig, http, cookieStorage, createStorage, type CreateConnectorFn } from 'wagmi';
+import { createConfig, fallback, http, cookieStorage, createStorage, type CreateConnectorFn } from 'wagmi';
 // Per-connector subpath imports, NOT the '@wagmi/connectors' barrel.
 //
 // The barrel re-exports every connector, which drags in `tempoWallet` ->
@@ -18,7 +18,7 @@ import { metaMask } from '@wagmi/connectors/metaMask';
 import { coinbaseWallet } from '@wagmi/connectors/coinbaseWallet';
 import { safe } from '@wagmi/connectors/safe';
 import { walletConnect } from '@wagmi/connectors/walletConnect';
-import { robinhoodTestnet, robinhoodMainnet } from './chains';
+import { robinhoodTestnet, robinhoodMainnet, isMainnet } from './chains';
 import { SITE_URL } from './site-url';
 
 /**
@@ -90,30 +90,69 @@ function buildConnectors(): CreateConnectorFn[] {
 }
 
 /**
+ * Every RPC a chain declares, tried in order.
+ *
+ * The comment here used to claim each chain got a fallback transport. It did
+ * not. Both entries were `http(rpcUrls.default.http[0])`, so the second URL
+ * `robinhoodMainnet` has carried all along was never contacted, and a portal
+ * that looked redundant had exactly one point of failure.
+ *
+ * That came due on 7 September 2026, when the RPC's edge returned
+ * `Access-Control-Allow-Origin: *,*` on some responses. A duplicated header is
+ * a value no browser accepts, so the fetch is refused before the app sees it,
+ * and every live read on the page went with it.
+ *
+ * `retryCount` drops from 2 to 1 because the redundancy now lives in the
+ * fallback rather than in repetition. Retrying a URL that a browser has
+ * already refused to load costs a round trip to learn what the first attempt
+ * proved; one retry keeps a genuinely transient blip from failing over, and
+ * anything worse moves on quickly.
+ *
+ * Order is deliberate and `rank` is left off. Ranking probes endpoints in the
+ * background to reorder them by latency, which trades a steady trickle of
+ * requests for a preference between two nodes that answer identically. The
+ * canonical endpoint stays first.
+ */
+function transportFor(chain: { rpcUrls: { default: { http: readonly string[] } } }) {
+  return fallback(
+    chain.rpcUrls.default.http.map((url) => http(url, { batch: true, retryCount: 1 })),
+  );
+}
+
+/**
  * Both chains are registered even though only one is the active target. wagmi
  * derives the `transports` key type from the `chains` tuple, so declaring a
  * single conditionally-selected chain widens the tuple to the union of both ids
  * and then demands a transport for each. Registering both is simpler than
  * casting, and it lets `useSwitchChain` move a user between them.
  *
- * Each chain gets a fallback transport. The public node is a real second
- * source rather than decoration: a single RPC is a single point of failure for
- * the entire portal, and the previous configuration pointed at a hostname
- * (`testnet.rpc.robinhood.com`) that did not resolve to a working endpoint at
- * all. With no fallback, that meant a portal that could never read anything.
+ * THE ACTIVE CHAIN MUST COME FIRST.
+ *
+ * `createConfig` seeds `state.chainId` from `chains[0]`, and that is the chain
+ * every `useReadContract` without an explicit `chainId` reads against. With
+ * testnet hardcoded first, a disconnected visitor to a mainnet build read
+ * chain 46630 for any hook that did not name a chain, which is most of the
+ * portal.
+ *
+ * That was invisible for as long as it was paired with a second mistake:
+ * `NEXT_PUBLIC_RPC_URL` is the mainnet endpoint on a mainnet build and it was
+ * feeding the TESTNET chain object, so those testnet-id reads were sent to the
+ * mainnet node and came back with mainnet state. Two faults cancelling out,
+ * and fixing either one alone breaks the portal. See lib/chains.ts, which no
+ * longer lets the override cross chains.
+ *
+ * Ordering by the active chain fixes it for every consumer at once, rather
+ * than waiting for each hook to remember a `chainId` it should not have to
+ * name. The hooks that read a specific chain still pass one.
  */
 export const wagmiConfig = createConfig({
-  chains: [robinhoodTestnet, robinhoodMainnet],
+  chains: isMainnet
+    ? ([robinhoodMainnet, robinhoodTestnet] as const)
+    : ([robinhoodTestnet, robinhoodMainnet] as const),
   connectors: buildConnectors(),
   transports: {
-    [robinhoodTestnet.id]: http(robinhoodTestnet.rpcUrls.default.http[0], {
-      batch: true,
-      retryCount: 2,
-    }),
-    [robinhoodMainnet.id]: http(robinhoodMainnet.rpcUrls.default.http[0], {
-      batch: true,
-      retryCount: 2,
-    }),
+    [robinhoodTestnet.id]: transportFor(robinhoodTestnet),
+    [robinhoodMainnet.id]: transportFor(robinhoodMainnet),
   },
   // Cookie storage keeps connection state consistent between the server render
   // and hydration, which is what stops the wallet button flashing "Connect" for
