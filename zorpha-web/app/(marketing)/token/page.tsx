@@ -1,11 +1,11 @@
 import Link from 'next/link';
+import { readCustody } from '@/lib/custody-onchain';
 import type { Metadata } from 'next';
 import { AllocationChart } from '@/components/marketing/AllocationChart';
 import { SupplyCurve } from '@/components/marketing/SupplyCurve';
 import { SectionHeading, Callout, SpecRow, Stat } from '@/components/ui/Primitives';
 import {
   ALLOCATIONS,
-  ON_CHAIN_CUSTODY,
   CIRCULATING_PCT,
   TOKEN,
   INSIDER_PCT,
@@ -31,7 +31,11 @@ export const metadata: Metadata = {
   description: `$ZOR tokenomics: 1,000,000,000 fixed supply, no mint function, ${CIRCULATING_PCT}% circulating with 800,000,000 locked in a non-revocable vesting contract, and 50% of protocol fees used to buy and burn on the open market.`,
 };
 
-export default function TokenPage() {
+// Revalidated, so the custody table follows the chain without a redeploy.
+export const revalidate = 300;
+
+export default async function TokenPage() {
+  const custody = await readCustody();
   return (
     <>
       {/* ─── Header ───────────────────────────────────────────────────────── */}
@@ -132,7 +136,7 @@ export default function TokenPage() {
         />
 
         <div className="mt-12 space-y-4">
-          {ON_CHAIN_CUSTODY.map((c) => (
+          {custody.lines.map((c) => (
             <div key={c.label} className="card-pad">
               <div className="flex flex-wrap items-baseline justify-between gap-3">
                 <h3 className="text-base font-semibold text-ink-100">{c.label}</h3>

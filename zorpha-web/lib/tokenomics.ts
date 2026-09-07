@@ -31,63 +31,127 @@ export const TOKEN = {
  * per-cohort schedules, so the site must not imply four independent cliffs
  * exist onchain when one does. These figures are what a block explorer shows.
  */
-export const ON_CHAIN_CUSTODY: {
+/**
+ * The Season 1 tranche as originally claimed, in whole tokens. A ceiling on the
+ * reserve, not the reserve itself: it only binds if the Safe is ever topped up
+ * beyond what it holds today, which would be a new tranche and a policy change.
+ */
+export const SEASON_1_RESERVE = 80_000_000;
+
+/**
+ * The governance Safe's OWN holding, excluding the Season 1 tranche.
+ *
+ * THE ONE NUMBER HERE THAT IS NOT ON CHAIN, and it cannot be. The Safe's
+ * balance is readable by anyone; which part of it is spoken for is a policy
+ * fact that lives in the Season 1 criteria, not in a contract. Splitting the
+ * balance needs one of the two halves declared.
+ *
+ * The FLOAT is declared rather than the reserve, deliberately, because it is
+ * the stable half. The reserve shrinks every time Season 1 pays out; the float
+ * only moves if governance spends its own treasury. Declaring the shrinking
+ * half and capping it against the balance looks correct and is not: a
+ * 30,000,000 payout would drop the reserve by only 13,688,884, because the cap
+ * quietly absorbs the float into the reserve. The first version of this did
+ * exactly that and the test below caught it.
+ */
+export const SAFE_FLOAT = 16_311_116;
+
+export interface CustodyLine {
   label: string;
   tokens: number;
   note: string;
   address: string | null;
-}[] = [
-  {
-    label: 'Locked in vesting',
-    tokens: 800_000_000,
-    note: '180-day cliff, then linear release to day 1095. Non-revocable: the schedule cannot be cancelled or clawed back.',
-    address: '0x81613D9914F7b4c02c897941757a99BC191De88e',
-  },
-  {
-    /**
-     * Claimed out of the distributor, NOT distributed.
-     *
-     * The deployed Merkle tree had one leaf naming the governance Safe, so the
-     * whole tranche was claimable by governance and nobody else. Claiming moved
-     * custody from the distributor to the Safe and changed nothing about who
-     * the tokens are for. Sent 6 September 2026, tx
-     * 0x5164348672e7519d9f0841437450b6c568d360ac74eed9ceb9d068bcfa61287a.
-     *
-     * It stays its own line rather than folding into Circulating. The Safe
-     * holds it earmarked for Season 1, and counting earmarked tokens as
-     * circulating would overstate the float by 8% of supply, which is the
-     * number a reader is most likely to act on.
-     */
-    label: 'Community airdrop reserve, held by governance',
-    tokens: 80_000_000,
-    note:
-      'Claimed from the Merkle distributor by the governance Safe, its sole eligible claimant. Not yet distributed: the Season 1 criteria are published and the 90 day window is open, but paying allocations out needs a second distributor built from the recipient list the snapshot produces once the window closes.',
-    address: '0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4',
-  },
-  {
-    label: 'Insurance fund',
-    tokens: 40_000_000,
-    note: 'Released only by governance, only against a verified shortfall.',
-    address: '0x9D3B787a3492b4fe6D2a2C12062a4164263522Fd',
-  },
-  {
-    label: 'Circulating',
-    tokens: 80_000_000,
-    // The qualifier is load-bearing since 6 September. The Safe holds the
-    // Season 1 tranche as well as its own float, so "the governance Safe"
-    // without it now names 96,311,116 ZOR and double counts 80,000,000.
-    note:
-      'The governance Safe excluding the Season 1 tranche above, protocol-owned liquidity and holders.',
-    address: null,
-  },
-];
+}
+
+/**
+ * Custody, derived from balances rather than typed in.
+ *
+ * WHY THIS IS A FUNCTION NOW
+ *
+ * It was four hardcoded numbers with a module-level assertion that they summed
+ * to max supply. Those matched the chain on the day they were written and had
+ * nothing behind them afterwards. The moment Season 1 pays out, the reserve
+ * line overstates what the Safe holds and the circulating line understates the
+ * float, on a page headed "What the chain actually holds" and lede'd "this is
+ * custody, readable from any block explorer". The numbers would have been wrong
+ * in the one place the copy tells a reader to go and check.
+ *
+ * Vesting and the insurance fund are read too, not just the Safe. Vesting is
+ * the larger risk of the two: the schedule has a 180-day cliff from the
+ * 4 September 2026 launch and then releases linearly, so that balance starts
+ * falling in March 2027 whether or not anyone updates this file.
+ *
+ * @param balances whole-token balances read from the chain. Omit to get the
+ *        last measured figures, which is what the build-time consumers use.
+ */
+export function custodyFrom(balances?: {
+  vesting: number;
+  safe: number;
+  insurance: number;
+}): CustodyLine[] {
+  const b = balances ?? LAST_MEASURED;
+  // What the Safe holds beyond its own float is the earmarked tranche. Floored
+  // at zero so a Safe drawn below its float reports no reserve rather than a
+  // negative one, and capped so a top-up cannot silently inflate the claim.
+  const reserve = Math.max(0, Math.min(SEASON_1_RESERVE, b.safe - SAFE_FLOAT));
+  // Everything not locked, not in the insurance fund and not earmarked. The
+  // Safe's own float counts as circulating, which the note below says out loud.
+  const circulating = TOKEN.maxSupply - b.vesting - b.insurance - reserve;
+
+  return [
+    {
+      label: 'Locked in vesting',
+      tokens: b.vesting,
+      note: '180-day cliff, then linear release to day 1095. Non-revocable: the schedule cannot be cancelled or clawed back.',
+      address: '0x81613D9914F7b4c02c897941757a99BC191De88e',
+    },
+    {
+      label: 'Community airdrop reserve, held by governance',
+      tokens: reserve,
+      note:
+        'Claimed from the Merkle distributor by the governance Safe, its sole eligible claimant. Not yet distributed: the Season 1 criteria are published and the 90 day window is open, but paying allocations out needs a second distributor built from the recipient list the snapshot produces once the window closes.',
+      address: '0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4',
+    },
+    {
+      label: 'Insurance fund',
+      tokens: b.insurance,
+      note: 'Released only by governance, only against a verified shortfall.',
+      address: '0x9D3B787a3492b4fe6D2a2C12062a4164263522Fd',
+    },
+    {
+      label: 'Circulating',
+      tokens: circulating,
+      note:
+        'The governance Safe excluding the Season 1 tranche above, protocol-owned liquidity and holders.',
+      address: null,
+    },
+  ];
+}
+
+/**
+ * The balances as last read from chain, 7 September 2026.
+ *
+ * Not a fallback in the "good enough" sense. Three consumers cannot await a
+ * network read: `metadata` on two pages, the edge-runtime opengraph image, and
+ * the client-side Hero. They get these, and `lib/tokenomics.test.ts` fails the
+ * build if they have drifted from the chain, so a stale figure is a red CI job
+ * rather than a quiet wrong number on a social card.
+ */
+export const LAST_MEASURED = {
+  vesting: 800_000_000,
+  safe: 96_311_116,
+  insurance: 40_000_000,
+} as const;
+
+/** Custody as last measured. Prefer `custodyFrom(live)` where you can await. */
+export const ON_CHAIN_CUSTODY: CustodyLine[] = custodyFrom();
 
 /** Circulating share of max supply, measured onchain rather than planned. */
 export const CIRCULATING_PCT =
-  (ON_CHAIN_CUSTODY.find((c) => c.label === 'Circulating')!.tokens / 1_000_000_000) * 100;
+  (ON_CHAIN_CUSTODY.find((c) => c.label === 'Circulating')!.tokens / TOKEN.maxSupply) * 100;
 
-if (ON_CHAIN_CUSTODY.reduce((s, c) => s + c.tokens, 0) !== 1_000_000_000) {
-  throw new Error('Zorpha: ON_CHAIN_CUSTODY must sum to max supply.');
+if (ON_CHAIN_CUSTODY.reduce((s, c) => s + c.tokens, 0) !== TOKEN.maxSupply) {
+  throw new Error('Zorpha: custody must sum to max supply.');
 }
 
 export type UnlockShape = 'tge' | 'cliff-linear' | 'seasonal' | 'locked';

@@ -87,6 +87,15 @@ jobs:
       # APY arithmetic the portal renders was reaching production with its
       # tests run only on a developer's machine.
       - name: Test
+        # ZOR_RPC_URL turns on the one test that reaches the chain:
+        # lib/tokenomics.test.ts checks LAST_MEASURED against the real
+        # balances. Without it that test SKIPS, which is worse than useless
+        # here, because the whole point of the constant is that three
+        # build-time consumers cannot read the chain themselves and would
+        # otherwise carry a stale supply figure onto a social card forever.
+        # A public RPC, so no secret is needed.
+        env:
+          ZOR_RPC_URL: https://rpc.mainnet.chain.robinhood.com
         run: npm test
 
       # `prebuild` runs scripts/check-tokenomics.mjs, so this also asserts the
