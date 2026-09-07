@@ -21,12 +21,10 @@ import { Callout } from '@/components/ui/Primitives';
  */
 export function VaultActions({
   vaultAddress,
-  assetAddress,
   assetDecimals: assetDecimalsProp,
   assetSymbol: assetSymbolProp,
 }: {
   vaultAddress: `0x${string}`;
-  assetAddress: `0x${string}`;
   /** Optional override. Normally read from the token itself. */
   assetDecimals?: number;
   /** Optional override. Normally read from the token itself. */
@@ -35,6 +33,26 @@ export function VaultActions({
   const { address } = useAccount();
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState<'deposit' | 'withdraw'>('deposit');
+
+  /**
+   * The token to approve and spend, asked of the vault rather than passed in.
+   *
+   * This used to be an `assetAddress` prop, filled by the vault page from the
+   * database as `vault.base_asset ?? vault.cash ?? vault.asset`. On the NVDA
+   * spot vault that resolves to USDG, and USDG is not what the vault pulls.
+   * ERC-4626 `deposit` transfers `asset()`, which on that vault is tokenised
+   * NVDA, so the box read out a USDG balance, asked for a USDG approval, and
+   * then sent a deposit that could only revert. The depositor pays gas twice
+   * to learn that, and is left holding an allowance the vault will never use.
+   *
+   * Reading `asset()` is the only source that cannot disagree with the
+   * contract about what the contract wants.
+   */
+  const { data: assetAddress } = useReadContract({
+    abi: vaultAbi,
+    address: vaultAddress,
+    functionName: 'asset',
+  });
 
   // Read the asset's own decimals and symbol rather than assuming them.
   //
@@ -237,9 +255,16 @@ export function VaultActions({
       <button
         type="button"
         className="btn-primary mt-4 w-full"
-        disabled={busy || parsed === null || parsed === 0n || !address || exceedsBalance}
+        disabled={
+          busy || parsed === null || parsed === 0n || !address || exceedsBalance || !assetAddress
+        }
         onClick={() => {
-          if (parsed === null || !address) return;
+          // `assetAddress` comes from the vault, so it is briefly undefined on
+          // first paint. Guarding here as well as in `disabled` keeps an
+          // approval from ever being sent to an address the component has not
+          // read yet, which is the one mistake in this file that would cost
+          // somebody real money rather than a reverted transaction.
+          if (parsed === null || !address || !assetAddress) return;
           if (needsApproval) {
             reset();
             setLastAction('approve');
