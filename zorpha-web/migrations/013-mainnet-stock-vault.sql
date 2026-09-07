@@ -37,9 +37,16 @@
 
 begin;
 
+-- deployed_at is set EXPLICITLY rather than left to its now() default. The
+-- default is when this migration RAN, not when the contract was created, and
+-- the portal renders it as "Deployed <date>". Running this on 7 September put
+-- "Deployed Sep 7, 2026" on a vault that has existed since the 6th, which is a
+-- small false statement of exactly the kind the rest of this work was spent
+-- removing. Value below is the timestamp of block 56247975, read from the
+-- chain: 1788724969.
 insert into public.vaults
   (chain_id, address, vault_type, name, symbol, asset, cash, base_asset, oracle,
-   strategy, manager_address, listed)
+   strategy, manager_address, listed, deployed_at)
 values
   (4663,
    '0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413',
@@ -52,7 +59,8 @@ values
    '0xaBefb351777d8E68FCafa4D2F8A5848F326298cA',   -- UniswapV3TwapAdapter
    'Long or flat on tokenized NVDA. The manager sets one number: how much of the vault sits in NVDA and how much in USDG. Priced by a 30-minute time-weighted average of the same Uniswap pool the trades clear against, so a price that fools the accounting also gives the attacker a bad fill.',
    '0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4',   -- governance Safe, holds KEEPER_ROLE
-   true)
+   true,
+   '2026-09-06T20:02:49Z')                          -- block 56247975
 
 -- The primary key has been (chain_id, address) since migration 012, because the
 -- same address can exist on both chains and CREATE2 makes that likely rather
@@ -68,7 +76,8 @@ on conflict (chain_id, address) do update set
   oracle          = excluded.oracle,
   strategy        = excluded.strategy,
   manager_address = excluded.manager_address,
-  listed          = true;
+  listed          = true,
+  deployed_at     = excluded.deployed_at;
 
 -- ─── The cursor, and the casing trap ────────────────────────────────────────
 --
@@ -104,10 +113,17 @@ on conflict (chain_id, source_kind, source_address) do nothing;
 
 commit;
 
+-- SAFE TO RE-RUN, and it was re-run once on purpose: the first pass left
+-- deployed_at on its now() default and the portal duly said "Deployed Sep 7"
+-- for a contract created on the 6th. The vault row updates on conflict, so a
+-- second pass corrects it; the cursor does not, so a second pass cannot drag
+-- the indexer backwards.
+--
 -- AFTER RUNNING THIS
 --
--- /portal/vaults should list two vaults on mainnet, zsUSDG and zqNVDA, and the
--- indexer's next cycle should report vaultsTracked 2 rather than 1.
+-- /portal/vaults should list two vaults on mainnet, zsUSDG and zqNVDA, with
+-- zqNVDA showing "Deployed Sep 6, 2026", and the indexer's next cycle should
+-- report vaultsTracked 2 rather than 1.
 --
 -- /portal/receipts will still say "No rebalance has been signed yet", and that
 -- is correct rather than a fault: rebalanceCount() on the vault reads 0. The
