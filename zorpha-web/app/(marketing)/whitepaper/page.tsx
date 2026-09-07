@@ -554,8 +554,9 @@ export default function WhitepaperPage() {
                 excluding the Season 1 tranche below, protocol-owned liquidity and holders.
                 Of the rest, 800,000,000 is locked in a vesting contract on a 180-day cliff
                 releasing linearly to day 1095, marked non-revocable onchain so it cannot be
-                cancelled or clawed back; 80,000,000 is the Season 1 airdrop, claimed by the
-                governance Safe on 6 September 2026 and not yet distributed; and 40,000,000
+                cancelled or clawed back; 80,000,000 is the community airdrop reserve, claimed by
+                the governance Safe on 6 September 2026 and not yet distributed, of which
+                Season 1 allocates 8,000,000; and 40,000,000
                 is the insurance fund, releasable only by governance against a verified
                 shortfall.
               </P>

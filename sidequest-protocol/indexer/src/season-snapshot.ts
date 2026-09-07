@@ -14,7 +14,7 @@ import {
   balanceIntervals, allocationFor, clusterOf, SEASON_1_TIERS,
   type ShareTransfer, type Funding,
 } from './season-eligibility.js';
-import { withAdaptiveRange } from './chain.js';
+import { withAdaptiveRange } from './log-paging.js';
 
 function arg(name: string, fallback?: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -58,7 +58,8 @@ async function main() {
   // step that happens to cross a busy stretch of blocks would hit that error
   // and abort the whole run, which is expensive to discover on a one-shot
   // script whose output feeds an immutable Merkle root. withAdaptiveRange
-  // (chain.ts) is the fix production already uses for this exact error: it
+  // (log-paging.ts, re-exported from chain.ts) is the fix production already
+  // uses for this exact error: it
   // starts at the given chunk size, halves and retries only on that specific
   // over-cap error, and creeps back up once a chunk succeeds, so a busy
   // sub-range costs extra round trips instead of an aborted run. 50_000n and
