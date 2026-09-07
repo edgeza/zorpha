@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { planWindows, toRebalanceRow, type DecodedLog } from './decode.js';
-import { navDecimalsFor } from './chain.js';
+import { navDecimalsFor, underlyingPriceFor } from './chain.js';
 import { config } from './config.js';
 import {
   assertChainPreflight,
@@ -145,7 +145,15 @@ async function indexVault(vault: VaultRow, safeHead: bigint): Promise<number> {
     for (const raw of logs) {
       const entry = raw as DecodedLog;
       const ts = await getBlockTimestamp(entry.blockNumber);
-      rows.push(toRebalanceRow(vault, entry, ts, navDecimals));
+      // Read per receipt, not once per scan: the price at each block is the
+      // point, and the archive window means it has to be fetched while it is
+      // still reachable. See underlyingPriceFor.
+      const price = await underlyingPriceFor(
+        vault.address as `0x${string}`,
+        vault.vault_type,
+        entry.blockNumber,
+      );
+      rows.push(toRebalanceRow(vault, entry, ts, navDecimals, price));
       bumps.push({ manager: vault.manager_address, ts });
     }
 

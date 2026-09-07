@@ -16,6 +16,7 @@
  */
 
 import type { RebalanceRow, VaultRow, VaultType } from './supabase.js';
+import type { UnderlyingPrice } from './chain.js';
 
 /** The shape viem hands back from getLogs for a decoded event. */
 export type DecodedLog = {
@@ -71,6 +72,7 @@ export function toRebalanceRow(
   entry: DecodedLog,
   blockTimestamp: string,
   navDecimals?: number,
+  price?: UnderlyingPrice,
 ): RebalanceRow {
   const args = entry.args ?? {};
   const type: VaultType = vault.vault_type;
@@ -130,6 +132,13 @@ export function toRebalanceRow(
     // has to guess, and guessing 18 put every rotation and yield receipt out by
     // 10^12 -- a NAV of 1.000000 displayed as 0.00000 on the public feed.
     nav_decimals: navDecimals ?? null,
+
+    // Migration 014. Null rather than absent when there is no feed to read,
+    // which is every yield vault and any spot vault whose oracle refused.
+    underlying_price: price?.answer ?? null,
+    underlying_price_decimals: price?.decimals ?? null,
+    underlying_price_block: price?.block ?? null,
+    underlying_price_exact: price?.exact ?? null,
     nonce: typeof args.nonce === 'bigint' ? Number(args.nonce) : 0,
     commitment: (args.commitment as string | undefined) ?? null,
   };
