@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { BridgePanel } from '@/components/tools/BridgePanel';
+import { BuyOrGas } from '@/components/tools/BuyOrGas';
 import { BuyCost } from '@/components/tools/BuyCost';
 import { robinhoodMainnet } from '@/lib/chains';
 import { TOKEN } from '@/lib/tokenomics';
@@ -11,13 +11,6 @@ export const metadata: Metadata = {
   description:
     'Buy $ZOR from any chain and any asset in one step. Routes are compared across every major bridge and DEX, the best one is presented, and the pool cost is stated before you sign.',
 };
-
-/**
- * ZOR, the destination. The bridge page defaults to USDG because its job is
- * funding a vault; this page pins the token instead, so the only decision left
- * to the visitor is what they are paying with.
- */
-const ZOR_ADDRESS = '0x9684AFe2422a0B03719201c78959b6B70e8d4ae8';
 
 /**
  * Three claims, no prose. The long-form detail these used to carry now sits in
@@ -99,9 +92,7 @@ export default function BuyPage() {
                 aria-hidden="true"
                 className="absolute -inset-8 -z-10 rounded-full bg-zor-700/20 blur-3xl"
               />
-              <div className="sm:rounded-card sm:shadow-glow">
-                <BridgePanel toToken={ZOR_ADDRESS} />
-              </div>
+              <BuyOrGas />
             </div>
           </div>
         </div>
@@ -133,6 +124,12 @@ export default function BuyPage() {
               Optimism, Polygon and BNB, and you do not need anything on Robinhood Chain first.
               Every leg settles onchain from your own wallet, so Zorpha never holds your funds and
               cannot.
+            </p>
+            <p>
+              Robinhood Chain charges gas in ETH, and buying {TOKEN.ticker} does not leave you any:
+              the bridge pays for its own delivery, so nothing warns you at the time and the bill
+              arrives the first time you try to move or sell. Two dollars of ETH covers roughly a
+              dozen transactions at current gas. The panel above will send it, under Get gas.
             </p>
             <p>
               The contracts are deployed and source-verified, and the external audit is still

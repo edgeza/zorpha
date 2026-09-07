@@ -151,9 +151,11 @@ export function BuyCost() {
               <CountUp to={toWhole(lead.out)} format={round} />
             </p>
             <p className="mt-4 max-w-md text-sm leading-relaxed text-ink-300">
-              is what ${LEAD_USD} buys today, after the pool fee and after the price your own order
-              moves. Bridging onto Robinhood Chain adds roughly half a percent on top, and the route
-              in the panel already includes that part.
+              is what ${LEAD_USD} buys from the pool today, after its fee and after the price your
+              own order moves. Getting there costs more: quotes measured on 7 September delivered
+              about 5% less than this, because the route swaps once on the chain you are paying from
+              before it bridges. The panel shows the real number for your own route, and it is the
+              one to trust.
             </p>
           </>
         ) : null}

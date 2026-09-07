@@ -54,6 +54,20 @@ jobs:
       # contracts/src/lib. Both are first-party, so a conflict marker committed
       # in either was invisible to the only check looking for one. Narrowed to
       # the single directory that actually holds vendored code.
+      # `next build` rewrites next-env.d.ts to point at whatever distDir it
+      # was given, so a build run with NEXT_DIST_DIR beside a live dev server
+      # (which is what scripts/dev-verify.mjs exists for) leaves the reference
+      # aimed at .next-verify. That directory is gitignored and exists on no
+      # other machine, so committing it points every other checkout and CI at
+      # types that are not there. It reached main once already, in 20b4b14.
+      - name: next-env.d.ts points at the real build output
+        run: |
+          if grep -q 'next-verify' zorpha-web/next-env.d.ts; then
+            echo "::error file=zorpha-web/next-env.d.ts::points at .next-verify, a gitignored scratch dir. Restore with: git checkout zorpha-web/next-env.d.ts"
+            exit 1
+          fi
+          echo "clean"
+
       - name: No committed merge conflict markers
         run: |
           if git grep -In -E '^(<<<<<<<|>>>>>>>) ' -- . ':!sidequest-protocol/contracts/lib' ; then
