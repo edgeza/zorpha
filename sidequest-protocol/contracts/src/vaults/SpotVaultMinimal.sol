@@ -344,14 +344,28 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         internal
         override
     {
+        // The conversion must FULLY cover the shortfall or revert. The old
+        // version rounded the cash input down and accepted a fill up to
+        // maxSlippageBps short, then transferred the full amount anyway, so the
+        // tolerance that kept the swap from reverting was exactly what made the
+        // transfer revert. Measured on mainnet: a 50% exit from a 50/50
+        // position came up 9,181,117,677 wei short on a 0.0277 NVDA leg.
+        //
+        // Three changes. Round the cash input UP, so the dust case cannot ask
+        // the venue for zero. Gross it up by the slippage allowance, so the
+        // venue's cut is paid out of the cash leg rather than out of the
+        // depositor's delivery. And set minOut to the whole shortfall, so a
+        // fill that cannot cover fails at the swap with a typed venue error
+        // instead of at the transfer with ERC20InsufficientBalance.
         uint256 bal = IERC20(asset()).balanceOf(address(this));
         if (bal < assets) {
             uint256 shortfall = assets - bal;
             uint256 cashIn = assetToCash(shortfall);
+            if (cashToAsset(cashIn) < shortfall) cashIn += 1;
+            cashIn = (cashIn * (10000 + maxSlippageBps)) / 10000 + 1;
             uint256 cashBal = cashAsset.balanceOf(address(this));
             if (cashIn > cashBal) cashIn = cashBal;
-            uint256 minOut = (shortfall * (10000 - maxSlippageBps)) / 10000;
-            _swap(address(cashAsset), asset(), cashIn, minOut);
+            _swap(address(cashAsset), asset(), cashIn, shortfall);
         }
         super._withdraw(caller, receiver, owner, assets, shares);
     }

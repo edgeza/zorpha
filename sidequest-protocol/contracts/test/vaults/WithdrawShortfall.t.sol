@@ -88,6 +88,22 @@ contract WithdrawShortfallTest is Test {
         vault.rebalanceTo(5000);
     }
 
+    /// A withdrawal that needs the cash leg converted must be delivered in
+    /// full. The venue's cut comes out of the cash leg, not out of the
+    /// depositor's payment.
+    function test_HalfExit_ConvertsAndDeliversInFull() public {
+        uint256 shares = vault.balanceOf(alice);
+        uint256 half = shares / 2;
+        uint256 owed = vault.previewRedeem(half);
+        uint256 before = stock.balanceOf(alice);
+
+        vm.prank(alice);
+        uint256 got = vault.redeem(half, alice, alice);
+
+        assertEq(got, owed, "redeem must return what previewRedeem promised");
+        assertEq(stock.balanceOf(alice) - before, owed, "and actually transfer it");
+    }
+
     /// The exit a depositor is most likely to attempt: all of it.
     ///
     /// Note the balance in the revert is the one AFTER the shortfall swap ran,
