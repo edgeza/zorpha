@@ -22,14 +22,19 @@ const TESTNET_CHAIN_ID = 46630;
 
 /** Absent on 4663 by decision; see lib/deployment.ts NOT_ON_MAINNET. */
 const BY_DESIGN: ContractKey[] = [
-  'oracle',
   'strategyExecutor',
-  'spotVault',
   'rotationVault',
   'reputationRegistry',
 ];
 
-test('the five systems that were never deployed to mainnet are not faults', () => {
+/**
+ * Left this list on 6 September 2026, when both went live on 4663: the spot
+ * vault as zqNVDA, priced by a UniswapV3TwapAdapter reading the NVDA/USDG pool
+ * directly. Kept named here so testnet coverage below does not silently shrink.
+ */
+const NOW_DEPLOYED: ContractKey[] = ['oracle', 'spotVault'];
+
+test('the three systems that were never deployed to mainnet are not faults', () => {
   for (const key of BY_DESIGN) {
     assert.equal(
       isExpectedAbsence(key, MAINNET_CHAIN_ID),
@@ -43,6 +48,20 @@ test('the bond faucet is testnet-only, so its absence on mainnet is the point', 
   // lib/chains.ts exports `isMainnet` specifically to keep this off 4663.
   // Reporting its absence there as a fault inverts the intent.
   assert.equal(isExpectedAbsence('leaderFaucet', MAINNET_CHAIN_ID), true);
+});
+
+test('the stock vault and its price feed are deployed, so an unset address is a fault', () => {
+  // Both used to sit in BY_DESIGN. The oracle problem was REMOVED rather than
+  // deferred: a Uniswap V3 TWAP needs no updater set, so there is nothing left
+  // to fund and nothing left to excuse. An unset address for either now means
+  // the deployment is misconfigured, and the banner has to say so.
+  for (const key of NOW_DEPLOYED) {
+    assert.equal(
+      isExpectedAbsence(key, MAINNET_CHAIN_ID),
+      false,
+      `${key} is live on 4663, so an unset address is a real fault`,
+    );
+  }
 });
 
 test('the yield vault is deployed, it just is not an env singleton any more', () => {
@@ -67,7 +86,7 @@ test('a contract that IS meant to be configured still counts as missing', () => 
 test('nothing is excused on testnet, where the full stack was deployed', () => {
   // 46630 ran the oracle, the executor and all three vault types. An unset
   // address there is a genuine configuration gap and must still be reported.
-  for (const key of [...BY_DESIGN, 'leaderFaucet', 'yieldVault'] as ContractKey[]) {
+  for (const key of [...BY_DESIGN, ...NOW_DEPLOYED, 'leaderFaucet', 'yieldVault'] as ContractKey[]) {
     assert.equal(
       isExpectedAbsence(key, TESTNET_CHAIN_ID),
       false,
