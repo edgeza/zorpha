@@ -154,6 +154,87 @@ if (ON_CHAIN_CUSTODY.reduce((s, c) => s + c.tokens, 0) !== TOKEN.maxSupply) {
   throw new Error('Zorpha: custody must sum to max supply.');
 }
 
+/**
+ * The vesting schedule THE CHAIN ENFORCES, as read from
+ * ZorphaVesting.scheduleOf() on 7 September 2026.
+ *
+ * WHY THIS IS STATED SEPARATELY FROM THE POLICY BELOW
+ *
+ * The allocation policy describes six buckets, four of them with their own
+ * cliff. On mainnet there is exactly one schedule: `beneficiaryCount()`
+ * returns 1, and its beneficiary is the governance Safe. Everything except
+ * protocol-owned liquidity and the insurance fund went into that single
+ * non-revocable schedule.
+ *
+ * So a reader comparing the two sections found the contributor and backer
+ * cliffs quoted as 12 months while the chain enforces 180 days on the whole
+ * 800M, and reasonably asked which one was true. Both were, of different
+ * things, and the page did not say which was which. The per-bucket cliffs are
+ * commitments the Safe honours by choice; the figures here are the only ones a
+ * contract will refuse to break.
+ *
+ * The cliff release is DERIVED, not written down. ZorphaVesting measures
+ * `vestDuration` from `startTime` and does not add the cliff to it, so at the
+ * cliff the whole elapsed fraction becomes claimable at once. Hardcoding that
+ * number would let it drift away from the two it comes from.
+ */
+export const VESTING_ONCHAIN = {
+  contract: '0x81613D9914F7b4c02c897941757a99BC191De88e',
+  /** Sole beneficiary: the 2-of-2 governance Safe. */
+  beneficiary: '0xC75E64Ccf3ce6E2F40939Ab58255681769BcF8C4',
+  tokens: 800_000_000,
+  /** Schedule start, matching the 4 September 2026 launch. */
+  start: '2026-09-04',
+  cliffDays: 180,
+  /** Total term measured from `start`, NOT additive with the cliff. */
+  vestDays: 1095,
+  cliffEnds: '2027-03-03',
+  fullyVested: '2029-09-03',
+  revocable: false,
+} as const;
+
+/**
+ * Tokens that become claimable in a single block when the cliff passes.
+ *
+ * 180/1095 of the schedule, about 16.4%, which is larger than the entire
+ * protocol-owned-liquidity bucket. Material enough that leaving it to be
+ * inferred from two durations was itself a disclosure failure.
+ */
+export const VESTING_CLIFF_RELEASE = Math.floor(
+  (VESTING_ONCHAIN.tokens * VESTING_ONCHAIN.cliffDays) / VESTING_ONCHAIN.vestDays,
+);
+
+/** Tokens released per day after the cliff, on the same linear schedule. */
+export const VESTING_DAILY_RELEASE = Math.round(
+  VESTING_ONCHAIN.tokens / VESTING_ONCHAIN.vestDays,
+);
+
+/**
+ * Protocol-owned liquidity ACTUALLY committed to the pool, summed from the
+ * four Mint events on the ZOR/USDG pool and net of the one Burn.
+ *
+ * The policy bucket is 130,000,000. This is what reached a position, and the
+ * gap is not a rounding difference. Stated because the pool is public: anyone
+ * can sum the same events, and a page claiming the bucket was "paired at
+ * launch" while the pool holds a third of it is a page that loses the argument
+ * on inspection.
+ *
+ * `quoteUsdg` is the number that actually governs what a buyer experiences.
+ * Depth, not token count, is what decides whether a purchase moves the price.
+ */
+export const POL_ONCHAIN = {
+  /** ZOR deposited across the four mints, net of the single burn. */
+  zorPaired: 45_226_945,
+  /** Every USDG ever placed on the quote side, net of the burn's return. */
+  quoteUsdg: 576,
+  positionManager: '0x73991a25c818bf1f1128deaab1492d45638de0d3',
+  /** Uniswap V3 position NFTs, all held by the governance Safe. */
+  positions: [1_034_952, 1_045_817, 1_052_227, 1_052_234],
+  /** Position 1045817 was closed once its ZOR side had been bought out. */
+  positionsClosed: [1_045_817],
+  measured: '2026-09-07',
+} as const;
+
 export type UnlockShape = 'tge' | 'cliff-linear' | 'seasonal' | 'locked';
 
 export interface Allocation {
@@ -165,6 +246,16 @@ export interface Allocation {
   tgeBps: number;
   cliffMonths: number;
   vestMonths: number;
+  /**
+   * Whether a contract enforces `cliffMonths` and `vestMonths`, or whether
+   * they are a commitment the governance Safe keeps by choice.
+   *
+   * Only `liquidity` and `insurance` have their own onchain home. Everything
+   * else sits in the single 800M schedule described by VESTING_ONCHAIN, whose
+   * cliff is 180 days for all of it, so quoting a 12-month contributor cliff
+   * without this distinction told a reader something no contract will hold to.
+   */
+  enforcement: 'onchain' | 'policy';
   shape: UnlockShape;
   /** Tailwind-friendly CSS custom property name for charts. */
   color: string;
@@ -179,6 +270,7 @@ export const ALLOCATIONS: Allocation[] = [
     tgeBps: 800,
     cliffMonths: 0,
     vestMonths: 48,
+    enforcement: 'policy',
     shape: 'seasonal',
     color: 'var(--zor-500)',
     rationale:
@@ -191,6 +283,7 @@ export const ALLOCATIONS: Allocation[] = [
     tgeBps: 0,
     cliffMonths: 6,
     vestMonths: 48,
+    enforcement: 'policy',
     shape: 'cliff-linear',
     color: 'var(--verified-500)',
     rationale:
@@ -203,10 +296,11 @@ export const ALLOCATIONS: Allocation[] = [
     tgeBps: 0,
     cliffMonths: 12,
     vestMonths: 48,
+    enforcement: 'policy',
     shape: 'cliff-linear',
     color: 'var(--cyan-500)',
     rationale:
-      'Nothing at launch, nothing for twelve months, then linear to month 48. Contributors are the last cohort to become liquid, which is the only version of this line item that means anything. Unvested tokens are held by the vesting contract and carry zero voting weight, nobody votes with tokens they have not earned.',
+      'Nothing at launch, and the intent is nothing for twelve months, then linear to month 48. Contributors are meant to be the last cohort to become liquid, which is the only version of this line item that means anything. Note the enforcement below: this cohort has no separate contract, so the twelve months is a commitment rather than a lock. What the chain enforces on these tokens is the single 800,000,000 schedule, whose cliff is 180 days. Unvested tokens carry zero voting weight either way.',
   },
   {
     key: 'liquidity',
@@ -215,10 +309,11 @@ export const ALLOCATIONS: Allocation[] = [
     tgeBps: 1300,
     cliffMonths: 0,
     vestMonths: 0,
+    enforcement: 'onchain',
     shape: 'tge',
     color: 'var(--amber-500)',
     rationale:
-      'Fully unlocked at launch and paired into the primary market, owned by the protocol rather than rented from mercenary LPs. Thin books are what turn ordinary unlock events into 40% candles, so this is priced as insurance, not as a cost.',
+      'Unlocked at launch and owned by the protocol rather than rented from mercenary LPs. Only part of the bucket is deployed: 45,226,945 ZOR sits across four Uniswap V3 positions, roughly a third of the 130,000,000 allocated, and the quote side of those positions has received $576 in total. That is the real depth of the ZOR market, and it is the reason a $100 purchase moves the price by double digits. The rationale for the bucket stands, thin books are what turn ordinary unlock events into 40% candles, but the bucket is not yet doing that job and saying otherwise would be a claim the pool contradicts.',
   },
   {
     key: 'backers',
@@ -227,10 +322,11 @@ export const ALLOCATIONS: Allocation[] = [
     tgeBps: 0,
     cliffMonths: 12,
     vestMonths: 36,
+    enforcement: 'policy',
     shape: 'cliff-linear',
     color: 'var(--magenta-500)',
     rationale:
-      'Intentionally small. A thin backer allocation on a 12-month cliff keeps the cap table from becoming the protocol’s largest structural seller, and keeps governance in the hands of people who use the product.',
+      'Intentionally small, so the cap table never becomes the protocol’s largest structural seller. As with contributors, the 12-month cliff is policy: these tokens are inside the same 800,000,000 schedule and the contract releases them from day 180.',
   },
   {
     key: 'insurance',
@@ -239,6 +335,7 @@ export const ALLOCATIONS: Allocation[] = [
     tgeBps: 0,
     cliffMonths: 0,
     vestMonths: 0,
+    enforcement: 'onchain',
     shape: 'locked',
     color: 'var(--danger-500)',
     rationale:
