@@ -17,6 +17,11 @@ const LINKS: NavItem[] = [
     label: 'Tools',
     items: [
       {
+        href: '/tools/buy',
+        label: 'Buy $ZOR',
+        blurb: 'From any chain and any asset, in one step',
+      },
+      {
         href: '/tools/bridge',
         label: 'Zorpha Bridging',
         blurb: 'Move assets onto Robinhood Chain from 70 chains',

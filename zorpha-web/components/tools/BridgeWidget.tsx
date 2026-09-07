@@ -67,7 +67,20 @@ const INTEGRATOR = 'zorpha';
 const wcProjectId = (process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? '').trim();
 const wcEnabled = wcProjectId.length > 0;
 
-export default function BridgeWidget() {
+/**
+ * The destination is a prop so the buy page can reuse this widget verbatim.
+ *
+ * Everything below it, the theme, the provider set, the slippage default and
+ * the hidden chrome, is identical whether someone is bridging USDG to fund a
+ * vault or buying ZOR outright. Duplicating two hundred lines of theme to
+ * change one address would guarantee the two drift.
+ */
+export interface BridgeWidgetProps {
+  /** Destination token on Robinhood Chain. Defaults to USDG. */
+  toToken?: string;
+}
+
+export default function BridgeWidget({ toToken = TO_TOKEN }: BridgeWidgetProps = {}) {
   const fee = Number(process.env.NEXT_PUBLIC_BRIDGE_FEE ?? 0);
 
   const config = useMemo<Partial<WidgetConfig>>(
@@ -88,7 +101,7 @@ export default function BridgeWidget() {
       fromChain: FROM_CHAIN,
       fromToken: FROM_TOKEN,
       toChain: TO_CHAIN,
-      toToken: TO_TOKEN,
+      toToken,
 
       // Show the recommended route only, rather than inviting people to
       // hand-pick an exotic path with thin liquidity.
