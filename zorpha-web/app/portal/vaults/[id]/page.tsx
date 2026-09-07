@@ -34,7 +34,6 @@ export default async function VaultDetailPage({
   if (!vault) notFound();
 
   const receipts = await listRebalancesForVault(id, 50);
-  const asset = vault.base_asset ?? vault.cash ?? vault.asset;
 
   return (
     <div className="flex flex-col gap-8">
@@ -143,7 +142,7 @@ export default async function VaultDetailPage({
               others imply. Read from the contract, not the indexer: a vault
               that has taken deposits but never rebalanced has no indexed rows
               at all, which is this vault's exact state. */}
-          <VaultTvl vaultAddress={vault.address} assetAddress={asset} />
+          <VaultTvl vaultAddress={vault.address} />
 
           {/* No assetSymbol or assetDecimals: VaultActions reads both from the
               token. This used to pass
@@ -151,7 +150,7 @@ export default async function VaultDetailPage({
               a ternary whose branches were identical, so every vault was
               labelled USDC including the two that hold an 18-decimal equity
               token. */}
-          <VaultActions vaultAddress={vault.address} assetAddress={asset} />
+          <VaultActions vaultAddress={vault.address} />
         </div>
       </div>
 
