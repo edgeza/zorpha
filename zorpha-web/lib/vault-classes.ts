@@ -1,3 +1,5 @@
+import { CHAIN_ID, MAINNET_CHAIN_ID } from '@/lib/contracts';
+
 /**
  * The three vault mandates shipping at V1, in one place.
  *
@@ -39,10 +41,18 @@ export type VaultClass = {
 export const VAULT_CLASSES: readonly VaultClass[] = [
   {
     symbolTestnet: 'zqtAAPL',
-    symbolMainnet: 'zqAAPL',
+    // zqNVDA, not zqAAPL. Testnet ran this class over AAPL; mainnet deployed it
+    // over NVDA on 6 September 2026, because NVDA/USDG is both the deepest
+    // Uniswap V3 pool on the chain and the one with the longest observation
+    // history, and the price feed needs both.
+    symbolMainnet: 'zqNVDA',
     name: 'Long / Flat Equity',
     mandate: 'Moves a single Stock Token between full exposure and cash.',
-    detail: 'Oracle-gated · 1% max slippage · 20% performance fee',
+    // Read off the deployed vault: performanceFee() is 1000 bps, not 2000.
+    // "Oracle-gated" was true of the design and is not true of the deployment:
+    // there is no oracle, there is a 30-minute average of the pool the vault
+    // trades in.
+    detail: 'Priced from its own pool · 1% max slippage · 10% performance fee',
   },
   {
     symbolTestnet: 'zqROT',
@@ -61,11 +71,21 @@ export const VAULT_CLASSES: readonly VaultClass[] = [
 ] as const;
 
 /**
- * Which symbol to show. Flips on one environment variable rather than an edit,
- * which is what let mainnet symbols appear the day mainnet went live.
+ * Which symbol to show, decided by the chain the app is pointed at.
+ *
+ * This used to read `NEXT_PUBLIC_NETWORK === 'mainnet'`, and that variable is
+ * not set in production. So the marketing pages served the TESTNET symbol,
+ * zqtAAPL, to mainnet visitors, and did it silently: there is no error state
+ * for "fell back to the other branch", and the wrong symbol looks exactly as
+ * confident as the right one.
+ *
+ * The deeper problem was two sources of truth for one fact. NEXT_PUBLIC_CHAIN_ID
+ * already says which network this is, it is set, and every contract read
+ * depends on it being right. NEXT_PUBLIC_NETWORK was a second copy that could
+ * disagree, and did. Deriving from the chain id removes the copy.
  */
 export function vaultSymbol(v: VaultClass): string {
-  return process.env.NEXT_PUBLIC_NETWORK === 'mainnet' ? v.symbolMainnet : v.symbolTestnet;
+  return CHAIN_ID === MAINNET_CHAIN_ID ? v.symbolMainnet : v.symbolTestnet;
 }
 
 /** Marketing shape: what the pages actually render. */

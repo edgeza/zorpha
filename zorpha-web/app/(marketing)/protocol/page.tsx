@@ -25,9 +25,13 @@ const VAULTS = [
     body: 'Holds a single Stock Token or sits in cash. The manager sets a target exposure in basis points; the vault will not act on a target that moves less than its rebalance threshold, which stops fee-generating churn.',
     specs: [
       ['Mandate', 'One asset versus USDG, 0–100% exposure'],
-      ['Pricing', 'Single oracle, staleness-checked, fails closed'],
+      ['Pricing', '30-minute average of the pool it trades in, five guards, fails closed'],
       ['Slippage cap', '1% per rebalance, enforced onchain'],
-      ['Performance fee', '20% above high-water mark'],
+      // Read from the deployed vault, not from the design. performanceFee()
+      // returns 1000 bps. This row said 20% while the live contract charged
+      // 10%, which is a wrong number about a real fee on a real vault.
+      ['Performance fee', '10% above high-water mark'],
+      ['Status', 'Live on mainnet as zqNVDA, over tokenized NVDA'],
     ],
   },
   {
@@ -199,18 +203,46 @@ export default function ProtocolPage() {
               touching redemptions.
             </SpecRow>
             {/*
-              This said "every privileged change". It is not every one: the vault's
-              ADAPTER_SETTER_ROLE is held by the VaultLauncher, not the Timelock, so
-              `reallocate` moves a vault between approved venues with no delay. That is
-              deliberate -- a leader expressing an allocation view should not wait two days,
-              and the launcher builds the adapter itself so the caller can never name the
-              contract that holds the money -- but describing it as timelocked was wrong.
+              This said "every privileged change". It is not every one, and the list of
+              exceptions has grown, so each is named rather than covered by a hedge.
+
+              ADAPTER_SETTER_ROLE sits with the VaultLauncher, not the Timelock, so
+              `reallocate` moves a vault between approved venues with no delay. A leader
+              expressing an allocation view should not wait two days, and the launcher
+              builds the adapter itself so the caller can never name the contract that
+              holds the money.
+
+              On the stock vault, KEEPER_ROLE and RISK_COUNCIL_ROLE are held by the
+              governance Safe rather than the Timelock. Rebalancing is the manager's
+              actual job and cannot wait 48 hours, and a circuit breaker that takes two
+              days to pull is not a brake. DEFAULT_ADMIN is the Timelock, so fees, roles
+              and the venue still are delayed.
+
+              One asymmetry, stated because it is real rather than because it is tidy:
+              the swap adapter's OWN admin is the Safe, not the Timelock. That role only
+              grants and revokes the vault's permission to use it, so the Safe can stop
+              that vault trading -- which it can already do with the breaker it holds --
+              and cannot point the vault at a different venue, because `setSwapAdapter`
+              is on the vault and the vault's admin is the Timelock.
             */}
             <SpecRow label="Admin delay">
-              Fees, roles, mandates and the vault&rsquo;s own admin are queued in a 48-hour
-              Timelock owned by a multisig. Moving a vault between already-approved venues is
-              the exception: the leader does that directly, and governance controls which
-              venues are on the list.
+              Fees, roles, mandates and a vault&rsquo;s own admin are queued in a 48-hour
+              Timelock owned by a multisig. Three things are deliberately not: a leader
+              moves a vault between already-approved venues directly, and on the stock
+              vault the 2-of-2 Safe both rebalances and pulls the circuit breaker without
+              delay. Governance controls which venues exist; the Safe controls when to
+              act inside them.
+            </SpecRow>
+            <SpecRow label="Manager actions">
+              Immediate, on purpose. A rebalance takes effect as soon as both Safe signers
+              approve it. Everything about how the vault is configured does not.
+            </SpecRow>
+            <SpecRow label="Trading hours">
+              None. A Stock Token trades 24/7 while the equity behind it trades 09:30 to
+              16:00 New York time on weekdays, so an off-hours rebalance prices against a
+              market with no underlying reference and thin flow, and the token can drift
+              from the equity. There is no market-hours restriction and no widened
+              off-hours tolerance: the guards are identical at every hour.
             </SpecRow>
           </dl>
         </div>
