@@ -6,6 +6,9 @@ import { SupplyCurve } from '@/components/marketing/SupplyCurve';
 import { SectionHeading, Callout, SpecRow, Stat } from '@/components/ui/Primitives';
 import {
   ALLOCATIONS,
+  VESTING_ONCHAIN,
+  VESTING_CLIFF_RELEASE,
+  VESTING_DAILY_RELEASE,
   CIRCULATING_PCT,
   TOKEN,
   INSIDER_PCT,
@@ -71,7 +74,7 @@ export default async function TokenPage() {
         <SectionHeading
           eyebrow="Allocation policy"
           title="Where the supply is meant to go"
-          lede="Six buckets, summing to exactly 100%. The same basis points are hardcoded in the deploy script, which refuses to run if the distribution does not consume the entire supply and leave the deploy key holding zero. This is the published policy; what the chain holds today is set out directly below it."
+          lede="Six buckets, summing to exactly 100%. The same basis points are hardcoded in the deploy script, which refuses to run if the distribution does not consume the entire supply and leave the deploy key holding zero. Read the enforcement line on each bucket: only liquidity and the insurance fund have their own contract. Every other cliff below is a commitment of the governance Safe, because those four buckets share one onchain schedule whose cliff is 180 days, not twelve months."
         />
 
         <div className="mt-12 card-pad">
@@ -109,6 +112,23 @@ export default async function TokenPage() {
                   <dt className="stat-label">Cliff</dt>
                   <dd className="mt-1 font-mono text-xs text-ink-200">
                     {formatMonths(a.cliffMonths)}
+                  </dd>
+                </div>
+                {/*
+                  The row that stops this table contradicting the one below it.
+                  A reader compared a 12-month contributor cliff here against
+                  the 180-day schedule in custody and asked, correctly, which
+                  was real. Both were: one is policy, one is a contract, and
+                  nothing on the page said so.
+                */}
+                <div>
+                  <dt className="stat-label">Enforcement</dt>
+                  <dd
+                    className={`mt-1 font-mono text-xs ${
+                      a.enforcement === 'onchain' ? 'text-verified-500' : 'text-amber-400'
+                    }`}
+                  >
+                    {a.enforcement === 'onchain' ? 'own contract' : 'policy, not a lock'}
                   </dd>
                 </div>
                 <div>
@@ -175,6 +195,43 @@ export default async function TokenPage() {
               ) : null}
             </div>
           ))}
+        </div>
+
+        {/*
+          The single largest unlock this token has, disclosed as a figure
+          rather than left to be derived.
+
+          ZorphaVesting measures `vestDuration` from `startTime` and does NOT
+          add the cliff to it, so the whole elapsed fraction becomes claimable
+          in one block at the cliff. Two durations were on the page and this
+          consequence was not, which meant the most material fact about the
+          supply was technically present and practically hidden.
+        */}
+        <div className="mt-8">
+          <Callout tone="warn" title={`${formatCompact(VESTING_CLIFF_RELEASE)} unlocks in a single block on 3 March 2027`}>
+            <p>
+              The 800,000,000 schedule uses a 180-day cliff against a 1,095-day term, and the term
+              is measured from the start rather than from the end of the cliff. So the cliff does
+              not begin a gradual release: 180/1095 of the schedule, {formatCompact(VESTING_CLIFF_RELEASE)}{' '}
+              tokens, becomes claimable at once, and roughly{' '}
+              {formatCompact(VESTING_DAILY_RELEASE)} follows every day after until 3 September 2029.
+            </p>
+            <p className="mt-3">
+              That first tranche is larger than the entire protocol-owned liquidity bucket and, at
+              present depth, larger than the market could absorb. The schedule is non-revocable and
+              its sole beneficiary is the governance Safe, so what happens on that date is a
+              governance decision rather than a contract one. Verify the schedule at{' '}
+              <a
+                href={explorerAddress(VESTING_ONCHAIN.contract)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="link-quiet break-all font-mono"
+              >
+                {VESTING_ONCHAIN.contract}
+              </a>
+              .
+            </p>
+          </Callout>
         </div>
       </section>
 

@@ -504,7 +504,7 @@ export default function WhitepaperPage() {
                 <table className="w-full min-w-[34rem] text-sm">
                   <thead>
                     <tr className="border-b border-void-700 bg-void-850 text-left">
-                      {['Allocation', 'Share', 'Tokens', 'At launch', 'Cliff', 'Term'].map((h) => (
+                      {['Allocation', 'Share', 'Tokens', 'At launch', 'Cliff', 'Term', 'Enforced by'].map((h) => (
                         <th
                           key={h}
                           className="px-4 py-3 text-2xs font-medium uppercase tracking-[0.12em] text-ink-500"
@@ -534,6 +534,20 @@ export default function WhitepaperPage() {
                             : a.shape === 'tge'
                               ? 'unlocked'
                               : formatMonths(a.vestMonths)}
+                        </td>
+                        {/*
+                          Four of these six cliffs have no contract behind
+                          them: the buckets share one 800M schedule whose cliff
+                          is 180 days. Without this column the table reads as
+                          six enforced locks, which is the reading that made
+                          the allocation and custody sections contradict.
+                        */}
+                        <td
+                          className={`px-4 py-3 font-mono text-2xs ${
+                            a.enforcement === 'onchain' ? 'text-verified-500' : 'text-amber-400'
+                          }`}
+                        >
+                          {a.enforcement === 'onchain' ? 'contract' : 'policy'}
                         </td>
                       </tr>
                     ))}
