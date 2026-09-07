@@ -135,6 +135,19 @@ export default async function TokenPage() {
           lede="The policy above is intent. This is custody, readable from any block explorer. The treasury, contributor and backer buckets were locked as one non-revocable schedule to the governance Safe rather than four separate cliffs, so this table, not the policy, is what to verify."
         />
 
+        {custody.source === 'last-measured' ? (
+          <div className="mt-8">
+            <Callout tone="warn" title="These are the last measured figures, not a live read">
+              <p>
+                The table below could not be read from the chain just now, because{' '}
+                {custody.reason}. It shows the balances as last recorded, which were correct when
+                written and are not being presented as current. Verify any line against the
+                explorer using the address on it.
+              </p>
+            </Callout>
+          </div>
+        ) : null}
+
         <div className="mt-12 space-y-4">
           {custody.lines.map((c) => (
             <div key={c.label} className="card-pad">

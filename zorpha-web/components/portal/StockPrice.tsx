@@ -117,7 +117,14 @@ function useStockPrice(oracle: Address | undefined): Series {
   if (!oracle) return { state: 'unreadable' };
   if (depth.isLoading) return { state: 'loading' };
   if (depth.isError) return { state: 'unreadable' };
-  if (horizon > 0 && horizon < POINTS) return { state: 'too-shallow', depthSeconds: horizon };
+  // `horizon > 0` was the condition here, and it left a hole: a buffer under
+  // HORIZON_MARGIN_SECONDS clamps the horizon to exactly zero, skipped this
+  // branch, fell through to `!secondsAgos` below and rendered a loading
+  // skeleton that never resolved. A fresh pool, or one at cardinality 1 like
+  // ZOR/USDG today, would have pulsed forever instead of saying why.
+  if (depth.data !== undefined && horizon < POINTS) {
+    return { state: 'too-shallow', depthSeconds: Number(depth.data) };
+  }
   if (!secondsAgos || reads.isLoading) return { state: 'loading' };
   if (reads.isError) return { state: 'unreadable' };
 
@@ -240,8 +247,8 @@ export function StockPrice({
           <div className="stat-value mt-2 text-ink-500">&mdash;</div>
           <p className="mt-2 text-xs leading-relaxed text-ink-400">
             The pool&rsquo;s observation history reaches back only{' '}
-            {describeHorizon(s.depthSeconds)}, which is not enough to plot. It deepens as the pool
-            trades.
+            {s.depthSeconds < 120 ? `${s.depthSeconds} seconds` : describeHorizon(s.depthSeconds)},
+            which is not enough to plot. It deepens as the pool trades.
           </p>
         </>
       ) : null}
