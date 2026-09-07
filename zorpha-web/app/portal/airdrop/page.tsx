@@ -36,7 +36,7 @@ export default function AirdropPage() {
           and the snapshot runs.
         </p>
         <p className="mt-3 text-sm leading-relaxed text-ink-400">
-          Two tiers, measured over a 90 day window. Depositing at least 25 USDG into a Zorpha vault
+          Two tiers, measured over a 90 day window. Depositing at least 25 USDG into the Zorpha Steakhouse USDG vault (zsUSDG)
           and holding it for 30 continuous days earns 15,000 {TOKEN.ticker}. At least 250 USDG held
           for 60 continuous days earns 40,000 {TOKEN.ticker}. Tier 2 is a cap, not a rate: more
           capital earns no more than 40,000. The protocol reserves the right to exclude wallets it
