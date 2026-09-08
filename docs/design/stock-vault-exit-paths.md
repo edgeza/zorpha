@@ -199,9 +199,12 @@ on a mainnet fork:
 Against 40% before, on a 50/50 position, with the failure arriving as an untyped
 ERC-20 error.
 
-Every advertised maximum executes. The residual one percent is the venue cost of
-converting the cash leg, which is real money, so declining to promise it is
-correct rather than a shortcoming. `redeemEmergency` recovers it in kind.
+Every advertised maximum executes. The residual one percent is `maxSlippageBps`,
+the vault's own slippage allowance, withheld against the possibility of a
+costlier fill. It is not the venue's realised cost: the live pool charges 5bps,
+a factor of twenty less. Declining to promise the allowance is correct rather
+than a shortcoming, since the allowance is what the vault must tolerate, not
+what a fill actually costs. `redeemEmergency` recovers it in kind.
 
 ## What this deliberately does not do
 

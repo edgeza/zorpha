@@ -478,7 +478,15 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         // low-fee venue never caught this: the wrong one only fails once the
         // venue's real cost passes 10000h/(10000+h), 99.0099bps at h=100. And
         // set minOut to the whole shortfall, so a fill that cannot cover fails
-        // inside _swap instead of at the transfer with ERC20InsufficientBalance.
+        // inside _swap's slippage check rather than at the transfer below --
+        // true whenever there is a cash leg to attempt a swap with. When the
+        // cash leg is zero, `cashIn` clamps to zero a few lines down and _swap
+        // returns before checking minOut at all, so the failure would still be
+        // ERC20InsufficientBalance at the transfer. That state is unreachable
+        // through withdraw/redeem today: a zero cash leg makes
+        // `_deliverableAssets` equal the asset leg exactly, so neither
+        // entrypoint can advertise more than this contract's own asset balance
+        // in the first place, and `bal < assets` above is never true.
         //
         // minOut is the guarantee, not the gross-up. _swap ends in
         // require(received >= minOut, "slippage"), so under-delivery is
