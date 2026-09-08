@@ -14,13 +14,18 @@
 
 - Solidity `^0.8.28`. Contracts live in `sidequest-protocol/contracts`.
 - Every file starts with `// SPDX-License-Identifier: MIT`.
-- **Line endings: match the file you are editing.** `.gitattributes` enforces LF for
-  `*.sh` only, and exempts `contracts/lib`. It says nothing about `*.sol`, and every
-  one of the 68 Solidity files in this repository is committed CRLF, with
-  `core.autocrlf` false so the bytes on disk are the bytes in the blob. Do not
-  "fix" a `.sol` file to LF: it produces a whole-file diff and contradicts all 68.
-  An earlier draft of this plan said "LF line endings, repo-wide", which was wrong
-  and was sent to three implementers before one of them checked.
+- **Line endings: LF, matching the file you are editing.** `.gitattributes`
+  enforces LF for `*.sh` only and exempts `contracts/lib`, so `*.sol` has no rule,
+  but measured at byte level the Solidity sources are LF:
+  `SpotVaultMinimal.sol` 656 LF and 0 CRLF, `TickMath.sol` 84 LF and 0 CRLF.
+  `test/mocks/MockOracle.sol` is a pre-existing CRLF outlier (32 of 32) and must be
+  left that way rather than normalised in passing.
+  Measure with bytes, not `grep`: `grep -c $'$'` returns the LINE count here, not
+  the CRLF count, and an earlier revision of this plan asserted "all 68 Solidity
+  files are CRLF" on the strength of it. That was false. Use
+  `python -c "d=open(f,'rb').read(); print(d.count(b'
+'), d.count(b'
+'))"`.
 - 403 existing tests must stay green, apart from the four rewrites in Task 5.
 - Fork tests live in `test/fork/`, read `RH_MAINNET_RPC_URL` via `vm.envOr`, and `vm.skip(true)` when it is unset. CI sets no fork RPC, so they must skip cleanly.
 - **The launch gates workflow fails the build on any em-dash (U+2014) outside single quotes**, repo-wide except `sidequest-protocol/contracts/lib`. Use a comma, semicolon, colon or parentheses. Check with `git grep -nP "(?<!')\x{2014}(?!')" -- . ':!sidequest-protocol/contracts/lib'` before committing.
