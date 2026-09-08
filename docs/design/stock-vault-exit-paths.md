@@ -196,6 +196,11 @@ on a mainnet fork:
 | 2500 | 99.25% | yes |
 | fully flat, 0 | 98.99% | yes |
 
+**Superseded.** Those figures are from before the conversion cost was charged to
+the withdrawer; see "Who bears the conversion cost, settled" below. Capacity is
+now 100% at every position, and the withheld margin has moved out of the bound
+and into the payout, where it belongs.
+
 Against 40% before, on a 50/50 position, with the failure arriving as an untyped
 ERC-20 error.
 
@@ -315,12 +320,64 @@ green suite meant nothing here.
   at 10000, 5000 and 0, which is the table above.
 - The migration Safe batch, replayed as the Safe against the artifact on disk.
 
-## Open question for slice 3
+## Who bears the conversion cost, settled
 
-The venue cost is currently borne by the *withdrawing* holder, through the
-haircut in `_deliverableAssets`. The alternative is charging it to the vault so
-that all holders share it. The haircut is simpler and gives the right
-incentive, since the holder choosing to exit is the one causing the conversion,
-but it does mean two holders exiting in sequence pay different effective costs
-depending on the position at the time. Not worth solving before a second holder
-exists.
+The open question this section used to carry has been decided: **the exiting
+holder pays for their own conversion.** It was recorded here as a slice-3
+question, and it was recorded wrongly, claiming the cost already fell on the
+withdrawer "through the haircut in `_deliverableAssets`". That was false. The
+haircut caps how much the last exit may take and never touches who pays.
+
+### What was wrong
+
+The withdrawer was paid `previewRedeem(shares)`, the full oracle-priced NAV of
+their shares, while the venue's cut on converting the cash leg came out of the
+pool. So it landed on whoever stayed. Measured, two holders, the live 5bps
+venue, a 50/50 position, one holder exiting:
+
+```
+bob previewRedeem before   999750000000000000
+bob previewRedeem after    974762626260775861
+                           a loss of 249 bps of his position
+```
+
+That is one stranger's exit taking 2.49% from a holder who did nothing. It
+scales with realised venue cost, which is square-law in trade size, so a thin
+pool and a large exit could take most of a small remainder.
+
+### The correction
+
+The withdrawer's own shares pay for their own conversion. Let `gross` be the
+oracle NAV of the shares presented, `bal` the asset leg, and `h`
+`maxSlippageBps`. The payout `net` is defined by
+
+```
+net + cost(net) = gross,    cost(net) = max(0, net - bal) * h / (10000 - h)
+```
+
+which solves in closed form to
+
+```
+net = (gross * (10000 - h) + bal * h) / 10000
+```
+
+floored, so rounding favours the vault. An exit the asset leg already covers
+converts nothing and therefore pays nothing: `net == gross` whenever
+`gross <= bal`.
+
+`previewRedeem` returns `net`. `previewWithdraw` inverts it, returning the
+shares needed to cover a requested net payout plus its own cost. The remaining
+holders are left exactly whole: the shares burned are worth `net` plus the cut,
+and both leave the pool together.
+
+### It also removes the capacity limit
+
+Inverting the bound at the maximum gives `gross` equal to the whole NAV, because
+a holder absorbing their own conversion cost can always be served. So capacity
+is **100% of the holding at every position**, replacing the earlier table's
+98.99% to 100% band. The withdrawer receives less than oracle NAV by their own
+conversion cost, which is the honest number, rather than receiving all of it and
+sending the bill to everyone else.
+
+`redeemEmergency` is untouched and remains the cost-free exit: it pays both legs
+in kind, pro rata, converting nothing.
