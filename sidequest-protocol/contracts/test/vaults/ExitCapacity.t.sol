@@ -295,4 +295,33 @@ contract ExitCapacityTest is Test {
         vm.prank(alice);
         vault.redeem(held, alice, alice);
     }
+
+    /// The bounded fuzz test the spec promised (docs/design/stock-vault-exit-paths.md,
+    /// "The invariant that would have caught all three") and never got: any
+    /// target weight, any redemption fraction of the advertised maxRedeem, and
+    /// the redemption must deliver exactly what was previewed for it.
+    ///
+    /// Bounded with `bound`, not filtered with `vm.assume`: every input in
+    /// range is a real trade the fuzzer must exercise rather than a candidate
+    /// it can reject its way out of.
+    function testFuzz_RedeemFractionOfMaxRedeemDeliversPreview(uint16 targetBps, uint256 pct) public {
+        targetBps = uint16(bound(targetBps, 0, 10000));
+        pct = bound(pct, 1, 100);
+
+        vm.prank(keeper);
+        vault.rebalanceTo(targetBps);
+
+        uint256 mr = vault.maxRedeem(alice);
+        assertGt(mr, 0, "a solvent single-holder vault must advertise some capacity at every target");
+
+        uint256 want = (mr * pct) / 100;
+        uint256 expected = vault.previewRedeem(want);
+        uint256 before = stock.balanceOf(alice);
+
+        vm.prank(alice);
+        uint256 got = vault.redeem(want, alice, alice);
+
+        assertEq(got, expected, "redeem must return exactly what was previewed for this fraction");
+        assertEq(stock.balanceOf(alice) - before, expected, "and must deliver exactly that many assets");
+    }
 }

@@ -23,8 +23,10 @@ contract ExitHandler is Test {
     // Exits that actually landed: withdrawSome/withdrawAssetsSome read the
     // live advertised bound and, if it is nonzero, execute a slice of it with
     // no try/catch, so reaching the increment means the call did not revert.
-    // These live here, not on the invariant test contract, and are written
-    // only from these handler actions, never from an invariant_* function:
+    // See the `forge-config` line on ExitInvariantsTest below for why that is
+    // now actually enforced rather than merely read that way. These live
+    // here, not on the invariant test contract, and are written only from
+    // these handler actions, never from an invariant_* function:
     // forge's invariant runner wraps every invariant_* call in its own outer
     // snapshot/revert and discards ALL of that call's side effects once it
     // returns, regardless of what the function does internally or in what
@@ -115,6 +117,33 @@ contract ExitHandler is Test {
 /// Nothing asserted this before, which is how a maxRedeem that returned
 /// balanceOf(owner) unconditionally survived a suite of 403 tests while the
 /// standard withdrawal path was broken above 40% of a 50/50 position.
+///
+/// There is no `[invariant]` section in foundry.toml, so `fail_on_revert`
+/// defaults to false: a revert inside withdrawSome or withdrawAssetsSome --
+/// from vault.redeem or vault.withdraw, not from the handler itself -- is a
+/// reverting call from the fuzzer's own driver into the handler, which is
+/// exactly what that default is built to swallow. It would not fail the run;
+/// it would be discarded, silently, one fuzzed call at a time, which is
+/// indistinguishable from the property holding unless the revert happens to
+/// be so total that `afterInvariant`'s coverage floor catches it too. A bug
+/// that reverts some but not most of the time -- the realistic case -- would
+/// sail through: measured, wrapping the redeem/withdraw calls above in an
+/// explicit `assertTrue` on success does NOT close this gap either, because
+/// forge-std's assertion cheatcode still reverts the handler call it fires
+/// in, so it is swallowed the same way. The config below is the only thing
+/// that actually enforces this file's headline property.
+///
+/// Scoped to this contract, not set globally in foundry.toml: VaultHandler
+/// and EscrowHandler (the other two files under test/invariants/) call
+/// several of their own target functions with no try/catch and DO revert
+/// under ordinary fuzzing -- measured, clean runs of VaultInvariantsTest log
+/// on the order of a thousand reverts in rebalanceTo alone (996 to 1160
+/// across repeated runs, fuzz seed unpinned), all currently tolerated on
+/// purpose. A global fail_on_revert=true would fail both of those suites for
+/// behaviour they already accept as normal, so the override lives here, on
+/// the one contract whose handler actions are actually meant to never
+/// revert.
+/// forge-config: default.invariant.fail-on-revert = true
 contract ExitInvariantsTest is StdInvariant, Test {
     SpotVaultMinimal vault;
     MockERC20 stock;
