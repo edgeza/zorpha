@@ -348,8 +348,8 @@ pool and a large exit could take most of a small remainder.
 ### The correction
 
 The withdrawer's own shares pay for their own conversion. Let `gross` be the
-oracle NAV of the shares presented, `bal` the asset leg, and `h`
-`maxSlippageBps`. The payout `net` is defined by
+oracle NAV of the shares presented, `bal` the asset leg, and `h` `exitCostBps`.
+The payout `net` is defined by
 
 ```
 net + cost(net) = gross,    cost(net) = max(0, net - bal) * h / (10000 - h)
@@ -381,3 +381,41 @@ sending the bill to everyone else.
 
 `redeemEmergency` is untouched and remains the cost-free exit: it pays both legs
 in kind, pro rata, converting nothing.
+
+### Two parameters, because one number was doing two jobs
+
+Charging the exiter fixed the dilution and immediately exposed a second fault:
+the number being charged was `maxSlippageBps`, which is a swap bound, not a
+cost. At the live 100bps setting against a 5bps pool the exiter paid about
+twenty times the realised cost, and the surplus became a windfall for whoever
+stayed. Measured, two holders, 50/50 position, one exit:
+
+```
+maxSlippageBps   exiter charged     remaining holder
+100 bps          0.494750 asset     GAINS 4601 bps
+ 25 bps          0.123687 asset     GAINS  964 bps
+  6 bps          0.029685 asset     GAINS   43 bps
+```
+
+Nobody is harmed in that direction, since the vault is never short, but it is
+still a mispricing of the same kind this document already corrected once.
+
+The two jobs want opposite values. As a swap bound the number needs headroom for
+price IMPACT, which is square-law in size on this pool: slice 1 measured a $50k
+trade cutting in-range liquidity by 65%, so a bound near the fee tier makes
+ordinary rebalances revert. As an exit price it should track the realised cost,
+near the fee tier. One number cannot be both.
+
+So they are now two. `exitCostBps` prices exits and haircuts
+`_deliverableAssets`; `maxSlippageBps` keeps its original job as the rebalance
+`minOut` bound. Both are immutable.
+
+**Choosing `exitCostBps` is a real trade-off, not a free win.** `_withdraw`
+grosses the cash draw up by `10000 / (10000 - exitCostBps)` and requires the
+fill to cover the shortfall in full, so a realised cost above `exitCostBps`,
+fee plus impact, makes the swap revert rather than silently overcharge.
+`maxRedeem` carries the same haircut, so the advertised bound stays executable
+for the fee component, but impact is invisible to a view and cannot be bounded
+in advance. Too low and large exits revert; too high and every exit donates the
+difference to whoever stays. Above the fee tier and well below a rebalance bound
+is the range. `redeemEmergency` is the in-kind escape either way.
