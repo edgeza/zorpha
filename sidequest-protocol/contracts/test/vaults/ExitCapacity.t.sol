@@ -267,6 +267,88 @@ contract ExitCapacityTest is Test {
         feeVault.withdraw(mw, alice, alice);
     }
 
+    /// previewRedeem had the identical defect as maxWithdraw above, unguarded:
+    /// it computed from pre-accrual totalAssets(), while redeem() calls
+    /// _evaluateFees() first, so a caller who reads previewRedeem and then
+    /// calls redeem was delivered less than the quote. ERC-4626 requires the
+    /// quote to hold.
+    ///
+    /// Same mechanism as the fixture above -- a live 1000bps performance fee,
+    /// two holders, a 50/50 position, and a price drop that leaves a gain
+    /// pending -- but at exitCostBps 250 and with the gap actually asserted
+    /// rather than only logged, because this is the guarantee being fixed,
+    /// not a side effect of it.
+    function test_PreviewRedeemAgreesWithRedeem_UnderPendingPerformanceFee() public {
+        MockOracle feeOracle = new MockOracle(232 * 1e8, 8);
+        SlippingSpotAdapter feeVenue = new SlippingSpotAdapter(address(stock), address(cash), address(feeOracle));
+        feeVenue.setFee(5);
+
+        SpotVaultMinimal feeVault = new SpotVaultMinimal(
+            address(stock), address(cash), address(feeOracle), 1 hours,
+            "Zorpha NVDA Long/Flat", "zqNVDA",
+            0, 100, 250, 1000, // exitCostBps 250, performanceFeeBps: the live figure
+            address(this), address(this),
+            0
+        );
+        feeVault.setSwapAdapter(address(feeVenue));
+        feeVault.grantRole(feeVault.KEEPER_ROLE(), keeper);
+
+        stock.mint(address(feeVenue), 1_000_000e18);
+        cash.mint(address(feeVenue), 1_000_000_000e6);
+
+        address secondHolder = makeAddr("second-holder");
+        stock.mint(alice, DEPOSIT);
+        stock.mint(secondHolder, 20e18);
+
+        vm.startPrank(alice);
+        stock.approve(address(feeVault), DEPOSIT);
+        feeVault.deposit(DEPOSIT, alice);
+        vm.stopPrank();
+
+        vm.startPrank(secondHolder);
+        stock.approve(address(feeVault), 20e18);
+        feeVault.deposit(20e18, secondHolder);
+        vm.stopPrank();
+
+        vm.prank(keeper);
+        feeVault.rebalanceTo(5000);
+
+        // The cash leg re-prices to more NVDA as the price falls, so NAV
+        // climbs past the high-water mark: a gain is pending, and
+        // _pendingPerformanceFee() is nonzero the instant before anything
+        // actually calls _evaluateFees().
+        feeOracle.setPrice(180 * 1e8);
+
+        uint256 navPerShare = feeVault.getNavPerShare();
+        uint256 hwm = feeVault.highWaterMark();
+        assertGt(navPerShare, hwm, "test must exercise a pending gain");
+        assertEq(feeVault.performanceFeeAccrued(), 0, "fee must be pending, not yet accrued");
+
+        // Read balances and the quote BEFORE vm.prank: an argument that is
+        // itself a call consumes the prank, which would leave redeem itself
+        // running as this test contract rather than as alice.
+        uint256 aliceShares = feeVault.balanceOf(alice);
+        uint256 quoted = feeVault.previewRedeem(aliceShares);
+        uint256 before = stock.balanceOf(alice);
+
+        console2.log("navPerShare               ", navPerShare);
+        console2.log("highWaterMark             ", hwm);
+        console2.log("previewRedeem quoted      ", quoted);
+
+        vm.prank(alice);
+        uint256 delivered = feeVault.redeem(aliceShares, alice, alice);
+
+        console2.log("actually delivered        ", delivered);
+        if (quoted > delivered) {
+            console2.log("OVER-QUOTED by            ", quoted - delivered);
+        } else if (delivered > quoted) {
+            console2.log("UNDER-QUOTED by           ", delivered - quoted);
+        }
+
+        assertEq(stock.balanceOf(alice) - before, delivered, "redeem must transfer exactly what it returns");
+        assertEq(delivered, quoted, "ERC-4626 requires previewRedeem's quote to hold under a pending performance fee");
+    }
+
     /// An integrator must be able to ask whether the vault is open, even when
     /// the oracle is refusing. Both of these reach totalAssets() today and
     /// revert rather than answering.
@@ -512,6 +594,70 @@ contract ExitCapacityTest is Test {
         uint256 got = vault.redeem(want, alice, alice);
 
         assertEq(got, expected, "redeem must return exactly what was previewed for this fraction");
+        assertEq(stock.balanceOf(alice) - before, expected, "and must deliver exactly that many assets");
+    }
+
+    /// The fuzz property above never exercises a non-zero performance fee --
+    /// `vault` is built with performanceFeeBps 0 in `setUp` -- so this exact
+    /// guarantee, previewRedeem read before redeem must equal what redeem
+    /// delivers, was fuzzed only in the one case where netting a pending fee
+    /// is indistinguishable from doing nothing: a fee that is always zero has
+    /// nothing to net. Tested only at fee 0, it was not tested.
+    ///
+    /// Same property at the live 1000bps fee, with the price bounded to any
+    /// drop below the 232 entry price so a real gain is pending on every run,
+    /// not merely reachable on some -- the assertion just below confirms it.
+    function testFuzz_RedeemFractionOfMaxRedeemDeliversPreview_AtLiveFeeWithPendingGain(
+        uint256 pct,
+        int256 newPrice
+    ) public {
+        pct = bound(pct, 1, 100);
+        newPrice = bound(newPrice, 100 * 1e8, 231 * 1e8);
+
+        MockOracle feeOracle = new MockOracle(232 * 1e8, 8);
+        SlippingSpotAdapter feeVenue = new SlippingSpotAdapter(address(stock), address(cash), address(feeOracle));
+        feeVenue.setFee(5);
+
+        SpotVaultMinimal feeVault = new SpotVaultMinimal(
+            address(stock), address(cash), address(feeOracle), 1 hours,
+            "Zorpha NVDA Long/Flat", "zqNVDA",
+            0, 100, 100, 1000, // performanceFeeBps: the live figure, not this fixture's zero
+            address(this), address(this),
+            0
+        );
+        feeVault.setSwapAdapter(address(feeVenue));
+        feeVault.grantRole(feeVault.KEEPER_ROLE(), keeper);
+
+        stock.mint(address(feeVenue), 1_000_000e18);
+        cash.mint(address(feeVenue), 1_000_000_000e6);
+
+        stock.mint(alice, DEPOSIT);
+        vm.startPrank(alice);
+        stock.approve(address(feeVault), DEPOSIT);
+        feeVault.deposit(DEPOSIT, alice);
+        vm.stopPrank();
+
+        vm.prank(keeper);
+        feeVault.rebalanceTo(5000);
+
+        feeOracle.setPrice(newPrice);
+        assertGt(
+            feeVault.getNavPerShare(),
+            feeVault.highWaterMark(),
+            "bounded price drop must leave every run with a real pending gain"
+        );
+
+        uint256 mr = feeVault.maxRedeem(alice);
+        assertGt(mr, 0, "a solvent single-holder vault must advertise some capacity");
+
+        uint256 want = (mr * pct) / 100;
+        uint256 expected = feeVault.previewRedeem(want);
+        uint256 before = stock.balanceOf(alice);
+
+        vm.prank(alice);
+        uint256 got = feeVault.redeem(want, alice, alice);
+
+        assertEq(got, expected, "redeem must return exactly what was previewed, even under a pending fee");
         assertEq(stock.balanceOf(alice) - before, expected, "and must deliver exactly that many assets");
     }
 

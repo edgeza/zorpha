@@ -338,8 +338,24 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
     ///         exiting holder's own shares pay for their own conversion. See
     ///         docs/design/stock-vault-exit-paths.md, "Who bears the
     ///         conversion cost, settled".
+    ///
+    ///         `gross` also nets `_pendingPerformanceFee()` out of `totalAssets()`
+    ///         before converting, the same treatment `maxWithdraw` already
+    ///         applies and for the identical reason: `redeem` calls
+    ///         `_evaluateFees()` BEFORE OpenZeppelin's `redeem` re-derives this
+    ///         same function internally to fix the payout, so an externally-read
+    ///         quote taken while a gain sits unaccrued used to promise `gross`
+    ///         computed against a `totalAssets()` that accrual was about to
+    ///         shrink -- measured at 124bps of the quote on a pending 1000bps
+    ///         fee. Once `_evaluateFees()` has actually run, `nav <= highWaterMark`
+    ///         holds and `_pendingPerformanceFee()` answers 0, so this netting is
+    ///         a no-op on the delivery path itself; it only corrects the
+    ///         standalone view.
     function previewRedeem(uint256 shares) public view override returns (uint256) {
-        uint256 gross = _convertToAssets(shares, Math.Rounding.Floor);
+        uint256 netAssets = totalAssets();
+        uint256 pendingFee = _pendingPerformanceFee();
+        netAssets = netAssets > pendingFee ? netAssets - pendingFee : 0;
+        uint256 gross = Math.mulDiv(shares, netAssets + 1, totalSupply() + 10 ** _decimalsOffset(), Math.Rounding.Floor);
         uint256 bal = IERC20(asset()).balanceOf(address(this));
         if (gross <= bal) return gross;
         return (gross * (10000 - exitCostBps) + bal * exitCostBps) / 10000;
