@@ -9,19 +9,26 @@ import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockOracle} from "../mocks/MockOracle.sol";
 import {SlippingSpotAdapter} from "../mocks/SlippingSpotAdapter.sol";
 
-/// @notice A withdrawal that needs the cash leg converted back reverts, and the
-///         vault is therefore exitable only up to its asset leg.
+/// @notice The withdrawal path delivers what it advertises, and these tests are
+///         what keep it that way.
 ///
-/// WHY THIS IS NOT COVERED BY test/vaults/SpotVaultMinimal.t.sol
+/// This file was written the other way round. Until the exit paths were fixed, a
+/// withdrawal needing the cash leg converted back reverted, and the vault was
+/// exitable only as far as its asset leg reached; these tests asserted that the
+/// defect existed. They now assert it stays gone. Everything below is the
+/// original analysis, kept because WHY the defect hid for so long is the part
+/// worth remembering.
 ///
-/// Two things there hide it, and both are properties of the harness rather than
+/// WHY IT WAS NOT COVERED BY test/vaults/SpotVaultMinimal.t.sol
+///
+/// Two things there hid it, and both were properties of the harness rather than
 /// of the vault:
 ///
-///   1. `MockSpotAdapter` fills at the oracle price exactly. `_withdraw` rounds
-///      the shortfall DOWN into cash units and then allows the fill to come
-///      back up to `maxSlippageBps` short, so it needs a venue that actually
-///      charges to under-deliver. `SlippingSpotAdapter` is used here, at the
-///      0.05% the live NVDA/USDG pool charges.
+///   1. `MockSpotAdapter` fills at the oracle price exactly. `_withdraw` used to
+///      round the shortfall DOWN into cash units and then allow the fill to come
+///      back up to `maxSlippageBps` short, so exposing it needed a venue that
+///      actually charges. `SlippingSpotAdapter` is used here, at the 0.05% the
+///      live NVDA/USDG pool charges.
 ///
 ///   2. That suite pairs an 8-decimal asset with 6-decimal cash. One cash unit
 ///      is 100 asset units, so rounding the conversion down loses ~100 wei and
@@ -32,7 +39,7 @@ import {SlippingSpotAdapter} from "../mocks/SlippingSpotAdapter.sol";
 /// The decimal gap is the whole mechanism, so this test reproduces it: 18dp
 /// asset, 6dp cash, fee-charging venue.
 ///
-/// MEASURED ON MAINNET, vault 0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413 at a
+/// MEASURED ON MAINNET BEFORE THE FIX, vault 0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413 at a
 /// 50/50 position, forked 7 September 2026:
 ///
 ///     redeem  40%  ok
