@@ -107,6 +107,52 @@ contract ExitCapacityTest is Test {
         }
     }
 
+    /// The sweep above only ever approaches exitCostBps from below, so it
+    /// never actually checks that the bound is honest ABOVE it. This sweeps
+    /// the venue fee ACROSS a fixed, modest exitCostBps (25, so the sweep is
+    /// cheap): at fee <= exitCostBps, redeem(maxRedeem(owner)) must still
+    /// execute; above it, the venue's realised cost exceeds what maxRedeem
+    /// priced in, and the fill cannot cover the shortfall -- the swap must
+    /// revert instead of silently overcharging. The cliff sits exactly one
+    /// basis point above exitCostBps, matching the rewritten comment on
+    /// `_withdraw`'s gross-up in SpotVaultMinimal.sol.
+    function test_MaxRedeemHonoursItsBoundAcrossTheExitCostCliff() public {
+        uint16 fixedExitCostBps = 25;
+        SpotVaultMinimal v = _freshVault(100, fixedExitCostBps);
+
+        address holder = makeAddr("cliff-holder");
+        stock.mint(holder, DEPOSIT);
+        vm.startPrank(holder);
+        stock.approve(address(v), DEPOSIT);
+        v.deposit(DEPOSIT, holder);
+        vm.stopPrank();
+
+        vm.prank(keeper);
+        v.rebalanceTo(5000);
+
+        uint256[6] memory venueFeesBps = [uint256(23), 24, 25, 26, 27, 28];
+        for (uint256 i = 0; i < venueFeesBps.length; i++) {
+            uint256 snap = vm.snapshotState();
+            venue.setFee(venueFeesBps[i]);
+
+            uint256 mr = v.maxRedeem(holder);
+            assertGt(mr, 0, "a solvent vault must advertise some capacity regardless of the real venue fee");
+
+            vm.prank(holder);
+            (bool ok,) = address(v).call(abi.encodeCall(v.redeem, (mr, holder, holder)));
+
+            console2.log("venue fee bps", venueFeesBps[i]);
+            console2.log("   executed  ", ok);
+
+            if (venueFeesBps[i] <= fixedExitCostBps) {
+                assertTrue(ok, "at or below exitCostBps, the advertised maximum must execute");
+            } else {
+                assertFalse(ok, "above exitCostBps, the realised cost exceeds what maxRedeem priced in");
+            }
+            vm.revertToState(snap);
+        }
+    }
+
     /// A vault holding no cash at all must be fully redeemable. This is the
     /// virtual-share offset trap: deriving the bound by conversion alone comes
     /// out 501 wei short of the supply and refuses this exit.

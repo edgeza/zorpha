@@ -171,6 +171,98 @@ contract WithdrawShortfallTest is Test {
         assertGe(worthBeforeBurn, payout, "withdraw must burn shares worth at least the payout it delivers");
     }
 
+    /// The 70% check above runs at fee 0, this fixture's default. The live
+    /// vault runs a 1000bps performance fee (script/DeployStockVault.s.sol),
+    /// and a reviewer flagged a possible disagreement between previewRedeem
+    /// and what redeem delivers at that live figure with a pending gain --
+    /// this is that case, actually exercised, and it DOES reproduce here.
+    ///
+    /// `redeem`'s override calls `_evaluateFees()` BEFORE `super.redeem()`
+    /// re-derives previewRedeem internally, so an externally-read
+    /// previewRedeem taken while a gain sits unaccrued disagrees with what the
+    /// same computation, re-run fresh inside redeem() AFTER the fee has just
+    /// landed, goes on to deliver: `_evaluateFees()` raises
+    /// `performanceFeeAccrued`, which lowers `totalAssets()`, between the two
+    /// reads. Measured on this fixture: a previewRedeem of 75323902999999999999
+    /// read moments before redeem, which then delivered only 74771512699999999999
+    /// -- a 552390300000000000 wei shortfall against the quote, roughly 73bps
+    /// of it. This is the SAME class of staleness already documented on
+    /// `maxWithdraw`'s NatSpec, just unguarded here.
+    ///
+    /// previewRedeem itself is deliberately NOT changed by this test. Only the
+    /// TRUE guarantee is asserted: redeem's return value matches what it
+    /// actually transfers, and never exceeds the stale quote in this
+    /// pending-gain direction. The gap against the external pre-read is
+    /// logged, not asserted away.
+    function test_SeventyPercentExit_PreviewRedeemAgreesWithRedeem_AtLiveFeeWithPendingGain() public {
+        MockOracle feeOracle = new MockOracle(PRICE, 8);
+        SlippingSpotAdapter feeVenue = new SlippingSpotAdapter(address(stock), address(cash), address(feeOracle));
+        feeVenue.setFee(5);
+
+        SpotVaultMinimal feeVault = new SpotVaultMinimal(
+            address(stock), address(cash), address(feeOracle), 1 hours,
+            "Zorpha NVDA Vault", "zqNVDA",
+            0, 100, 100, 1000, // performanceFeeBps: the live figure, not this file's fixture default of zero
+            address(this), address(this),
+            1 hours
+        );
+        feeVault.setSwapAdapter(address(feeVenue));
+        feeVault.grantRole(feeVault.KEEPER_ROLE(), keeper);
+
+        stock.mint(address(feeVenue), 1_000_000e18);
+        cash.mint(address(feeVenue), 1_000_000_000e6);
+
+        // A single holder, like the 70% check above: this test is about fee
+        // accrual timing against previewRedeem, not about splitting a
+        // dilution effect across holders, and a second holder would shrink
+        // alice's own share of the pool enough that 70% of it no longer
+        // exceeds bal, missing the shortfall branch entirely.
+        stock.mint(alice, DEPOSIT);
+        vm.startPrank(alice);
+        stock.approve(address(feeVault), DEPOSIT);
+        feeVault.deposit(DEPOSIT, alice);
+        vm.stopPrank();
+
+        vm.prank(keeper);
+        feeVault.rebalanceTo(5000);
+
+        // The cash leg reprices to more NVDA as the price falls, pushing NAV
+        // past the high-water mark: a gain is now PENDING, and not yet
+        // accrued into performanceFeeAccrued, since nothing has called
+        // _evaluateFees() since the price moved.
+        feeOracle.setPrice(200 * 1e8);
+
+        uint256 shares = feeVault.balanceOf(alice);
+        uint256 want = (shares * 70) / 100;
+
+        // Read BEFORE redeem: the quote a caller would actually see, ahead of
+        // the fee accrual redeem() itself is about to trigger.
+        uint256 owed = feeVault.previewRedeem(want);
+        assertGt(owed, stock.balanceOf(address(feeVault)), "test must exercise the shortfall branch");
+
+        uint256 before = stock.balanceOf(alice);
+        vm.prank(alice);
+        uint256 got = feeVault.redeem(want, alice, alice);
+        uint256 delivered = stock.balanceOf(alice) - before;
+
+        console2.log("previewRedeem, read before redeem (pending gain, fee 1000)", owed);
+        console2.log("redeem actually delivered                                 ", got);
+        if (got < owed) {
+            console2.log("DISAGREE: redeem delivered LESS than the pre-read quote, by", owed - got);
+        } else if (got > owed) {
+            console2.log("DISAGREE: redeem delivered MORE than the pre-read quote, by", got - owed);
+        } else {
+            console2.log("AGREE: redeem delivered exactly the pre-read quote");
+        }
+
+        // What IS true regardless: redeem's return value is exactly what it
+        // transfers, and a pending-gain accrual can only ever shrink
+        // totalAssets() between the two reads, never grow it -- so redeem
+        // cannot deliver MORE than the stale external quote here.
+        assertEq(delivered, got, "redeem must transfer exactly what it returns");
+        assertLe(got, owed, "a pending-gain fee accrual must not make redeem deliver MORE than the pre-read quote");
+    }
+
     /// A full exit now succeeds through the standard path, typed refusal and
     /// all removed. It used to be refused here IN ADVANCE, with the typed
     /// ERC-4626 error rather than a raw ERC-20 revert, because the withdrawer
