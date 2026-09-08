@@ -209,6 +209,12 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
     }
 
     function cashToAsset(uint256 cashAmt) public view returns (uint256) {
+        // LOAD-BEARING, do not remove as dead weight. This is what lets a vault
+        // with no cash leg serve a withdrawal while the oracle is refusing: it
+        // returns before _oraclePrice() is ever called. _cashLegValue has a
+        // zero-guard of its own that looks like the protection but is not;
+        // deleting this line leaves test_RefusingOracle_ZeroCashVaultStillExits
+        // failing and that one green. Measured, not assumed.
         if (cashAmt == 0) return 0;
         uint256 p = _oraclePrice();
         return (cashAmt * (10 ** _assetDec) * (10 ** _priceDec)) / ((10 ** _cashDec) * p);
@@ -236,10 +242,14 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
     }
 
     /// @dev Value the cash leg, or report that the oracle is refusing to price
-    ///      it. The zero short-circuit matters: a vault holding no cash needs
-    ///      no oracle to answer and must not be gated on one.
+    ///      it. The zero short-circuit is a gas saving and a statement of
+    ///      intent, but not the guarantee that a vault needs no oracle.
     function _cashLegValue() internal view returns (uint256 value, bool priced) {
         uint256 cashBal = cashAsset.balanceOf(address(this));
+        // A gas saving and a statement of intent, NOT the guarantee. cashToAsset
+        // returns zero without touching the oracle anyway, so removing this line
+        // changes cost and not behaviour. The property that a vault holding no
+        // cash needs no oracle rests on cashToAsset's guard, not this one.
         if (cashBal == 0) return (0, true);
         try this.cashToAsset(cashBal) returns (uint256 v) {
             return (v, true);
