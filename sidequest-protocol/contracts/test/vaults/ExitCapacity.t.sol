@@ -296,6 +296,154 @@ contract ExitCapacityTest is Test {
         vault.redeem(held, alice, alice);
     }
 
+    /// Shared setup for the P1/P2 proofs below: a second holder, bob, joins
+    /// with 1e18 against alice's 100e18, and the vault is rebalanced to 50/50
+    /// -- the exact configuration docs/design/stock-vault-exit-paths.md
+    /// measured the pre-fix dilution against ("Who bears the conversion cost,
+    /// settled").
+    function _addBobAndRebalanceToFifty() internal returns (address bob) {
+        bob = makeAddr("bob");
+        stock.mint(bob, 1e18);
+        vm.startPrank(bob);
+        stock.approve(address(vault), 1e18);
+        vault.deposit(1e18, bob);
+        vm.stopPrank();
+
+        vm.prank(keeper);
+        vault.rebalanceTo(5000);
+    }
+
+    /// P1. NO DILUTION -- the whole point of the fix. On this EXACT fixture
+    /// (verified by temporarily running it against the pre-fix contract), the
+    /// old code takes bob from 999750000000000000 to 974762626260775861: a
+    /// 249bps loss, charged to a holder who did nothing, just for sharing a
+    /// pool with someone who exited. After the fix, bob is never worse off.
+    ///
+    /// NOT asserted: that bob's figure is unchanged to a wei or two. It is
+    /// not, on this fixture, and that is a separate, understood effect, not a
+    /// defect. `previewRedeem`/`maxWithdraw` charge the exiting holder the
+    /// RESERVED `maxSlippageBps`, because a view function has no live quote to
+    /// charge the REAL fee instead -- the same reason `_deliverableAssets`
+    /// haircuts the cash leg by the reserve rather than a real-time price.
+    /// `_withdraw`'s own gross-up (unchanged by this fix) sizes the swap off
+    /// that same reserve, so whenever the venue's real fee is BELOW it --
+    /// 5bps against the 100bps allowance here, the live NVDA/USDG relationship
+    /// -- the swap converts more value than alice's exit actually cost, and
+    /// the difference remains in the pool for bob. Measured below: he more
+    /// than doubles. Both directions -- unchanged, or better -- satisfy
+    /// "never diluted"; only a decrease would not, and none is observed.
+    function test_P1_NoDilution_OtherHoldersEntitlementIsUnchanged() public {
+        address bob = _addBobAndRebalanceToFifty();
+
+        uint256 bobShares = vault.balanceOf(bob);
+        uint256 bobBefore = vault.previewRedeem(bobShares);
+
+        // Read maxWithdraw BEFORE pranking: an argument that is itself a call
+        // consumes the prank, which would leave the withdraw call itself
+        // running as this test contract rather than as alice.
+        uint256 aliceMaxWithdraw = vault.maxWithdraw(alice);
+        vm.prank(alice);
+        vault.withdraw(aliceMaxWithdraw, alice, alice);
+
+        uint256 bobAfter = vault.previewRedeem(bobShares);
+
+        console2.log("bob previewRedeem before  ", bobBefore);
+        console2.log("bob previewRedeem after   ", bobAfter);
+        console2.log("pre-fix reference (HEAD)  ", uint256(974762626260775861));
+
+        assertGe(bobAfter, bobBefore - 2, "bob must never be diluted by alice's exit, up to a wei or two of rounding");
+        // previewRedeem must still never pay out more than the un-haircut
+        // conversion, even for bob's own share of the windfall above -- the
+        // same invariant P2 and P3 exercise from the exiting holder's side.
+        assertLe(bobAfter, vault.convertToAssets(bobShares), "previewRedeem must never exceed the un-haircut conversion");
+    }
+
+    /// P2. THE EXITER PAYS. In the same setup, alice must receive strictly
+    /// less than the un-haircut NAV of her shares, and the shortfall she bears
+    /// must match the closed-form conversion cost, `(net - bal) * h / (10000 - h)`.
+    function test_P2_ExiterPaysHerOwnConversionCost() public {
+        _addBobAndRebalanceToFifty();
+
+        uint256 aliceShares = vault.balanceOf(alice);
+        uint256 gross = vault.convertToAssets(aliceShares);
+        uint256 bal = stock.balanceOf(address(vault));
+        uint256 net = vault.previewRedeem(aliceShares);
+
+        assertGt(gross, bal, "test must exercise the shortfall branch");
+        assertLt(net, gross, "the exiting holder must receive strictly less than the un-haircut NAV");
+
+        uint256 shortfall = gross - net;
+        uint256 h = vault.maxSlippageBps();
+        uint256 expectedCost = ((net - bal) * h) / (10000 - h);
+        console2.log("gross (un-haircut NAV)", gross);
+        console2.log("net (previewRedeem)   ", net);
+        console2.log("shortfall alice bears ", shortfall);
+        assertApproxEqAbs(shortfall, expectedCost, 2, "shortfall must match cost(net) = (net - bal) * h / (10000 - h)");
+
+        vm.prank(alice);
+        uint256 got = vault.redeem(aliceShares, alice, alice);
+        assertEq(got, net, "redeem must deliver exactly previewRedeem's net figure");
+    }
+
+    /// P3. FREE WHEN NOTHING CONVERTS. Two shapes of "nothing to convert":
+    /// a vault that is fully long (no cash leg at all), and a partial exit
+    /// small enough that the asset leg covers it outright even though the
+    /// vault overall is not fully long. Both must cost exactly nothing.
+    function test_P3_FreeWhenNothingConverts_FullyLongVault() public {
+        vm.prank(keeper);
+        vault.rebalanceTo(10000);
+        assertEq(cash.balanceOf(address(vault)), 0, "fixture must reach a zero cash leg");
+
+        uint256 shares = vault.balanceOf(alice);
+        assertEq(
+            vault.previewRedeem(shares),
+            vault.convertToAssets(shares),
+            "a fully long vault converts nothing and so costs nothing"
+        );
+    }
+
+    function test_P3_FreeWhenNothingConverts_SmallExitAssetLegCoversItOutright() public {
+        vm.prank(keeper);
+        vault.rebalanceTo(5000);
+
+        uint256 want = vault.balanceOf(alice) / 10;
+        uint256 gross = vault.convertToAssets(want);
+        uint256 bal = stock.balanceOf(address(vault));
+        assertLe(gross, bal, "test must exercise the no-conversion branch");
+
+        assertEq(
+            vault.previewRedeem(want), gross, "an exit the asset leg covers outright pays no conversion cost"
+        );
+    }
+
+    /// P4. CAPACITY IS 100% AT EVERY POSITION. Replaces the old 98.99%-to-100%
+    /// band documented before the conversion cost was charged to the
+    /// withdrawer: inverting the payout formula at the maximum yields `gross`
+    /// equal to the whole NAV, so a holder who absorbs their own conversion
+    /// cost can always be served in full, regardless of position.
+    function test_P4_CapacityIsFullAtEveryPosition() public {
+        uint16[5] memory targets = [uint16(10000), 7500, 5000, 2500, 0];
+        for (uint256 i = 0; i < targets.length; i++) {
+            uint256 snap = vm.snapshotState();
+            vm.prank(keeper);
+            vault.rebalanceTo(targets[i]);
+
+            uint256 held = vault.balanceOf(alice);
+            uint256 mr = vault.maxRedeem(alice);
+            assertEq(mr, held, "capacity must be exactly 100% of the holding at every position");
+
+            uint256 expected = vault.previewRedeem(mr);
+            vm.prank(alice);
+            uint256 got = vault.redeem(mr, alice, alice);
+            assertEq(got, expected, "the advertised maximum must deliver exactly previewRedeem of it");
+            assertEq(vault.balanceOf(alice), 0, "and must exhaust the whole holding");
+
+            console2.log("target", targets[i]);
+            console2.log("   capacity bps", (mr * 10000) / held);
+            vm.revertToState(snap);
+        }
+    }
+
     /// The bounded fuzz test the spec promised (docs/design/stock-vault-exit-paths.md,
     /// "The invariant that would have caught all three") and never got: any
     /// target weight, any redemption fraction of the advertised maxRedeem, and

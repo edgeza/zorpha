@@ -3,7 +3,6 @@ pragma solidity ^0.8.28;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {SpotVaultMinimal} from "../../src/vaults/SpotVaultMinimal.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockOracle} from "../mocks/MockOracle.sol";
@@ -127,43 +126,41 @@ contract WithdrawShortfallTest is Test {
         assertEq(stock.balanceOf(alice) - before, owed, "and actually transfer it");
     }
 
-    /// A full exit still cannot happen through the standard path, because the
-    /// last of the cash leg cannot be converted for free. What changed is that
-    /// the vault now says so in advance and refuses in a typed, standard way,
-    /// instead of advertising the shares and failing inside an ERC-20 transfer.
-    function test_FullRedeem_IsRefusedInAdvanceAndTyped() public {
+    /// A full exit now succeeds through the standard path, typed refusal and
+    /// all removed. It used to be refused here IN ADVANCE, with the typed
+    /// ERC-4626 error rather than a raw ERC-20 revert, because the withdrawer
+    /// was being paid the WHOLE oracle NAV of their shares -- including the
+    /// venue's cut for converting the last of the cash leg, which the pool
+    /// would have had to fund on the exiter's behalf. Superseded: the exiting
+    /// holder now pays for their own conversion (previewRedeem, previewWithdraw),
+    /// so nothing is left for the pool to fund and nothing stops a full exit.
+    /// See docs/design/stock-vault-exit-paths.md, "Who bears the conversion
+    /// cost, settled".
+    function test_FullRedeem_NowSucceedsInFull() public {
         uint256 shares = vault.balanceOf(alice);
         uint256 mr = vault.maxRedeem(alice);
-        assertLt(mr, shares, "a vault holding cash cannot promise a full exit");
+        assertEq(mr, shares, "capacity is 100% of the holding at every position");
 
+        uint256 before = stock.balanceOf(alice);
         vm.prank(alice);
-        (bool ok, bytes memory err) = address(vault).call(
-            abi.encodeCall(vault.redeem, (shares, alice, alice))
-        );
-        assertFalse(ok, "the over-large request must be refused");
-        // ERC4626ExceededMaxRedeem(address,uint256,uint256)
-        assertEq(
-            bytes4(err),
-            ERC4626.ERC4626ExceededMaxRedeem.selector,
-            "refusal must be the typed ERC-4626 error"
-        );
+        uint256 got = vault.redeem(shares, alice, alice);
 
-        // And the advertised amount goes through.
-        vm.prank(alice);
-        vault.redeem(mr, alice, alice);
+        assertEq(vault.balanceOf(alice), 0, "the whole holding must be gone");
+        assertEq(stock.balanceOf(alice) - before, got, "and delivered in full");
     }
 
-    /// The cliff is gone. It used to sit exactly where the asset leg ran out,
-    /// which on a 50/50 position meant half the vault was unreachable. Now
-    /// every advertised size clears and the advertised size is nearly all of
-    /// the holding.
-    function test_NoCliff_AdvertisedCapacityIsNearlyTheWholeHolding() public {
+    /// The cliff is gone, and so is the shortfall that used to sit just below
+    /// 100%. The advertised ceiling at a 50/50 position used to be nearly the
+    /// whole holding but not quite -- 99.5%, because the missing half percent
+    /// was the venue's cut for converting the cash leg, charged to the pool
+    /// rather than to the exiter. Superseded: the exiting holder now pays their
+    /// own conversion cost, so the pool owes nothing extra and the advertised
+    /// ceiling is the whole holding, exactly.
+    function test_NoCliff_AdvertisedCapacityIsTheWholeHolding() public {
         uint256 shares = vault.balanceOf(alice);
         uint256 mr = vault.maxRedeem(alice);
 
-        // 99.5% at a 50/50 position: the missing half percent is the venue's
-        // cut for converting the cash leg, which is real money.
-        assertGe((mr * 10000) / shares, 9900, "capacity should be within 1% of the holding");
+        assertEq(mr, shares, "capacity is 100% of the holding at a 50/50 position");
 
         for (uint256 pct = 10; pct <= 100; pct += 10) {
             uint256 want = (mr * pct) / 100;
@@ -216,10 +213,17 @@ contract WithdrawShortfallTest is Test {
         assertEq(stock.balanceOf(alice) - before, got, "delivered in full");
     }
 
-    /// How much is actually stranded, to the wei, so "cannot fully exit" is not
-    /// mistaken for "cannot exit". Binary search for the largest exit that
-    /// clears, the same way the live vault was measured.
-    function test_FullyLongVault_OneUnitOfDust_StrandsOnlyDust() public {
+    /// Nothing is stranded any more, not even the dust. Binary search for the
+    /// largest exit that clears, the same way the live vault was measured
+    /// before this fix: back then the search found a real, if tiny, cliff
+    /// short of the full holding, because `_withdraw` was being asked to
+    /// cover the FULL oracle NAV of the redeemed shares and the last unit of
+    /// cash could not convert cleanly at that exact boundary. `previewRedeem`
+    /// now charges the exiting holder their own conversion cost, so the
+    /// shortfall `_withdraw` is actually asked to cover is smaller by exactly
+    /// that cost -- and the search finds the largest clearing exit IS the
+    /// whole holding.
+    function test_FullyLongVault_OneUnitOfDust_NothingIsStranded() public {
         vm.prank(keeper);
         vault.rebalanceTo(10000);
         cash.mint(address(vault), 1);
@@ -237,9 +241,7 @@ contract WithdrawShortfallTest is Test {
         }
 
         uint256 stranded = shares - lo;
-        assertGt(stranded, 0, "something must be stranded, or there is no bug here");
-        // Under one basis point of supply. The live vault measured 0 bps.
-        assertLt((stranded * 10000) / shares, 1, "stranded should be dust, not a real position");
+        assertEq(stranded, 0, "the largest clearing exit must be the whole holding");
         console2.log("largest exit", lo);
         console2.log("stranded    ", stranded);
     }

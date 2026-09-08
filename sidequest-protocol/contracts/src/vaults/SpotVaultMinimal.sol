@@ -278,10 +278,71 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         return (IERC20(asset()).balanceOf(address(this)) + realisable, true);
     }
 
+    /// @notice The NET assets `shares` actually deliver through `redeem`: the
+    ///         oracle NAV of those shares, less the exiting holder's own share
+    ///         of the venue's cost for converting whatever the asset leg
+    ///         cannot cover.
+    ///
+    ///         `gross` is what OpenZeppelin's default implementation returns --
+    ///         the plain oracle-priced conversion, with no venue in the loop.
+    ///         An exit the asset leg covers outright converts nothing and so
+    ///         costs nothing: `net == gross` whenever `gross <= bal`. Otherwise
+    ///         `net` is the closed-form solution of `net + cost(net) == gross`,
+    ///         `cost(net) = (net - bal) * h / (10000 - h)`:
+    ///
+    ///             net = (gross * (10000 - h) + bal * h) / 10000
+    ///
+    ///         floored, so rounding favours the vault.
+    ///
+    ///         This is the fix itself. The withdrawer used to be paid `gross`
+    ///         while the venue's cut on converting the cash leg came out of the
+    ///         pool, landing on whoever stayed -- measured at 249bps of a
+    ///         remaining holder's position for one stranger's exit. Now the
+    ///         exiting holder's own shares pay for their own conversion. See
+    ///         docs/design/stock-vault-exit-paths.md, "Who bears the
+    ///         conversion cost, settled".
+    function previewRedeem(uint256 shares) public view override returns (uint256) {
+        uint256 gross = _convertToAssets(shares, Math.Rounding.Floor);
+        uint256 bal = IERC20(asset()).balanceOf(address(this));
+        if (gross <= bal) return gross;
+        return (gross * (10000 - maxSlippageBps) + bal * maxSlippageBps) / 10000;
+    }
+
+    /// @notice The shares `withdraw` must burn to deliver a NET payout of
+    ///         `assets`.
+    ///
+    ///         The inverse of `previewRedeem`: a caller who wants `assets` net
+    ///         must present shares worth `assets` plus that request's own
+    ///         share of the conversion cost, i.e. the `gross` for which
+    ///         `previewRedeem` would answer exactly `assets`:
+    ///
+    ///             gross = assets                                    if assets <= bal
+    ///             gross = (assets * 10000 - bal * h) / (10000 - h)   otherwise
+    ///
+    ///         converted to shares with `Ceil`, so the vault is never left a
+    ///         wei short of the net payout it just promised.
+    function previewWithdraw(uint256 assets) public view override returns (uint256) {
+        uint256 bal = IERC20(asset()).balanceOf(address(this));
+        uint256 gross;
+        if (assets <= bal) {
+            gross = assets;
+        } else {
+            gross = (assets * 10000 - bal * maxSlippageBps) / (10000 - maxSlippageBps);
+        }
+        return _convertToShares(gross, Math.Rounding.Ceil);
+    }
+
     /// @notice Shares this owner can redeem through the standard path right now.
     ///
     ///         Previously inherited, which returned `balanceOf(owner)` and
     ///         reported shares as redeemable while `redeem` reverted.
+    ///
+    ///         The bound is now the largest share amount whose `previewRedeem`
+    ///         (NET of the exiting holder's own conversion cost) is at most
+    ///         `_deliverableAssets()`. Because that cost is charged to the
+    ///         exiter rather than the pool, the bound reaches the whole holding
+    ///         at every position -- see docs/design/stock-vault-exit-paths.md,
+    ///         "It also removes the capacity limit".
     function maxRedeem(address owner) public view override returns (uint256) {
         if (isCircuitBreakerActive) return 0;
         (uint256 deliverable, bool priced) = _deliverableAssets();
@@ -292,7 +353,16 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         // 501 wei below the supply, which refused a full exit on a vault
         // holding no cash at all.
         if (previewRedeem(held) <= deliverable) return held;
-        return _convertToShares(deliverable, Math.Rounding.Floor);
+        // Otherwise invert previewRedeem's formula for the target net payout
+        // `deliverable`, the same way previewWithdraw does, and convert THAT
+        // gross figure to shares -- not `deliverable` itself, which is an
+        // asset amount already net of the cash leg's own haircut and would
+        // double-charge it if fed to _convertToShares directly.
+        uint256 bal = IERC20(asset()).balanceOf(address(this));
+        uint256 gross = deliverable <= bal
+            ? deliverable
+            : (deliverable * 10000 - bal * maxSlippageBps) / (10000 - maxSlippageBps);
+        return _convertToShares(gross, Math.Rounding.Floor);
     }
 
     /// @dev The performance fee `_evaluateFees` would accrue if it ran right
@@ -316,20 +386,26 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         return fee > room ? room : fee;
     }
 
-    /// @notice Assets this owner can withdraw through the standard path.
+    /// @notice The maximum NET assets this owner can withdraw through the
+    ///         standard path: `min(previewRedeem(balanceOf(owner)), deliverable)`.
     ///
-    ///         `withdraw` accrues fees via `_evaluateFees()` BEFORE OpenZeppelin
-    ///         re-reads this function to check the caller's request against it.
-    ///         That accrual lowers `totalAssets()`, so a caller who read this
-    ///         view first and then withdrew exactly that amount could have the
-    ///         floor drop out from under them mid-call: measured, a pending
-    ///         1000bps performance fee made `withdraw(maxWithdraw(owner))`
-    ///         revert `ERC4626ExceededMaxWithdraw` on a 0.74% gap.
+    ///         Not literally that call, for a timing reason that predates the
+    ///         conversion-cost fix and is unrelated to it: `withdraw` accrues
+    ///         fees via `_evaluateFees()` BEFORE OpenZeppelin re-reads this
+    ///         function to check the caller's request against it. That accrual
+    ///         lowers `totalAssets()`, so a caller who read this view first and
+    ///         then withdrew exactly that amount could have the floor drop out
+    ///         from under them mid-call: measured, a pending 1000bps
+    ///         performance fee made `withdraw(maxWithdraw(owner))` revert
+    ///         `ERC4626ExceededMaxWithdraw` on a 0.74% gap.
     ///
     ///         `maxRedeem` needs no equivalent treatment: accrual only relaxes
     ///         both of its branches, so it never becomes stale in the direction
     ///         that matters. This function's asset-denominated bound moves the
-    ///         other way, so it nets the pending fee here instead.
+    ///         other way, so it nets the pending fee here instead, computing
+    ///         `gross` the way `previewRedeem` would once the fee has landed,
+    ///         then applying the SAME net-of-conversion-cost formula to it
+    ///         before taking the deliverable ceiling.
     function maxWithdraw(address owner) public view override returns (uint256) {
         if (isCircuitBreakerActive) return 0;
         (uint256 deliverable, bool priced) = _deliverableAssets();
@@ -337,9 +413,11 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         uint256 netAssets = totalAssets();
         uint256 pendingFee = _pendingPerformanceFee();
         netAssets = netAssets > pendingFee ? netAssets - pendingFee : 0;
-        uint256 byShares =
+        uint256 gross =
             Math.mulDiv(balanceOf(owner), netAssets + 1, totalSupply() + 10 ** _decimalsOffset(), Math.Rounding.Floor);
-        return byShares < deliverable ? byShares : deliverable;
+        uint256 bal = IERC20(asset()).balanceOf(address(this));
+        uint256 net = gross <= bal ? gross : (gross * (10000 - maxSlippageBps) + bal * maxSlippageBps) / 10000;
+        return net < deliverable ? net : deliverable;
     }
 
     /// @notice Refuse deposits when halted, when the share price is undefined,

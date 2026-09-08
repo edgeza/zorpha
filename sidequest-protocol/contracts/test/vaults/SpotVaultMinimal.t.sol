@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test, Vm} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {SpotVaultMinimal} from "../../src/vaults/SpotVaultMinimal.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockOracle} from "../mocks/MockOracle.sol";
@@ -321,25 +321,23 @@ contract SpotVaultMinimalTest is Test {
         MockSpotAdapter dry = new MockSpotAdapter(address(wbtc), address(usdc), address(oracle));
         vault.setSwapAdapter(address(dry));
 
+        // Superseded by the conversion-cost fix (docs/design/stock-vault-exit-paths.md,
+        // "It also removes the capacity limit"): maxRedeem no longer imposes a
+        // generic deliverable-assets cap below the full balance -- the exiting
+        // holder now pays for their own conversion, so capacity is 100% of the
+        // holding regardless of the swap venue's condition. maxRedeem cannot
+        // see that THIS venue happens to be dry (it never consults
+        // swapAdapter), so it correctly advertises the whole balance here too.
+        assertEq(vault.maxRedeem(alice), shares, "capacity is 100% of the holding even against a dry venue");
+
         vm.prank(alice);
-        // The fresh adapter holds neither leg, so the ordinary redeem cannot
-        // settle its swap. maxRedeem now prices that shortfall in advance
-        // (it has no way to know the venue is empty, only that converting the
-        // cash leg costs something), so the full balance is already above the
-        // advertised bound and the standard path is rejected there rather
-        // than deeper inside the failed swap -- still the precondition for
-        // the emergency exit exercised below, not an incidental failure.
-        // NOTE: this first assertion no longer depends on the venue being dry.
-        // maxRedeem never consults swapAdapter, so the same
-        // ERC4626ExceededMaxRedeem fires against a fully funded venue too; what
-        // it exercises now is the generic deliverable-assets cap, which
-        // test/vaults/ExitCapacity.t.sol covers directly. The dry venue below
-        // is load-bearing only for the redeemEmergency half of this test.
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ERC4626.ERC4626ExceededMaxRedeem.selector, alice, shares, vault.maxRedeem(alice)
-            )
-        );
+        // The standard path therefore proceeds past the maxRedeem check and
+        // fails deeper in, inside the swap itself: the fresh adapter holds
+        // neither leg, so it has nothing to send back for the cash it is
+        // asked to convert. That is the real failure this test is about --
+        // still the precondition for the emergency exit exercised below, not
+        // an incidental one.
+        vm.expectPartialRevert(IERC20Errors.ERC20InsufficientBalance.selector);
         vault.redeem(shares, alice, alice);
 
         uint256 assetLeg = wbtc.balanceOf(address(vault));
