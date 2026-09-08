@@ -127,6 +127,7 @@ contract VaultInvariantsTest is StdInvariant, Test {
             "V",
             0, // rebalanceThresholdBps: always act, so rebalances are exercised
             100,
+            100,
             0, // performanceFeeBps
             address(this),
             address(this),

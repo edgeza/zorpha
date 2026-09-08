@@ -167,7 +167,7 @@ contract ExitInvariantsTest is StdInvariant, Test {
         vault = new SpotVaultMinimal(
             address(stock), address(cash), address(oracle), 365 days,
             "Zorpha NVDA Long/Flat", "zqNVDA",
-            0, 100, 0,
+            0, 100, 100, 0,
             address(this), address(this),
             0
         );

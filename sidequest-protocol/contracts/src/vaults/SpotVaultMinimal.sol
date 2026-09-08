@@ -47,6 +47,34 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
     uint16 public targetWeightBps;
     uint16 public immutable rebalanceThresholdBps;
     uint16 public immutable maxSlippageBps;
+
+    /// @notice The exiting holder's own conversion cost, in bps of the amount
+    ///         actually converted. Charged in `_deliverableAssets` (the cash-leg
+    ///         haircut), `previewRedeem` and `previewWithdraw` (the net payout
+    ///         and its inverse), `maxRedeem` and `maxWithdraw` (the same inverse
+    ///         formula), and `_withdraw`'s cash gross-up. Never in a rebalance's
+    ///         swap bound -- that stays `maxSlippageBps`'s job. See
+    ///         docs/design/stock-vault-exit-paths.md, "Who bears the conversion
+    ///         cost, settled".
+    ///
+    ///         Pricing exits near the venue's fee tier does NOT make exits free
+    ///         of risk; it moves the failure. `_withdraw` grosses the cash draw
+    ///         up by `10000/(10000 - exitCostBps)` and requires the fill to
+    ///         cover the shortfall in full, so if the venue's REALISED cost --
+    ///         fee plus price impact -- exceeds `exitCostBps`, the swap reverts
+    ///         on `minOut` instead of silently overcharging the exiter.
+    ///         `maxRedeem` shrinks by the same haircut, so the advertised bound
+    ///         stays executable for the fee component, but price impact is not
+    ///         visible to a view function and cannot be bounded in advance.
+    ///
+    ///         Set it too low and a large exit reverts under impact it never
+    ///         priced in. Set it too high and every exit donates the difference
+    ///         to whoever stays -- `redeemEmergency` is the in-kind, cost-free
+    ///         escape either way. The right value sits above the venue's fee
+    ///         tier and well below `maxSlippageBps`'s rebalance bound. It is
+    ///         immutable, so this is a one-shot decision made at deploy time.
+    uint16 public immutable exitCostBps;
+
     uint256 public immutable performanceFee;
     uint256 public highWaterMark;
     uint256 public performanceFeeAccrued;
@@ -105,6 +133,7 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         string memory symbol_,
         uint16 rebalanceThresholdBps_,
         uint16 maxSlippageBps_,
+        uint16 exitCostBps_,
         uint256 performanceFeeBps_,
         address feeRecipient_,
         address admin_,
@@ -112,12 +141,19 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
     ) ERC20(name_, symbol_) ERC4626(IERC20(asset_)) {
         require(asset_ != address(0) && cashAsset_ != address(0) && oracle_ != address(0), "zero addr");
         require(feeRecipient_ != address(0) && admin_ != address(0), "zero addr");
-        // maxSlippageBps is strictly LESS than 10000, not merely bounded by it:
-        // _withdraw grosses up a shortfall by 10000/(10000-maxSlippageBps), which
-        // divides by zero at the boundary. A vault promising to tolerate its
-        // whole cash leg as slippage cannot function regardless, so excluding
-        // the boundary here costs nothing real.
-        require(rebalanceThresholdBps_ <= 10000 && maxSlippageBps_ < 10000 && performanceFeeBps_ <= 10000, "bad bps");
+        // exitCostBps is strictly LESS than 10000, not merely bounded by it:
+        // _withdraw grosses up a shortfall by 10000/(10000-exitCostBps), and
+        // previewWithdraw/maxRedeem invert that same formula, both of which
+        // divide by zero at the boundary. A vault promising to price an exit at
+        // its entire cash leg cannot function regardless, so excluding the
+        // boundary here costs nothing real. maxSlippageBps keeps the same bound
+        // as a sane cap on the slippage a rebalance may tolerate, even though it
+        // no longer sits in a division itself.
+        require(
+            rebalanceThresholdBps_ <= 10000 && maxSlippageBps_ < 10000 && exitCostBps_ < 10000
+                && performanceFeeBps_ <= 10000,
+            "bad bps"
+        );
         require(maxOracleStaleness_ > 0, "zero staleness");
         // Must not be TIGHTER than the oracle's own window, or a report living
         // in the gap drags updatedAt past what this vault accepts. See
@@ -133,6 +169,7 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
 
         rebalanceThresholdBps = rebalanceThresholdBps_;
         maxSlippageBps = maxSlippageBps_;
+        exitCostBps = exitCostBps_;
         performanceFee = performanceFeeBps_;
         feeRecipient = feeRecipient_;
         highWaterMark = 10 ** _assetDec;
@@ -274,7 +311,7 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
     function _deliverableAssets() internal view returns (uint256 amount, bool priced) {
         (uint256 cashValue, bool ok) = _cashLegValue();
         if (!ok) return (0, false);
-        uint256 realisable = (cashValue * (10000 - maxSlippageBps)) / 10000;
+        uint256 realisable = (cashValue * (10000 - exitCostBps)) / 10000;
         return (IERC20(asset()).balanceOf(address(this)) + realisable, true);
     }
 
@@ -305,7 +342,7 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         uint256 gross = _convertToAssets(shares, Math.Rounding.Floor);
         uint256 bal = IERC20(asset()).balanceOf(address(this));
         if (gross <= bal) return gross;
-        return (gross * (10000 - maxSlippageBps) + bal * maxSlippageBps) / 10000;
+        return (gross * (10000 - exitCostBps) + bal * exitCostBps) / 10000;
     }
 
     /// @notice The shares `withdraw` must burn to deliver a NET payout of
@@ -327,7 +364,7 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         if (assets <= bal) {
             gross = assets;
         } else {
-            gross = (assets * 10000 - bal * maxSlippageBps) / (10000 - maxSlippageBps);
+            gross = (assets * 10000 - bal * exitCostBps) / (10000 - exitCostBps);
         }
         return _convertToShares(gross, Math.Rounding.Ceil);
     }
@@ -361,7 +398,7 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         uint256 bal = IERC20(asset()).balanceOf(address(this));
         uint256 gross = deliverable <= bal
             ? deliverable
-            : (deliverable * 10000 - bal * maxSlippageBps) / (10000 - maxSlippageBps);
+            : (deliverable * 10000 - bal * exitCostBps) / (10000 - exitCostBps);
         return _convertToShares(gross, Math.Rounding.Floor);
     }
 
@@ -416,7 +453,7 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         uint256 gross =
             Math.mulDiv(balanceOf(owner), netAssets + 1, totalSupply() + 10 ** _decimalsOffset(), Math.Rounding.Floor);
         uint256 bal = IERC20(asset()).balanceOf(address(this));
-        uint256 net = gross <= bal ? gross : (gross * (10000 - maxSlippageBps) + bal * maxSlippageBps) / 10000;
+        uint256 net = gross <= bal ? gross : (gross * (10000 - exitCostBps) + bal * exitCostBps) / 10000;
         return net < deliverable ? net : deliverable;
     }
 
@@ -577,7 +614,7 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
             uint256 shortfall = assets - bal;
             uint256 cashIn = assetToCash(shortfall);
             if (cashToAsset(cashIn) < shortfall) cashIn += 1;
-            cashIn = (cashIn * 10000) / (10000 - maxSlippageBps) + 1;
+            cashIn = (cashIn * 10000) / (10000 - exitCostBps) + 1;
             uint256 cashBal = cashAsset.balanceOf(address(this));
             if (cashIn > cashBal) cashIn = cashBal;
             _swap(address(cashAsset), asset(), cashIn, shortfall);

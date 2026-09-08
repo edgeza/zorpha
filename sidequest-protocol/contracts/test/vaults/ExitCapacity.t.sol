@@ -37,7 +37,7 @@ contract ExitCapacityTest is Test {
         vault = new SpotVaultMinimal(
             address(stock), address(cash), address(oracle), 1 hours,
             "Zorpha NVDA Long/Flat", "zqNVDA",
-            0, 100, 0,
+            0, 100, 100, 0,
             address(this), address(this),
             0
         );
@@ -83,7 +83,7 @@ contract ExitCapacityTest is Test {
     /// the venue's real cost gets close to `h`, so a fixed venue fee never
     /// catches this; the fee itself has to sweep up toward the bound.
     ///
-    /// Held at a 50/50 position (h = maxSlippageBps = 100 here), the wrong
+    /// Held at a 50/50 position (h = exitCostBps = 100 here), the wrong
     /// formula clears every fill up to 99bps and reverts at exactly 100bps:
     /// the breakeven is 10000h/(10000+h) = 99.0099bps, so 99 rounds down to
     /// "still clears" and 100 is the first integer past it.
@@ -186,7 +186,7 @@ contract ExitCapacityTest is Test {
         SpotVaultMinimal feeVault = new SpotVaultMinimal(
             address(stock), address(cash), address(feeOracle), 1 hours,
             "Zorpha NVDA Long/Flat", "zqNVDA",
-            0, 100, 1000, // performanceFeeBps: the live figure, not the fixture's zero
+            0, 100, 100, 1000, // performanceFeeBps: the live figure, not the fixture's zero
             address(this), address(this),
             0
         );
@@ -322,14 +322,14 @@ contract ExitCapacityTest is Test {
     /// NOT asserted: that bob's figure is unchanged to a wei or two. It is
     /// not, on this fixture, and that is a separate, understood effect, not a
     /// defect. `previewRedeem`/`maxWithdraw` charge the exiting holder the
-    /// RESERVED `maxSlippageBps`, because a view function has no live quote to
+    /// RESERVED `exitCostBps`, because a view function has no live quote to
     /// charge the REAL fee instead -- the same reason `_deliverableAssets`
     /// haircuts the cash leg by the reserve rather than a real-time price.
-    /// `_withdraw`'s own gross-up (unchanged by this fix) sizes the swap off
-    /// that same reserve, so whenever the venue's real fee is BELOW it --
-    /// 5bps against the 100bps allowance here, the live NVDA/USDG relationship
-    /// -- the swap converts more value than alice's exit actually cost, and
-    /// the difference remains in the pool for bob. Measured below: he more
+    /// `_withdraw`'s own gross-up sizes the swap off that same reserve, so
+    /// whenever the venue's real fee is BELOW it -- 5bps against the 100bps
+    /// reserve here, the live NVDA/USDG relationship -- the swap converts
+    /// more value than alice's exit actually cost, and the difference
+    /// remains in the pool for bob. Measured below: he more
     /// than doubles. Both directions -- unchanged, or better -- satisfy
     /// "never diluted"; only a decrease would not, and none is observed.
     function test_P1_NoDilution_OtherHoldersEntitlementIsUnchanged() public {
@@ -373,7 +373,7 @@ contract ExitCapacityTest is Test {
         assertLt(net, gross, "the exiting holder must receive strictly less than the un-haircut NAV");
 
         uint256 shortfall = gross - net;
-        uint256 h = vault.maxSlippageBps();
+        uint256 h = vault.exitCostBps();
         uint256 expectedCost = ((net - bal) * h) / (10000 - h);
         console2.log("gross (un-haircut NAV)", gross);
         console2.log("net (previewRedeem)   ", net);
@@ -471,5 +471,148 @@ contract ExitCapacityTest is Test {
 
         assertEq(got, expected, "redeem must return exactly what was previewed for this fraction");
         assertEq(stock.balanceOf(alice) - before, expected, "and must deliver exactly that many assets");
+    }
+
+    // ─── Q1-Q3: exitCostBps split from maxSlippageBps ──────────────────────
+    //
+    // maxSlippageBps used to price exits AND bound rebalances, and those two
+    // jobs want different values: a swap bound needs headroom for price
+    // impact (Slice 1 measured a $50k trade cutting in-range liquidity 65%
+    // on the live pool), while an exit price should track the realised cost,
+    // near the 5bps fee tier. Measured at the live 100bps setting against a
+    // 5bps venue, a stranger's exit made the remaining holder GAIN 4601bps;
+    // at 25bps the gain is 964bps; at 6bps, 43bps. These three tests are the
+    // proof that splitting the parameter fixes the mispricing without
+    // reopening the dilution P1-P4 already closed.
+
+    /// @dev A vault wired exactly like the one in `setUp`, but with its own
+    ///      maxSlippageBps and exitCostBps, so Q1-Q3 can move either one
+    ///      independently of the other.
+    function _freshVault(uint16 maxSlippageBps_, uint16 exitCostBps_) internal returns (SpotVaultMinimal v) {
+        v = new SpotVaultMinimal(
+            address(stock), address(cash), address(oracle), 1 hours,
+            "Zorpha NVDA Long/Flat", "zqNVDA",
+            0, maxSlippageBps_, exitCostBps_, 0,
+            address(this), address(this),
+            0
+        );
+        v.setSwapAdapter(address(venue));
+        v.grantRole(v.KEEPER_ROLE(), keeper);
+    }
+
+    /// Q1. THE TWO PARAMETERS ARE INDEPENDENT. A vault built with a HIGH
+    /// maxSlippageBps (100) and a LOW exitCostBps (25) must let through a
+    /// rebalance that a 25bps swap bound would refuse -- proven directly by
+    /// an otherwise-identical vault held to that 25bps bound reverting on the
+    /// exact same trade -- and must price an exit off the 25bps exitCostBps,
+    /// never off the 100bps maxSlippageBps.
+    function test_Q1_MaxSlippageAndExitCostAreIndependent() public {
+        SpotVaultMinimal q1 = _freshVault(100, 25);
+        SpotVaultMinimal tightRebalance = _freshVault(25, 25);
+
+        address dave = makeAddr("q1-dave");
+        stock.mint(dave, DEPOSIT);
+        vm.startPrank(dave);
+        stock.approve(address(q1), DEPOSIT);
+        q1.deposit(DEPOSIT, dave);
+        vm.stopPrank();
+
+        address erin = makeAddr("q1-erin");
+        stock.mint(erin, DEPOSIT);
+        vm.startPrank(erin);
+        stock.approve(address(tightRebalance), DEPOSIT);
+        tightRebalance.deposit(DEPOSIT, erin);
+        vm.stopPrank();
+
+        // 50bps: clears a 100bps swap bound, breaches a 25bps one.
+        venue.setFee(50);
+
+        vm.prank(keeper);
+        vm.expectRevert("venue: slippage");
+        tightRebalance.rebalanceTo(5000);
+
+        vm.prank(keeper);
+        q1.rebalanceTo(5000);
+        assertGt(cash.balanceOf(address(q1)), 0, "the 100bps-bound vault must have actually rebalanced");
+
+        // The exit-pricing half: previewRedeem must charge dave off the
+        // 25bps exitCostBps, never the 100bps maxSlippageBps.
+        uint256 shares = q1.balanceOf(dave);
+        uint256 gross = q1.convertToAssets(shares);
+        uint256 bal = stock.balanceOf(address(q1));
+        assertGt(gross, bal, "test must exercise the shortfall branch");
+
+        uint256 net = q1.previewRedeem(shares);
+        uint256 charged = gross - net;
+        uint256 expected = ((net - bal) * 25) / (10000 - 25);
+        console2.log("Q1 charged  (exitCostBps=25)", charged);
+        console2.log("Q1 expected (exitCostBps=25)", expected);
+        assertApproxEqAbs(charged, expected, 2, "the exit must be priced off exitCostBps, not maxSlippageBps");
+    }
+
+    /// @dev Shared fixture for Q2 and Q3: a fresh vault at the given
+    ///      exitCostBps (maxSlippageBps fixed at 100 throughout, so only
+    ///      exitCostBps moves), seeded like `_addBobAndRebalanceToFifty`
+    ///      (100e18 against 1e18, rebalanced to 50/50), with the big holder
+    ///      then exiting its maxWithdraw. Returns the small holder's
+    ///      previewRedeem immediately before and after.
+    function _exitAndMeasureStayer(uint16 exitCostBps_) internal returns (uint256 stayerBefore, uint256 stayerAfter) {
+        SpotVaultMinimal v = _freshVault(100, exitCostBps_);
+
+        address bigHolder = makeAddr("q23-big");
+        address smallHolder = makeAddr("q23-small");
+
+        stock.mint(bigHolder, DEPOSIT);
+        vm.startPrank(bigHolder);
+        stock.approve(address(v), DEPOSIT);
+        v.deposit(DEPOSIT, bigHolder);
+        vm.stopPrank();
+
+        stock.mint(smallHolder, 1e18);
+        vm.startPrank(smallHolder);
+        stock.approve(address(v), 1e18);
+        v.deposit(1e18, smallHolder);
+        vm.stopPrank();
+
+        vm.prank(keeper);
+        v.rebalanceTo(5000);
+
+        uint256 smallShares = v.balanceOf(smallHolder);
+        stayerBefore = v.previewRedeem(smallShares);
+
+        uint256 mw = v.maxWithdraw(bigHolder);
+        vm.prank(bigHolder);
+        v.withdraw(mw, bigHolder, bigHolder);
+
+        stayerAfter = v.previewRedeem(smallShares);
+    }
+
+    /// Q2. STAYERS ARE STILL NEVER DILUTED, at exitCostBps far below the live
+    /// maxSlippageBps setting -- the same property P1 proves at 100,
+    /// re-proven here at the two values Q3 measures next.
+    function test_Q2_StayersNeverDiluted_AtLowExitCost() public {
+        (uint256 before25, uint256 after25) = _exitAndMeasureStayer(25);
+        assertGe(after25, before25 - 2, "stayer must never be diluted, exitCostBps 25");
+
+        (uint256 before6, uint256 after6) = _exitAndMeasureStayer(6);
+        assertGe(after6, before6 - 2, "stayer must never be diluted, exitCostBps 6");
+    }
+
+    /// Q3. A LOWER exitCostBps SHRINKS THE TRANSFER TO WHOEVER STAYS. Same
+    /// two-holder fixture as Q2; the stayer's gain must strictly shrink going
+    /// from 100 (the live maxSlippageBps setting, before this split existed)
+    /// to 25 (script/DeployStockVault.s.sol's new EXIT_COST_BPS) -- the same
+    /// direction measured in the incidence notes (4601bps at 100, 964bps at
+    /// 25).
+    function test_Q3_LowerExitCostShrinksTheStayerGain() public {
+        (uint256 before100, uint256 after100) = _exitAndMeasureStayer(100);
+        (uint256 before25, uint256 after25) = _exitAndMeasureStayer(25);
+
+        uint256 gainBpsAt100 = ((after100 - before100) * 10000) / before100;
+        uint256 gainBpsAt25 = ((after25 - before25) * 10000) / before25;
+
+        console2.log("Q3 stayer gain bps, exitCostBps 100", gainBpsAt100);
+        console2.log("Q3 stayer gain bps, exitCostBps  25", gainBpsAt25);
+        assertLt(gainBpsAt25, gainBpsAt100, "a lower exitCostBps must shrink the stayer's windfall");
     }
 }

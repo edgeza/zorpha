@@ -93,6 +93,25 @@ contract DeployStockVault is Script {
     uint256 constant MAX_ORACLE_STALENESS = 3600;
     uint16 constant REBALANCE_THRESHOLD_BPS = 100;
     uint16 constant MAX_SLIPPAGE_BPS = 100;
+
+    /// @dev The exit-price parameter split from MAX_SLIPPAGE_BPS -- see
+    ///      `exitCostBps` on SpotVaultMinimal for the mechanism, and
+    ///      docs/design/stock-vault-exit-paths.md, "Who bears the conversion
+    ///      cost, settled" for the fix it belongs to.
+    ///
+    ///      25bps sits above this pool's 5bps fee tier and well below the
+    ///      100bps rebalance bound above. Measured for a stranger's exit at a
+    ///      50/50 position on this pool: at the live MAX_SLIPPAGE_BPS setting
+    ///      the remaining holder gains 4601bps; at 25bps the gain is 964bps.
+    ///      25 is a starting point chosen to sit in that gap, not a derived
+    ///      optimum -- lower trades stayer windfall for exiter revert risk
+    ///      under price impact, and the reverse going higher.
+    ///
+    ///      REVISIT BEFORE BROADCASTING. This is immutable: there is no
+    ///      setter, and getting it wrong here means redeploying the vault to
+    ///      fix it.
+    uint16 constant EXIT_COST_BPS = 25;
+
     uint256 constant PERFORMANCE_FEE_BPS = 1000;
     uint256 constant EMERGENCY_REDEEM_COOLDOWN = 0;
 
@@ -109,7 +128,7 @@ contract DeployStockVault is Script {
         SpotVaultMinimal vault = new SpotVaultMinimal(
             NVDA, USDG, address(oracle), MAX_ORACLE_STALENESS,
             "Zorpha NVDA Long/Flat", "zqNVDA",
-            REBALANCE_THRESHOLD_BPS, MAX_SLIPPAGE_BPS, PERFORMANCE_FEE_BPS,
+            REBALANCE_THRESHOLD_BPS, MAX_SLIPPAGE_BPS, EXIT_COST_BPS, PERFORMANCE_FEE_BPS,
             TREASURY,  // feeRecipient, matching zsUSDG
             SAFE,      // admin, handed to the Timelock by safe batch I
             EMERGENCY_REDEEM_COOLDOWN

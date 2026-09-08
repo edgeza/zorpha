@@ -47,6 +47,7 @@ contract OracleWindowTest is Test {
             "V",
             200,
             100,
+            100,
             0,
             address(this),
             address(this),

@@ -40,6 +40,7 @@ contract SwapSlippageTest is Test {
             "Vault", "V",
             0,                    // rebalance on any drift, so the swap always runs
             MAX_SLIPPAGE_BPS,
+            MAX_SLIPPAGE_BPS,     // exitCostBps: this file is about the rebalance bound, not exit pricing
             0, admin, admin, 0
         );
         venue = new SlippingSpotAdapter(address(asset), address(cash), address(oracle));

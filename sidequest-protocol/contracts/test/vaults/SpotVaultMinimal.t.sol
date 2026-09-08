@@ -36,7 +36,7 @@ contract SpotVaultMinimalTest is Test {
         vault = new SpotVaultMinimal(
             address(wbtc), address(usdc), address(oracle), MAX_STALE,
             "Zorpha BTC Vault", "sqBTC",
-            0, 100, 0,
+            0, 100, 100, 0,
             address(this), address(this),
             1 hours
         );
@@ -619,7 +619,7 @@ contract SpotVaultFeeTest is Test {
         vault = new SpotVaultMinimal(
             address(wbtc), address(usdc), address(oracle), 1 hours,
             "Zorpha BTC Vault", "sqBTC",
-            0, 100, 2000,                       // 20% performance fee, unlike the main suite
+            0, 100, 100, 2000,                  // 20% performance fee, unlike the main suite
             address(this), address(this),
             1 hours
         );
@@ -784,7 +784,7 @@ contract SpotVaultWriteDownTest is Test {
         adapter = new MockSpotAdapter(address(wbtc), address(usdc), address(oracle));
         vault = new SpotVaultMinimal(
             address(wbtc), address(usdc), address(oracle), 1 hours,
-            "Zorpha BTC Vault", "sqBTC", 0, 100, 2000,
+            "Zorpha BTC Vault", "sqBTC", 0, 100, 100, 2000,
             address(this), address(this), 1 hours
         );
         vault.setSwapAdapter(address(adapter));

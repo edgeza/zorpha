@@ -271,6 +271,13 @@ contract DeployVaultsV1 is Script {
                     symbol: string.concat("zq", _symbolOf(stockToken1)),
                     rebalanceThresholdBps: 200,
                     maxSlippageBps: 100,
+                    // Matches maxSlippageBps here rather than the deliberately
+                    // tighter value chosen for the mainnet NVDA vault (see
+                    // EXIT_COST_BPS in DeployStockVault.s.sol) -- this pipeline
+                    // is not that deployment, and changing what it produces was
+                    // not part of splitting the parameter. Revisit before using
+                    // this script for a real deploy: it is immutable once set.
+                    exitCostBps: 100,
                     performanceFeeBps: 2000,
                     feeRecipient: treasury,
                     admin: deployer,

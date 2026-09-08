@@ -34,6 +34,7 @@ contract VaultFactoryTest is Test {
             symbol: "TS",
             rebalanceThresholdBps: 100,
             maxSlippageBps: 100,
+            exitCostBps: 100,
             performanceFeeBps: 0,
             feeRecipient: user,
             admin: user,

@@ -31,6 +31,7 @@ struct SpotVaultParams {
     string  symbol;
     uint16  rebalanceThresholdBps;
     uint16  maxSlippageBps;
+    uint16  exitCostBps;
     uint256 performanceFeeBps;
     address feeRecipient;
     address admin;
@@ -108,6 +109,7 @@ contract VaultFactory is AccessControl {
                     p.symbol,
                     p.rebalanceThresholdBps,
                     p.maxSlippageBps,
+                    p.exitCostBps,
                     p.performanceFeeBps,
                     p.feeRecipient,
                     p.admin,
@@ -181,7 +183,7 @@ contract VaultFactory is AccessControl {
                     abi.encode(
                         p.asset, p.cashAsset, p.oracle, p.maxOracleStaleness,
                         p.name, p.symbol,
-                        p.rebalanceThresholdBps, p.maxSlippageBps,
+                        p.rebalanceThresholdBps, p.maxSlippageBps, p.exitCostBps,
                         p.performanceFeeBps, p.feeRecipient, p.admin,
                         p.emergencyRedeemCooldown
                     )

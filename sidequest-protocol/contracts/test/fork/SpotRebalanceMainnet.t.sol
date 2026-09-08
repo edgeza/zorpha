@@ -79,6 +79,7 @@ contract SpotRebalanceMainnetForkTest is Test {
             "Zorpha tAAPL Long/Flat", "zqtAAPL",
             0,                       // rebalance on any drift
             MAX_SLIPPAGE_BPS,
+            MAX_SLIPPAGE_BPS,        // exitCostBps: this file is about the rebalance bound, not exit pricing
             0, address(this), address(this), 0
         );
 

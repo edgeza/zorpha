@@ -72,7 +72,7 @@ contract WithdrawShortfallTest is Test {
         vault = new SpotVaultMinimal(
             address(stock), address(cash), address(oracle), 1 hours,
             "Zorpha NVDA Vault", "zqNVDA",
-            0, 100, 0,
+            0, 100, 100, 0,
             address(this), address(this),
             1 hours
         );
@@ -257,7 +257,7 @@ contract WithdrawShortfallTest is Test {
         SpotVaultMinimal tight = new SpotVaultMinimal(
             address(stock), address(cash), address(oracle), 1 hours,
             "Zorpha NVDA Vault", "zqNVDA",
-            0, 0, 0,
+            0, 0, 0, 0,
             address(this), address(this),
             1 hours
         );
