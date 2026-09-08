@@ -91,14 +91,30 @@ contract WithdrawShortfallTest is Test {
     /// A withdrawal that needs the cash leg converted must be delivered in
     /// full. The venue's cut comes out of the cash leg, not out of the
     /// depositor's payment.
-    function test_HalfExit_ConvertsAndDeliversInFull() public {
+    ///
+    /// WHY 70% AND NOT HALF. An exact-half redeem does NOT enter the shortfall
+    /// branch, so a test built on it passes with or without this fix and proves
+    /// nothing. After rebalanceTo(5000) the asset leg is 50e18 while
+    /// totalAssets is 99.975e18, because the rebalance paid the venue fee out
+    /// of the position: half of NAV is therefore LESS than half of the original
+    /// position, and the asset leg covers it outright. Measured against this
+    /// fixture, pre-fix against post-fix:
+    ///
+    ///     45%, 50%      pass / pass    no conversion needed
+    ///     55% .. 80%    FAIL / pass    conversion needed
+    ///
+    /// 70% sits well inside the band at both ends.
+    function test_SeventyPercentExit_ConvertsAndDeliversInFull() public {
         uint256 shares = vault.balanceOf(alice);
-        uint256 half = shares / 2;
-        uint256 owed = vault.previewRedeem(half);
-        uint256 before = stock.balanceOf(alice);
+        uint256 want = (shares * 70) / 100;
+        uint256 owed = vault.previewRedeem(want);
 
+        // Confirm the test is not vacuous: this exit MUST need a conversion.
+        assertGt(owed, stock.balanceOf(address(vault)), "test must exercise the shortfall branch");
+
+        uint256 before = stock.balanceOf(alice);
         vm.prank(alice);
-        uint256 got = vault.redeem(half, alice, alice);
+        uint256 got = vault.redeem(want, alice, alice);
 
         assertEq(got, owed, "redeem must return what previewRedeem promised");
         assertEq(stock.balanceOf(alice) - before, owed, "and actually transfer it");
