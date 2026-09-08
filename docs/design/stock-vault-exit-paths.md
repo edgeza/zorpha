@@ -417,5 +417,38 @@ fee plus impact, makes the swap revert rather than silently overcharge.
 `maxRedeem` carries the same haircut, so the advertised bound stays executable
 for the fee component, but impact is invisible to a view and cannot be bounded
 in advance. Too low and large exits revert; too high and every exit donates the
-difference to whoever stays. Above the fee tier and well below a rebalance bound
-is the range. `redeemEmergency` is the in-kind escape either way.
+difference to whoever stays. `redeemEmergency` is the in-kind escape either way.
+
+### The value, derived rather than chosen: 250
+
+"Above the fee tier and well below a rebalance bound" was the range this
+document first gave, and it is wrong, because the fee tier is not the anchor.
+`test/fork/ExitCostCalibration.t.sol` measured the live pool on 8 September
+2026:
+
+```
+USDG in            realised against oracle-fair
+1 to 1,000         22 bps BETTER than fair
+10,000             21 bps better
+100,000            15 bps better, so impact is about 7 bps there
+```
+
+The conversion GAINED 22 bps at every plausible size, because the 30 minute
+TWAP lagged a falling spot. The 5 bps fee is swamped by TWAP-versus-spot drift,
+and that drift changes sign with market direction.
+
+So the binding constraint is not the fee, it is how far the oracle will let the
+two prices separate while still answering: `maxSpotDivergenceBps` is 200. An
+adverse conversion inside that tolerance costs up to 200 bps, plus 7 of impact.
+Below 207, an exit during adverse-but-tolerated divergence reverts on `minOut`
+after `maxRedeem` advertised it, which is the lying bound this slice exists to
+remove. **250 clears 207 with margin, and that is the deployed value.**
+
+What it costs: in calm markets the exiter is charged up to 250 bps against a
+realised cost near zero, and the difference is a windfall to whoever stays.
+That is the accepted price of a bound that never lies while the adapter
+tolerates 200 bps. Halving it means a new adapter with a tighter divergence
+guard, which would also let the Safe hold that adapter's admin and so remove
+the 48 hour Timelock wait from the migration, but it needs drift measured over
+days rather than the single sample above. Recorded as the next improvement, not
+taken now.
