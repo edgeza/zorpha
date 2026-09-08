@@ -14,7 +14,19 @@
 
 - Solidity `^0.8.28`. Contracts live in `sidequest-protocol/contracts`.
 - Every file starts with `// SPDX-License-Identifier: MIT`.
-- LF line endings, repo-wide.
+- **Line endings: LF, matching the file you are editing.** `.gitattributes`
+  enforces LF for `*.sh` only and exempts `contracts/lib`, so `*.sol` has no rule.
+  Measured at byte level, the Solidity sources are LF: `SpotVaultMinimal.sol` is
+  658 LF and 0 CRLF, `TickMath.sol` 84 LF and 0 CRLF, `ExitCapacity.t.sol` 150 LF
+  and 0 CRLF. `test/mocks/MockOracle.sol` is a pre-existing CRLF outlier, 32 of 32,
+  and is to be left that way rather than normalised in passing.
+  Verify at byte level rather than by eye:
+  `python -c "d=open(f,'rb').read(); print(d.count(b'
+'), d.count(b'
+'))"`.
+  Two earlier revisions of this constraint were wrong in opposite directions, and
+  each took a reviewer contradicting a measurement to catch, so measure rather than
+  reason about this one.
 - 403 existing tests must stay green, apart from the four rewrites in Task 5.
 - Fork tests live in `test/fork/`, read `RH_MAINNET_RPC_URL` via `vm.envOr`, and `vm.skip(true)` when it is unset. CI sets no fork RPC, so they must skip cleanly.
 - **The launch gates workflow fails the build on any em-dash (U+2014) outside single quotes**, repo-wide except `sidequest-protocol/contracts/lib`. Use a comma, semicolon, colon or parentheses. Check with `git grep -nP "(?<!')\x{2014}(?!')" -- . ':!sidequest-protocol/contracts/lib'` before committing.
@@ -90,14 +102,30 @@ Add to `test/vaults/WithdrawShortfall.t.sol`. The existing fixture in that file 
     /// A withdrawal that needs the cash leg converted must be delivered in
     /// full. The venue's cut comes out of the cash leg, not out of the
     /// depositor's payment.
-    function test_HalfExit_ConvertsAndDeliversInFull() public {
+    ///
+    /// WHY 70% AND NOT HALF. An exact-half redeem does NOT enter the shortfall
+    /// branch, so a test built on it passes with or without this fix and proves
+    /// nothing. After rebalanceTo(5000) the asset leg is 50e18 while
+    /// totalAssets is 99.975e18, because the rebalance paid the venue fee out
+    /// of the position: half of NAV is therefore LESS than half of the original
+    /// position, and the asset leg covers it outright. Measured against this
+    /// fixture, pre-fix against post-fix:
+    ///
+    ///     45%, 50%      pass / pass    no conversion needed
+    ///     55% .. 80%    FAIL / pass    conversion needed
+    ///
+    /// 70% sits well inside the band at both ends.
+    function test_SeventyPercentExit_ConvertsAndDeliversInFull() public {
         uint256 shares = vault.balanceOf(alice);
-        uint256 half = shares / 2;
-        uint256 owed = vault.previewRedeem(half);
-        uint256 before = stock.balanceOf(alice);
+        uint256 want = (shares * 70) / 100;
+        uint256 owed = vault.previewRedeem(want);
 
+        // Confirm the test is not vacuous: this exit MUST need a conversion.
+        assertGt(owed, stock.balanceOf(address(vault)), "test must exercise the shortfall branch");
+
+        uint256 before = stock.balanceOf(alice);
         vm.prank(alice);
-        uint256 got = vault.redeem(half, alice, alice);
+        uint256 got = vault.redeem(want, alice, alice);
 
         assertEq(got, owed, "redeem must return what previewRedeem promised");
         assertEq(stock.balanceOf(alice) - before, owed, "and actually transfer it");
@@ -108,10 +136,10 @@ Add to `test/vaults/WithdrawShortfall.t.sol`. The existing fixture in that file 
 
 ```bash
 cd sidequest-protocol/contracts
-forge test --match-test test_HalfExit_ConvertsAndDeliversInFull -vv
+forge test --match-test test_SeventyPercentExit_ConvertsAndDeliversInFull -vv
 ```
 
-Expected: FAIL with `ERC20InsufficientBalance`, the vault short by a few units of cash granularity.
+Expected: FAIL with `ERC20InsufficientBalance`, the vault short by a few units of cash granularity. If it PASSES, the fixture is not reaching the shortfall branch and the test is worthless: check the `assertGt` above, which exists to catch exactly that.
 
 - [ ] **Step 3: Replace the shortfall block**
 
@@ -144,8 +172,15 @@ Replace with:
         // the venue for zero. Gross it up by the slippage allowance, so the
         // venue's cut is paid out of the cash leg rather than out of the
         // depositor's delivery. And set minOut to the whole shortfall, so a
-        // fill that cannot cover fails at the swap with a typed venue error
-        // instead of at the transfer with ERC20InsufficientBalance.
+        // fill that cannot cover fails inside _swap instead of at the transfer
+        // with ERC20InsufficientBalance.
+        //
+        // minOut is the guarantee, not the gross-up. _swap ends in
+        // require(received >= minOut, "slippage"), so under-delivery is
+        // impossible whatever the arithmetic above does; the gross-up only
+        // makes the fill LIKELY to clear that bound. Note the revert is a plain
+        // Error(string) and not a custom error, which is what an integrator
+        // will actually see.
         uint256 bal = IERC20(asset()).balanceOf(address(this));
         if (bal < assets) {
             uint256 shortfall = assets - bal;
@@ -162,7 +197,7 @@ Replace with:
 - [ ] **Step 4: Run it and confirm it passes**
 
 ```bash
-forge test --match-test test_HalfExit_ConvertsAndDeliversInFull -vv
+forge test --match-test test_SeventyPercentExit_ConvertsAndDeliversInFull -vv
 ```
 
 Expected: PASS.
@@ -173,7 +208,7 @@ Expected: PASS.
 forge test --match-path 'test/vaults/WithdrawShortfall.t.sol' -vv
 ```
 
-Expected: `test_ExitableFractionIsExactlyTheAssetLeg` now FAILS with "some exit size must fail" (the cliff moved past every tested size), and the two dust tests still fail. That is correct at this point: Task 5 rewrites them. Do not touch them yet.
+Expected: exactly three failures, all in this file: `test_ExitableFractionIsExactlyTheAssetLeg` with "some exit size must fail" (the cliff moved past every tested size), `test_FullRedeem_RevertsWhenCashMustBeConverted` and `test_FullyLongVault_OneUnitOfDust_CannotFullyExit` with a changed revert selector. `test_FullyLongVault_OneUnitOfDust_StrandsOnlyDust` keeps passing. Any OTHER failure is a real defect. That is correct at this point: Task 5 rewrites them. Do not touch them yet.
 
 - [ ] **Step 6: Commit**
 
@@ -246,7 +281,7 @@ contract ExitCapacityTest is Test {
         vault = new SpotVaultMinimal(
             address(stock), address(cash), address(oracle), 1 hours,
             "Zorpha NVDA Long/Flat", "zqNVDA",
-            0, 100, 0,
+            0, 100, 100, 0,
             address(this), address(this),
             0
         );
@@ -990,7 +1025,7 @@ contract ExitInvariantsTest is StdInvariant, Test {
         vault = new SpotVaultMinimal(
             address(stock), address(cash), address(oracle), 365 days,
             "Zorpha NVDA Long/Flat", "zqNVDA",
-            0, 100, 0,
+            0, 100, 100, 0,
             address(this), address(this),
             0
         );
@@ -1102,7 +1137,9 @@ git commit -m "test(vault): assert the advertised maximums are executable"
 - Consumes: the fixed `SpotVaultMinimal`.
 - Produces: a deployed vault address, needed by Tasks 9, 10 and 11.
 
-**Background.** Reuse the existing TWAP oracle `0xaBefb351777d8E68FCafa4D2F8A5848F326298cA` and the existing swap adapter `0x8E50FC336f87b454cc44a89dA3a7267412B045dc`; only the vault is redeployed. Admin lands on the **Safe**, not the Timelock, so the role batch in Task 10 can complete atomically. Deploying straight to the Timelock would need three separate 48-hour proposals while the vault sits on chain unable to trade.
+**Background.** Reuse the existing TWAP oracle `0xaBefb351777d8E68FCafa4D2F8A5848F326298cA` and the existing swap adapter `0x8E50FC336f87b454cc44a89dA3a7267412B045dc`; only the vault is redeployed. That is why this is a NEW script rather than a re-run of `script/DeployStockVault.s.sol`, which deploys all three.
+
+`DeployStockVault.s.sol` was updated during Tasks 1 to 7 and is the reference for `EXIT_COST_BPS` and its derivation; copy the value, not the whole file. Admin lands on the **Safe**, not the Timelock, so the role batch in Task 10 can complete atomically. Deploying straight to the Timelock would need three separate 48-hour proposals while the vault sits on chain unable to trade.
 
 Slice-1 parameters, from `script/DeployStockVault.s.sol`: `MAX_ORACLE_STALENESS = 3600`, `REBALANCE_THRESHOLD_BPS = 100`, `MAX_SLIPPAGE_BPS = 100`, `PERFORMANCE_FEE_BPS = 1000`, `EMERGENCY_REDEEM_COOLDOWN = 0`, `feeRecipient = TREASURY`.
 
@@ -1147,7 +1184,7 @@ contract StockVaultV2LiveTest is Test {
         v = new SpotVaultMinimal(
             NVDA, USDG, ORACLE, 3600,
             "Zorpha NVDA Long/Flat", "zqNVDA",
-            100, 100, 1000,
+            100, 100, 250, 1000,
             TREASURY, SAFE, 0
         );
         vm.startPrank(SAFE);
@@ -1186,10 +1223,12 @@ contract StockVaultV2LiveTest is Test {
             uint256 held = v.balanceOf(SAFE);
             uint256 mr = v.maxRedeem(SAFE);
             assertGt(mr, 0, "a solvent vault must advertise capacity at every target");
-            // The spec's table: 10000 gives 100%, 5000 gives 99.50%, 0 gives
-            // 98.99%. Assert the floor rather than the exact figure, which
-            // moves with the pool.
-            assertGe((mr * 10000) / held, 9800, "capacity floor");
+            // Capacity is 100% at every position now that the exiting holder
+            // bears their own conversion cost: the old 98.99-to-100 band was
+            // measured before that fix. Assert the full holding, not a floor,
+            // because anything less means the exit-cost haircut and the
+            // deliverable haircut have started compounding.
+            assertEq(mr, held, "capacity must be the whole holding at every target");
 
             vm.prank(SAFE);
             v.redeem(mr, SAFE, SAFE);
@@ -1276,12 +1315,22 @@ contract DeployStockVaultV2 is Script {
     uint256 constant PERFORMANCE_FEE_BPS = 1000;
     uint256 constant EMERGENCY_REDEEM_COOLDOWN = 0;
 
+    // NEW in this slice, and immutable, so getting it wrong means redeploying.
+    // 250 is derived: the adapter answers with a price up to
+    // maxSpotDivergenceBps (200) away from spot, and measured impact at
+    // 100,000 USDG is 7bps, so the worst conversion the oracle will still
+    // price costs 207. Below that, an exit reverts on minOut AFTER maxRedeem
+    // advertised it. Read the full derivation on EXIT_COST_BPS in
+    // script/DeployStockVault.s.sol, and re-run
+    // test/fork/ExitCostCalibration.t.sol before broadcasting: drift moves.
+    uint16 constant EXIT_COST_BPS = 250;
+
     function run() external {
         vm.startBroadcast();
         SpotVaultMinimal vault = new SpotVaultMinimal(
             NVDA, USDG, ORACLE, MAX_ORACLE_STALENESS,
             "Zorpha NVDA Long/Flat", "zqNVDA",
-            REBALANCE_THRESHOLD_BPS, MAX_SLIPPAGE_BPS, PERFORMANCE_FEE_BPS,
+            REBALANCE_THRESHOLD_BPS, MAX_SLIPPAGE_BPS, EXIT_COST_BPS, PERFORMANCE_FEE_BPS,
             TREASURY, SAFE,
             EMERGENCY_REDEEM_COOLDOWN
         );

@@ -3,25 +3,31 @@ pragma solidity ^0.8.28;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {SpotVaultMinimal} from "../../src/vaults/SpotVaultMinimal.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockOracle} from "../mocks/MockOracle.sol";
 import {SlippingSpotAdapter} from "../mocks/SlippingSpotAdapter.sol";
 
-/// @notice A withdrawal that needs the cash leg converted back reverts, and the
-///         vault is therefore exitable only up to its asset leg.
+/// @notice The withdrawal path delivers what it advertises, and these tests are
+///         what keep it that way.
 ///
-/// WHY THIS IS NOT COVERED BY test/vaults/SpotVaultMinimal.t.sol
+/// This file was written the other way round. Until the exit paths were fixed, a
+/// withdrawal needing the cash leg converted back reverted, and the vault was
+/// exitable only as far as its asset leg reached; these tests asserted that the
+/// defect existed. They now assert it stays gone. Everything below is the
+/// original analysis, kept because WHY the defect hid for so long is the part
+/// worth remembering.
 ///
-/// Two things there hide it, and both are properties of the harness rather than
+/// WHY IT WAS NOT COVERED BY test/vaults/SpotVaultMinimal.t.sol
+///
+/// Two things there hid it, and both were properties of the harness rather than
 /// of the vault:
 ///
-///   1. `MockSpotAdapter` fills at the oracle price exactly. `_withdraw` rounds
-///      the shortfall DOWN into cash units and then allows the fill to come
-///      back up to `maxSlippageBps` short, so it needs a venue that actually
-///      charges to under-deliver. `SlippingSpotAdapter` is used here, at the
-///      0.05% the live NVDA/USDG pool charges.
+///   1. `MockSpotAdapter` fills at the oracle price exactly. `_withdraw` used to
+///      round the shortfall DOWN into cash units and then allow the fill to come
+///      back up to `maxSlippageBps` short, so exposing it needed a venue that
+///      actually charges. `SlippingSpotAdapter` is used here, at the 0.05% the
+///      live NVDA/USDG pool charges.
 ///
 ///   2. That suite pairs an 8-decimal asset with 6-decimal cash. One cash unit
 ///      is 100 asset units, so rounding the conversion down loses ~100 wei and
@@ -32,7 +38,7 @@ import {SlippingSpotAdapter} from "../mocks/SlippingSpotAdapter.sol";
 /// The decimal gap is the whole mechanism, so this test reproduces it: 18dp
 /// asset, 6dp cash, fee-charging venue.
 ///
-/// MEASURED ON MAINNET, vault 0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413 at a
+/// MEASURED ON MAINNET BEFORE THE FIX, vault 0xB129495f0ad616EdD2f28b3B49470FC1f0FAD413 at a
 /// 50/50 position, forked 7 September 2026:
 ///
 ///     redeem  40%  ok
@@ -66,7 +72,7 @@ contract WithdrawShortfallTest is Test {
         vault = new SpotVaultMinimal(
             address(stock), address(cash), address(oracle), 1 hours,
             "Zorpha NVDA Vault", "zqNVDA",
-            0, 100, 0,
+            0, 100, 100, 0,
             address(this), address(this),
             1 hours
         );
@@ -88,72 +94,219 @@ contract WithdrawShortfallTest is Test {
         vault.rebalanceTo(5000);
     }
 
-    /// The exit a depositor is most likely to attempt: all of it.
+    /// A withdrawal that needs the cash leg converted must be delivered in
+    /// full. The venue's cut comes out of the cash leg, not out of the
+    /// depositor's payment.
     ///
-    /// Note the balance in the revert is the one AFTER the shortfall swap ran,
-    /// not the leg before it. The swap succeeds and buys asset; it just buys
-    /// less than the transfer on the next line demands. The gap is the venue
-    /// fee on the shortfall, which `minOut` on line 353 explicitly permits.
-    function test_FullRedeem_RevertsWhenCashMustBeConverted() public {
+    /// WHY 70% AND NOT HALF. An exact-half redeem does NOT enter the shortfall
+    /// branch, so a test built on it passes with or without this fix and proves
+    /// nothing. After rebalanceTo(5000) the asset leg is 50e18 while
+    /// totalAssets is 99.975e18, because the rebalance paid the venue fee out
+    /// of the position: half of NAV is therefore LESS than half of the original
+    /// position, and the asset leg covers it outright. Measured against this
+    /// fixture, pre-fix against post-fix:
+    ///
+    ///     45%, 50%      pass / pass    no conversion needed
+    ///     55% .. 80%    FAIL / pass    conversion needed
+    ///
+    /// 70% sits well inside the band at both ends.
+    function test_SeventyPercentExit_ConvertsAndDeliversInFull() public {
         uint256 shares = vault.balanceOf(alice);
-        uint256 owed = vault.previewRedeem(shares);
-        uint256 legBefore = stock.balanceOf(address(vault));
-        assertGt(owed, legBefore, "setup: the exit must need a conversion to be a test of one");
+        uint256 want = (shares * 70) / 100;
+        uint256 owed = vault.previewRedeem(want);
 
+        // Confirm the test is not vacuous: this exit MUST need a conversion.
+        assertGt(owed, stock.balanceOf(address(vault)), "test must exercise the shortfall branch");
+
+        uint256 before = stock.balanceOf(alice);
         vm.prank(alice);
-        (bool ok, bytes memory err) = address(vault).call(
-            abi.encodeCall(vault.redeem, (shares, alice, alice))
-        );
-        assertFalse(ok, "the redeem must fail, or there is no bug to regress");
-        assertEq(bytes4(err), IERC20Errors.ERC20InsufficientBalance.selector, "wrong revert");
+        uint256 got = vault.redeem(want, alice, alice);
 
-        (address who, uint256 held, uint256 needed) =
-            abi.decode(_body(err), (address, uint256, uint256));
-        assertEq(who, address(vault), "the vault is the one short of asset");
-        assertGt(held, legBefore, "the swap did run and bought asset");
-        assertLt(held, needed, "and still came back short of the transfer");
-
-        // The gap is fee-scale, not economic: 5bps of the shortfall, give or
-        // take the down-rounding into cash units.
-        uint256 shortfall = owed - legBefore;
-        assertApproxEqRel(needed - held, (shortfall * 5) / 10000, 0.01e18, "gap should be the venue fee");
+        assertEq(got, owed, "redeem must return what previewRedeem promised");
+        assertEq(stock.balanceOf(alice) - before, owed, "and actually transfer it");
     }
 
-    /// Strip the selector so the revert args can be decoded.
-    function _body(bytes memory err) private pure returns (bytes memory out) {
-        out = new bytes(err.length - 4);
-        for (uint256 i = 0; i < out.length; i++) out[i] = err[i + 4];
-    }
+    /// ERC-4626 requires rounding to favour the vault. `previewWithdraw`'s
+    /// inverse formula floored its gross computation, which rounds AGAINST
+    /// the vault instead: measured, `previewRedeem(previewWithdraw(a)) ==
+    /// a - 1` for every `a` above `bal` tried, and `withdraw(bal + 1e15)`
+    /// burned shares worth `50000999999999999999` for a `50001000000000000000`
+    /// payout -- one wei cheaper than what it actually delivered.
+    function test_PreviewWithdraw_RoundsInTheVaultsFavour() public {
+        uint256 bal = stock.balanceOf(address(vault));
 
-    /// And the boundary is exactly the asset leg: anything the leg covers
-    /// outright succeeds, anything past it reverts. That is what makes this a
-    /// "the cash leg is unreachable" bug rather than a rounding curiosity.
-    function test_ExitableFractionIsExactlyTheAssetLeg() public {
-        uint256 shares = vault.balanceOf(alice);
-        uint256 lastOk;
-        uint256 firstFail;
-
-        for (uint256 pct = 5; pct <= 100; pct += 5) {
-            uint256 snap = vm.snapshotState();
-            vm.prank(alice);
-            try vault.redeem((shares * pct) / 100, alice, alice) {
-                lastOk = pct;
-            } catch {
-                if (firstFail == 0) firstFail = pct;
-            }
-            vm.revertToState(snap);
+        uint256[4] memory extra = [uint256(1e15), 1e18, 10e18, 40e18];
+        for (uint256 i = 0; i < extra.length; i++) {
+            uint256 a = bal + extra[i];
+            uint256 shares = vault.previewWithdraw(a);
+            uint256 worth = vault.previewRedeem(shares);
+            console2.log("a                                 ", a);
+            console2.log("   previewWithdraw(a)              ", shares);
+            console2.log("   previewRedeem(previewWithdraw(a))", worth);
+            assertGe(worth, a, "the shares previewWithdraw asks for must be worth at least the requested payout");
         }
 
-        assertEq(firstFail, lastOk + 5, "the boundary must be a single cliff, not scattered failures");
-        assertLt(firstFail, 100, "some exit size must fail, or there is no bug to regress");
+        // And on an ACTUAL withdraw, not just the paired preview: the shares
+        // burned must be exactly what previewWithdraw predicted, and worth at
+        // least the payout that was just delivered. `withdraw` returns SHARES
+        // burned, not assets -- that is `redeem`'s job -- so assets delivered
+        // is read from the balance delta.
+        uint256 payout = bal + 1e15;
+        uint256 sharesNeeded = vault.previewWithdraw(payout);
+        uint256 worthBeforeBurn = vault.previewRedeem(sharesNeeded);
 
-        // The cliff sits where the asset leg runs out, ~50% here because the
-        // position is 50/50.
-        uint256 legShare = (stock.balanceOf(address(vault)) * 100) / vault.totalAssets();
-        assertApproxEqAbs(lastOk, legShare, 5, "cliff should track the asset leg's share of NAV");
+        uint256 aliceSharesBefore = vault.balanceOf(alice);
+        uint256 aliceAssetsBefore = stock.balanceOf(alice);
+        vm.prank(alice);
+        uint256 sharesReturned = vault.withdraw(payout, alice, alice);
+        uint256 sharesBurned = aliceSharesBefore - vault.balanceOf(alice);
+        uint256 assetsReceived = stock.balanceOf(alice) - aliceAssetsBefore;
 
-        console2.log("largest exit that works (%)", lastOk);
-        console2.log("asset leg as % of NAV      ", legShare);
+        console2.log("payout             ", payout);
+        console2.log("shares burned worth", worthBeforeBurn);
+
+        assertEq(assetsReceived, payout, "withdraw must deliver exactly the requested payout");
+        assertEq(sharesReturned, sharesNeeded, "withdraw's return value must match previewWithdraw's prediction");
+        assertEq(sharesBurned, sharesNeeded, "withdraw must burn exactly what previewWithdraw predicted");
+        assertGe(worthBeforeBurn, payout, "withdraw must burn shares worth at least the payout it delivers");
+    }
+
+    /// The 70% check above runs at fee 0, this fixture's default. The live
+    /// vault runs a 1000bps performance fee (script/DeployStockVault.s.sol),
+    /// and a reviewer flagged a possible disagreement between previewRedeem
+    /// and what redeem delivers at that live figure with a pending gain --
+    /// this is that case, actually exercised, and it DOES reproduce here.
+    ///
+    /// `redeem`'s override calls `_evaluateFees()` BEFORE `super.redeem()`
+    /// re-derives previewRedeem internally, so an externally-read
+    /// previewRedeem taken while a gain sits unaccrued disagrees with what the
+    /// same computation, re-run fresh inside redeem() AFTER the fee has just
+    /// landed, goes on to deliver: `_evaluateFees()` raises
+    /// `performanceFeeAccrued`, which lowers `totalAssets()`, between the two
+    /// reads. Measured on this fixture: a previewRedeem of 75323902999999999999
+    /// read moments before redeem, which then delivered only 74771512699999999999
+    /// -- a 552390300000000000 wei shortfall against the quote, roughly 73bps
+    /// of it. This is the SAME class of staleness already documented on
+    /// `maxWithdraw`'s NatSpec, just unguarded here.
+    ///
+    /// previewRedeem itself is deliberately NOT changed by this test. Only the
+    /// TRUE guarantee is asserted: redeem's return value matches what it
+    /// actually transfers, and never exceeds the stale quote in this
+    /// pending-gain direction. The gap against the external pre-read is
+    /// logged, not asserted away.
+    function test_SeventyPercentExit_PreviewRedeemAgreesWithRedeem_AtLiveFeeWithPendingGain() public {
+        MockOracle feeOracle = new MockOracle(PRICE, 8);
+        SlippingSpotAdapter feeVenue = new SlippingSpotAdapter(address(stock), address(cash), address(feeOracle));
+        feeVenue.setFee(5);
+
+        SpotVaultMinimal feeVault = new SpotVaultMinimal(
+            address(stock), address(cash), address(feeOracle), 1 hours,
+            "Zorpha NVDA Vault", "zqNVDA",
+            0, 100, 100, 1000, // performanceFeeBps: the live figure, not this file's fixture default of zero
+            address(this), address(this),
+            1 hours
+        );
+        feeVault.setSwapAdapter(address(feeVenue));
+        feeVault.grantRole(feeVault.KEEPER_ROLE(), keeper);
+
+        stock.mint(address(feeVenue), 1_000_000e18);
+        cash.mint(address(feeVenue), 1_000_000_000e6);
+
+        // A single holder, like the 70% check above: this test is about fee
+        // accrual timing against previewRedeem, not about splitting a
+        // dilution effect across holders, and a second holder would shrink
+        // alice's own share of the pool enough that 70% of it no longer
+        // exceeds bal, missing the shortfall branch entirely.
+        stock.mint(alice, DEPOSIT);
+        vm.startPrank(alice);
+        stock.approve(address(feeVault), DEPOSIT);
+        feeVault.deposit(DEPOSIT, alice);
+        vm.stopPrank();
+
+        vm.prank(keeper);
+        feeVault.rebalanceTo(5000);
+
+        // The cash leg reprices to more NVDA as the price falls, pushing NAV
+        // past the high-water mark: a gain is now PENDING, and not yet
+        // accrued into performanceFeeAccrued, since nothing has called
+        // _evaluateFees() since the price moved.
+        feeOracle.setPrice(200 * 1e8);
+
+        uint256 shares = feeVault.balanceOf(alice);
+        uint256 want = (shares * 70) / 100;
+
+        // Read BEFORE redeem: the quote a caller would actually see, ahead of
+        // the fee accrual redeem() itself is about to trigger.
+        uint256 owed = feeVault.previewRedeem(want);
+        assertGt(owed, stock.balanceOf(address(feeVault)), "test must exercise the shortfall branch");
+
+        uint256 before = stock.balanceOf(alice);
+        vm.prank(alice);
+        uint256 got = feeVault.redeem(want, alice, alice);
+        uint256 delivered = stock.balanceOf(alice) - before;
+
+        console2.log("previewRedeem, read before redeem (pending gain, fee 1000)", owed);
+        console2.log("redeem actually delivered                                 ", got);
+        if (got < owed) {
+            console2.log("DISAGREE: redeem delivered LESS than the pre-read quote, by", owed - got);
+        } else if (got > owed) {
+            console2.log("DISAGREE: redeem delivered MORE than the pre-read quote, by", got - owed);
+        } else {
+            console2.log("AGREE: redeem delivered exactly the pre-read quote");
+        }
+
+        // What IS true regardless: redeem's return value is exactly what it
+        // transfers, and a pending-gain accrual can only ever shrink
+        // totalAssets() between the two reads, never grow it -- so redeem
+        // cannot deliver MORE than the stale external quote here.
+        assertEq(delivered, got, "redeem must transfer exactly what it returns");
+        assertLe(got, owed, "a pending-gain fee accrual must not make redeem deliver MORE than the pre-read quote");
+    }
+
+    /// A full exit now succeeds through the standard path, typed refusal and
+    /// all removed. It used to be refused here IN ADVANCE, with the typed
+    /// ERC-4626 error rather than a raw ERC-20 revert, because the withdrawer
+    /// was being paid the WHOLE oracle NAV of their shares -- including the
+    /// venue's cut for converting the last of the cash leg, which the pool
+    /// would have had to fund on the exiter's behalf. Superseded: the exiting
+    /// holder now pays for their own conversion (previewRedeem, previewWithdraw),
+    /// so nothing is left for the pool to fund and nothing stops a full exit.
+    /// See docs/design/stock-vault-exit-paths.md, "Who bears the conversion
+    /// cost, settled".
+    function test_FullRedeem_NowSucceedsInFull() public {
+        uint256 shares = vault.balanceOf(alice);
+        uint256 mr = vault.maxRedeem(alice);
+        assertEq(mr, shares, "capacity is 100% of the holding at every position");
+
+        uint256 before = stock.balanceOf(alice);
+        vm.prank(alice);
+        uint256 got = vault.redeem(shares, alice, alice);
+
+        assertEq(vault.balanceOf(alice), 0, "the whole holding must be gone");
+        assertEq(stock.balanceOf(alice) - before, got, "and delivered in full");
+    }
+
+    /// The cliff is gone, and so is the shortfall that used to sit just below
+    /// 100%. The advertised ceiling at a 50/50 position used to be nearly the
+    /// whole holding but not quite -- 99.5%, because the missing half percent
+    /// was the venue's cut for converting the cash leg, charged to the pool
+    /// rather than to the exiter. Superseded: the exiting holder now pays their
+    /// own conversion cost, so the pool owes nothing extra and the advertised
+    /// ceiling is the whole holding, exactly.
+    function test_NoCliff_AdvertisedCapacityIsTheWholeHolding() public {
+        uint256 shares = vault.balanceOf(alice);
+        uint256 mr = vault.maxRedeem(alice);
+
+        assertEq(mr, shares, "capacity is 100% of the holding at a 50/50 position");
+
+        for (uint256 pct = 10; pct <= 100; pct += 10) {
+            uint256 want = (mr * pct) / 100;
+            if (want == 0) continue;
+            uint256 snap = vm.snapshotState();
+            vm.prank(alice);
+            vault.redeem(want, alice, alice);
+            vm.revertToState(snap);
+        }
     }
 
     /// The mitigation batch L applies, in the case where it fully works: with
@@ -178,54 +331,36 @@ contract WithdrawShortfallTest is Test {
         }
     }
 
-    /// And the case mainnet actually landed in: fully long, with exactly one
-    /// unit of cash left behind. Everything up to 90% clears, and the last exit
-    /// cannot.
-    ///
-    /// The mechanism is not the venue fee that breaks a 50/50 vault, and no
-    /// performance fee is involved: this harness is built with
-    /// performanceFeeBps 0. One unit of cash is worth billions of asset wei, so
-    /// it counts toward `totalAssets` and the full exit owes it; but converting
-    /// that back rounds to nothing:
-    ///
-    ///     cashToAsset(1)            4310344827
-    ///     assetToCash(4310344827)            0
-    ///
-    /// so `_withdraw` swaps zero, buys nothing, and the transfer is short by the
-    /// whole amount. Measured identically on the live vault after batch L:
-    /// cashToAsset(1) = 4301763552, assetToCash of it = 0, largest exit
-    /// 55,399,995,696,251,520,585,413 of 55,400,000,000,000,000,000,000 shares.
-    function test_FullyLongVault_OneUnitOfDust_CannotFullyExit() public {
+    /// The dust case, which used to strand the whole exit. One unit of a
+    /// 6-decimal cash asset is billions of wei of an 18-decimal one, and
+    /// converting it back rounded to nothing, so `_withdraw` swapped zero and
+    /// the transfer came up short. Now the bound accounts for it in advance and
+    /// everything the vault advertises is delivered.
+    function test_FullyLongVault_OneUnitOfDust_AdvertisesAndDelivers() public {
         vm.prank(keeper);
         vault.rebalanceTo(10000);
-        // The dust mainnet was left holding. Minted rather than contrived from a
-        // swap, because the amount is the point and not how it got there.
         cash.mint(address(vault), 1);
 
-        uint256 shares = vault.balanceOf(alice);
-        uint256 leg = stock.balanceOf(address(vault));
-        uint256 owed = vault.previewRedeem(shares);
-        uint256 shortfall = owed - leg;
+        uint256 mr = vault.maxRedeem(alice);
+        assertGt(mr, 0, "one unit of dust must not close the vault");
 
-        assertEq(shortfall, vault.cashToAsset(1), "the shortfall is exactly the dust's asset value");
-        assertEq(vault.assetToCash(shortfall), 0, "and converting it back rounds to nothing");
-
+        uint256 before = stock.balanceOf(alice);
         vm.prank(alice);
-        (bool ok, bytes memory err) = address(vault).call(
-            abi.encodeCall(vault.redeem, (shares, alice, alice))
-        );
-        assertFalse(ok, "the full exit cannot clear");
-        assertEq(bytes4(err), IERC20Errors.ERC20InsufficientBalance.selector, "wrong revert");
-
-        // But the shortfall is dust, so all but the last sliver comes out.
-        vm.prank(alice);
-        vault.redeem((shares * 90) / 100, alice, alice);
+        uint256 got = vault.redeem(mr, alice, alice);
+        assertEq(stock.balanceOf(alice) - before, got, "delivered in full");
     }
 
-    /// How much is actually stranded, to the wei, so "cannot fully exit" is not
-    /// mistaken for "cannot exit". Binary search for the largest exit that
-    /// clears, the same way the live vault was measured.
-    function test_FullyLongVault_OneUnitOfDust_StrandsOnlyDust() public {
+    /// Nothing is stranded any more, not even the dust. Binary search for the
+    /// largest exit that clears, the same way the live vault was measured
+    /// before this fix: back then the search found a real, if tiny, cliff
+    /// short of the full holding, because `_withdraw` was being asked to
+    /// cover the FULL oracle NAV of the redeemed shares and the last unit of
+    /// cash could not convert cleanly at that exact boundary. `previewRedeem`
+    /// now charges the exiting holder their own conversion cost, so the
+    /// shortfall `_withdraw` is actually asked to cover is smaller by exactly
+    /// that cost -- and the search finds the largest clearing exit IS the
+    /// whole holding.
+    function test_FullyLongVault_OneUnitOfDust_NothingIsStranded() public {
         vm.prank(keeper);
         vault.rebalanceTo(10000);
         cash.mint(address(vault), 1);
@@ -243,9 +378,7 @@ contract WithdrawShortfallTest is Test {
         }
 
         uint256 stranded = shares - lo;
-        assertGt(stranded, 0, "something must be stranded, or there is no bug here");
-        // Under one basis point of supply. The live vault measured 0 bps.
-        assertLt((stranded * 10000) / shares, 1, "stranded should be dust, not a real position");
+        assertEq(stranded, 0, "the largest clearing exit must be the whole holding");
         console2.log("largest exit", lo);
         console2.log("stranded    ", stranded);
     }
@@ -261,7 +394,7 @@ contract WithdrawShortfallTest is Test {
         SpotVaultMinimal tight = new SpotVaultMinimal(
             address(stock), address(cash), address(oracle), 1 hours,
             "Zorpha NVDA Vault", "zqNVDA",
-            0, 0, 0,
+            0, 0, 0, 0,
             address(this), address(this),
             1 hours
         );

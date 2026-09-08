@@ -49,7 +49,7 @@ contract OracleWindowCoverageTest is Test {
     function _spot(address oracle_, uint256 window) internal returns (SpotVaultMinimal) {
         return new SpotVaultMinimal(
             address(asset), address(cash), oracle_, window,
-            "Vault", "V", 0, 100, 0, admin, admin, 0
+            "Vault", "V", 0, 100, 100, 0, admin, admin, 0
         );
     }
 

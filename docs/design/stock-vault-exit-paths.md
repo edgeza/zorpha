@@ -102,8 +102,16 @@ super._withdraw(caller, receiver, owner, assets, shares);
 Three changes from the deployed version: the conversion rounds up rather than
 down, the input is grossed up so the venue's cut is paid out of the cash leg
 rather than out of the depositor's delivery, and `minOut` is the whole shortfall
-so a fill that cannot cover reverts at the swap with a typed venue error instead
-of at the transfer with `ERC20InsufficientBalance`.
+so a fill that cannot cover reverts inside `_swap` instead of at the transfer
+with `ERC20InsufficientBalance`. That revert is
+`require(received >= minOut, "slippage")`, a plain `Error(string)` and not a
+custom error, which is worth knowing because it is the failure an integrator
+will actually see.
+
+Note which line carries the guarantee. It is `minOut`, not the gross-up: the
+gross-up only makes the fill likely to clear the bound, while `_swap` refusing
+below `minOut` is what makes under-delivery impossible. Simplifying the gross-up
+away would cost nothing visible until a wider spread arrived.
 
 ### The bounds must be deliverable, not aspirational
 
@@ -188,12 +196,20 @@ on a mainnet fork:
 | 2500 | 99.25% | yes |
 | fully flat, 0 | 98.99% | yes |
 
+**Superseded.** Those figures are from before the conversion cost was charged to
+the withdrawer; see "Who bears the conversion cost, settled" below. Capacity is
+now 100% at every position, and the withheld margin has moved out of the bound
+and into the payout, where it belongs.
+
 Against 40% before, on a 50/50 position, with the failure arriving as an untyped
 ERC-20 error.
 
-Every advertised maximum executes. The residual one percent is the venue cost of
-converting the cash leg, which is real money, so declining to promise it is
-correct rather than a shortcoming. `redeemEmergency` recovers it in kind.
+Every advertised maximum executes. The residual one percent is `maxSlippageBps`,
+the vault's own slippage allowance, withheld against the possibility of a
+costlier fill. It is not the venue's realised cost: the live pool charges 5bps,
+a factor of twenty less. Declining to promise the allowance is correct rather
+than a shortcoming, since the allowance is what the vault must tolerate, not
+what a fill actually costs. `redeemEmergency` recovers it in kind.
 
 ## What this deliberately does not do
 
@@ -304,12 +320,169 @@ green suite meant nothing here.
   at 10000, 5000 and 0, which is the table above.
 - The migration Safe batch, replayed as the Safe against the artifact on disk.
 
-## Open question for slice 3
+## Who bears the conversion cost, settled
 
-The venue cost is currently borne by the *withdrawing* holder, through the
-haircut in `_deliverableAssets`. The alternative is charging it to the vault so
-that all holders share it. The haircut is simpler and gives the right
-incentive, since the holder choosing to exit is the one causing the conversion,
-but it does mean two holders exiting in sequence pay different effective costs
-depending on the position at the time. Not worth solving before a second holder
-exists.
+The open question this section used to carry has been decided: **the exiting
+holder pays for their own conversion.** It was recorded here as a slice-3
+question, and it was recorded wrongly, claiming the cost already fell on the
+withdrawer "through the haircut in `_deliverableAssets`". That was false. The
+haircut caps how much the last exit may take and never touches who pays.
+
+### What was wrong
+
+The withdrawer was paid `previewRedeem(shares)`, the full oracle-priced NAV of
+their shares, while the venue's cut on converting the cash leg came out of the
+pool. So it landed on whoever stayed. Measured, two holders, the live 5bps
+venue, a 50/50 position, one holder exiting:
+
+```
+bob previewRedeem before   999750000000000000
+bob previewRedeem after    974762626260775861
+                           a loss of 249 bps of his position
+```
+
+That is one stranger's exit taking 2.49% from a holder who did nothing. It
+scales with realised venue cost, which is square-law in trade size, so a thin
+pool and a large exit could take most of a small remainder.
+
+### The correction
+
+The withdrawer's own shares pay for their own conversion. Let `gross` be the
+oracle NAV of the shares presented, `bal` the asset leg, and `h` `exitCostBps`.
+The payout `net` is defined by
+
+```
+net + cost(net) = gross,    cost(net) = max(0, net - bal) * h / (10000 - h)
+```
+
+which solves in closed form to
+
+```
+net = (gross * (10000 - h) + bal * h) / 10000
+```
+
+floored, so rounding favours the vault. An exit the asset leg already covers
+converts nothing and therefore pays nothing: `net == gross` whenever
+`gross <= bal`.
+
+`previewRedeem` returns `net`. `previewWithdraw` inverts it, returning the
+shares needed to cover a requested net payout plus its own cost. The remaining
+holders' GROSS claim is left exactly whole: the exiting holder is never paid
+more than the oracle NAV of the shares they burn, so `convertToAssets` on an
+unchanged share count does not move. Their NET quote is a different number,
+and it is not held whole -- see "The net quote is not held whole" below.
+
+### The net quote is not held whole
+
+"Exactly whole" above is true of the gross claim and false of the net quote,
+which is the number a depositor actually sees from `previewRedeem`. Measured
+with two EQUAL holders -- a fixture no test in this suite used before this was
+found -- one exiting in full, the other's quote read immediately before and
+after:
+
+```
+exitCostBps    stayer's net quote falls    going first is worth
+      5                4 bps                      5 bps
+     25               24 bps                     25 bps
+    250              249 bps                    256 bps   <- the deployed value
+
+stayer's GROSS claim: 99975000000000000000 before AND after. Unchanged.
+```
+
+The mechanism is inherent, not a bug a different formula would remove.
+`previewRedeem` charges a cost only past `bal`, the vault's actual asset
+balance, and `bal` is one finite pool shared by every holder's quote,
+first-come-first-served. Whoever prices an exit first is served out of it and
+converts nothing, paying no cost; the next holder to price an exit meets a
+cash-heavier vault and pays the haircut on more of their own claim, even
+though neither holder did anything to the other. With two equal holders at a
+50/50 position, each one's own gross claim exactly matches `bal`, so whichever
+one redeems first always clears for free -- and leaves the other pricing an
+unchanged-size claim against a vault that no longer has any asset leg left to
+cover it.
+
+`test_Q4_FirstMoverEdge_PinnedAtDeployedExitCost` pins the 256bps figure at
+the deployed `exitCostBps`, 250, so it cannot drift silently.
+
+### It also removes the capacity limit
+
+Inverting the bound at the maximum gives `gross` equal to the whole NAV, because
+a holder absorbing their own conversion cost can always be served. So capacity
+is **100% of the holding at every position**, replacing the earlier table's
+98.99% to 100% band. The withdrawer receives less than oracle NAV by their own
+conversion cost, which is the honest number, rather than receiving all of it and
+sending the bill to everyone else.
+
+`redeemEmergency` is untouched and remains the cost-free exit: it pays both legs
+in kind, pro rata, converting nothing.
+
+### Two parameters, because one number was doing two jobs
+
+Charging the exiter fixed the dilution and immediately exposed a second fault:
+the number being charged was `maxSlippageBps`, which is a swap bound, not a
+cost. At the live 100bps setting against a 5bps pool the exiter paid about
+twenty times the realised cost, and the surplus became a windfall for whoever
+stayed. Measured, two holders, 50/50 position, one exit:
+
+```
+maxSlippageBps   exiter charged     remaining holder
+100 bps          0.494750 asset     GAINS 4601 bps
+ 25 bps          0.123687 asset     GAINS  964 bps
+  6 bps          0.029685 asset     GAINS   43 bps
+```
+
+Nobody is harmed in that direction, since the vault is never short, but it is
+still a mispricing of the same kind this document already corrected once.
+
+The two jobs want opposite values. As a swap bound the number needs headroom for
+price IMPACT, which is square-law in size on this pool: slice 1 measured a $50k
+trade cutting in-range liquidity by 65%, so a bound near the fee tier makes
+ordinary rebalances revert. As an exit price it should track the realised cost,
+near the fee tier. One number cannot be both.
+
+So they are now two. `exitCostBps` prices exits and haircuts
+`_deliverableAssets`; `maxSlippageBps` keeps its original job as the rebalance
+`minOut` bound. Both are immutable.
+
+**Choosing `exitCostBps` is a real trade-off, not a free win.** `_withdraw`
+grosses the cash draw up by `10000 / (10000 - exitCostBps)` and requires the
+fill to cover the shortfall in full, so a realised cost above `exitCostBps`,
+fee plus impact, makes the swap revert rather than silently overcharge.
+`maxRedeem` carries the same haircut, so the advertised bound stays executable
+for the fee component, but impact is invisible to a view and cannot be bounded
+in advance. Too low and large exits revert; too high and every exit donates the
+difference to whoever stays. `redeemEmergency` is the in-kind escape either way.
+
+### The value, derived rather than chosen: 250
+
+"Above the fee tier and well below a rebalance bound" was the range this
+document first gave, and it is wrong, because the fee tier is not the anchor.
+`test/fork/ExitCostCalibration.t.sol` measured the live pool on 8 September
+2026:
+
+```
+USDG in            realised against oracle-fair
+1 to 1,000         22 bps BETTER than fair
+10,000             21 bps better
+100,000            15 bps better, so impact is about 7 bps there
+```
+
+The conversion GAINED 22 bps at every plausible size, because the 30 minute
+TWAP lagged a falling spot. The 5 bps fee is swamped by TWAP-versus-spot drift,
+and that drift changes sign with market direction.
+
+So the binding constraint is not the fee, it is how far the oracle will let the
+two prices separate while still answering: `maxSpotDivergenceBps` is 200. An
+adverse conversion inside that tolerance costs up to 200 bps, plus 7 of impact.
+Below 207, an exit during adverse-but-tolerated divergence reverts on `minOut`
+after `maxRedeem` advertised it, which is the lying bound this slice exists to
+remove. **250 clears 207 with margin, and that is the deployed value.**
+
+What it costs: in calm markets the exiter is charged up to 250 bps against a
+realised cost near zero, and the difference is a windfall to whoever stays.
+That is the accepted price of a bound that never lies while the adapter
+tolerates 200 bps. Halving it means a new adapter with a tighter divergence
+guard, which would also let the Safe hold that adapter's admin and so remove
+the 48 hour Timelock wait from the migration, but it needs drift measured over
+days rather than the single sample above. Recorded as the next improvement, not
+taken now.

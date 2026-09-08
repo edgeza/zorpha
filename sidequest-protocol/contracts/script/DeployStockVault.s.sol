@@ -93,6 +93,42 @@ contract DeployStockVault is Script {
     uint256 constant MAX_ORACLE_STALENESS = 3600;
     uint16 constant REBALANCE_THRESHOLD_BPS = 100;
     uint16 constant MAX_SLIPPAGE_BPS = 100;
+
+    /// @dev The exit-price parameter split from MAX_SLIPPAGE_BPS. See
+    ///      `exitCostBps` on SpotVaultMinimal for the mechanism, and
+    ///      docs/design/stock-vault-exit-paths.md, "Who bears the conversion
+    ///      cost, settled" for the fix it belongs to.
+    ///
+    ///      250 IS DERIVED, NOT CHOSEN. It has to cover the worst conversion
+    ///      the oracle will still price, or an exit reverts on minOut after
+    ///      maxRedeem advertised it, which is the lying-bound defect this
+    ///      slice exists to remove. The adapter answers with a price up to
+    ///      maxSpotDivergenceBps, 200, away from spot, and measured impact at
+    ///      100,000 USDG is 7bps, so the worst tolerated conversion costs 207.
+    ///      250 clears that with margin.
+    ///
+    ///      An earlier revision of this file said 25, reasoning from the pool's
+    ///      5bps fee tier. That was wrong and would have reintroduced the
+    ///      defect: test/fork/ExitCostCalibration.t.sol measured the live pool
+    ///      and found TWAP-versus-spot drift swamps the fee entirely. On
+    ///      8 September 2026 the conversion GAINED 22bps at every size up to
+    ///      100,000 USDG, because the 30 minute TWAP lagged a falling spot. The
+    ///      drift changes sign with market direction, so the fee tier is simply
+    ///      the wrong anchor.
+    ///
+    ///      WHAT IT COSTS. In calm markets the exiter is charged up to ~250bps
+    ///      against a realised cost near zero or negative, and the difference
+    ///      is a windfall to whoever stays. That is the accepted price of a
+    ///      bound that never lies while the adapter tolerates 200bps. Halving
+    ///      it means a new adapter with a tighter divergence guard, which needs
+    ///      drift measured over days rather than the single sample above.
+    ///
+    ///      REVISIT BEFORE BROADCASTING, and re-run
+    ///      test/fork/ExitCostCalibration.t.sol first: drift moves. This is
+    ///      immutable, with no setter, so a wrong value here means redeploying
+    ///      the vault to fix it.
+    uint16 constant EXIT_COST_BPS = 250;
+
     uint256 constant PERFORMANCE_FEE_BPS = 1000;
     uint256 constant EMERGENCY_REDEEM_COOLDOWN = 0;
 
@@ -109,7 +145,7 @@ contract DeployStockVault is Script {
         SpotVaultMinimal vault = new SpotVaultMinimal(
             NVDA, USDG, address(oracle), MAX_ORACLE_STALENESS,
             "Zorpha NVDA Long/Flat", "zqNVDA",
-            REBALANCE_THRESHOLD_BPS, MAX_SLIPPAGE_BPS, PERFORMANCE_FEE_BPS,
+            REBALANCE_THRESHOLD_BPS, MAX_SLIPPAGE_BPS, EXIT_COST_BPS, PERFORMANCE_FEE_BPS,
             TREASURY,  // feeRecipient, matching zsUSDG
             SAFE,      // admin, handed to the Timelock by safe batch I
             EMERGENCY_REDEEM_COOLDOWN

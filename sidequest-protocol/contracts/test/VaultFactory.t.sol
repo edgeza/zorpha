@@ -34,6 +34,7 @@ contract VaultFactoryTest is Test {
             symbol: "TS",
             rebalanceThresholdBps: 100,
             maxSlippageBps: 100,
+            exitCostBps: 25,
             performanceFeeBps: 0,
             feeRecipient: user,
             admin: user,
@@ -51,6 +52,15 @@ contract VaultFactoryTest is Test {
 
         SpotVaultMinimal v = SpotVaultMinimal(deployed);
         assertEq(v.feeRecipient(), user);
+        // maxSlippageBps and exitCostBps are deliberately DISTINCT (100, 25):
+        // equal values would encode identically under a transposition, so
+        // assertEq(predicted, deployed) alone cannot catch the two struct
+        // fields being swapped in CREATE2 salt derivation -- a swap would
+        // silently deploy a vault with its exit pricing and its rebalance
+        // swap bound exchanged, and still predict correctly against itself.
+        // Reading both getters back off the deployed vault closes that gap.
+        assertEq(v.maxSlippageBps(), 100, "maxSlippageBps must reach the deployed vault unswapped");
+        assertEq(v.exitCostBps(), 25, "exitCostBps must reach the deployed vault unswapped");
     }
 
     function test_DeployYieldVault_PredictMatches() public {

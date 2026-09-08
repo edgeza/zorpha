@@ -3,13 +3,13 @@ pragma solidity ^0.8.28;
 
 import {Test, Vm} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {SpotVaultMinimal} from "../../src/vaults/SpotVaultMinimal.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockOracle} from "../mocks/MockOracle.sol";
 import {MockSpotAdapter} from "../mocks/MockSpotAdapter.sol";
 import {ReceiptRenderer} from "../../src/lib/ReceiptRenderer.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
-import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 
 contract SpotVaultMinimalTest is Test {
     MockERC20 wbtc;
@@ -36,7 +36,7 @@ contract SpotVaultMinimalTest is Test {
         vault = new SpotVaultMinimal(
             address(wbtc), address(usdc), address(oracle), MAX_STALE,
             "Zorpha BTC Vault", "sqBTC",
-            0, 100, 0,
+            0, 100, 100, 0,
             address(this), address(this),
             1 hours
         );
@@ -321,15 +321,23 @@ contract SpotVaultMinimalTest is Test {
         MockSpotAdapter dry = new MockSpotAdapter(address(wbtc), address(usdc), address(oracle));
         vault.setSwapAdapter(address(dry));
 
+        // Superseded by the conversion-cost fix (docs/design/stock-vault-exit-paths.md,
+        // "It also removes the capacity limit"): maxRedeem no longer imposes a
+        // generic deliverable-assets cap below the full balance -- the exiting
+        // holder now pays for their own conversion, so capacity is 100% of the
+        // holding regardless of the swap venue's condition. maxRedeem cannot
+        // see that THIS venue happens to be dry (it never consults
+        // swapAdapter), so it correctly advertises the whole balance here too.
+        assertEq(vault.maxRedeem(alice), shares, "capacity is 100% of the holding even against a dry venue");
+
         vm.prank(alice);
-        // The fresh adapter holds neither leg, so the ordinary redeem cannot
-        // settle its swap -- which is the precondition for the emergency exit
-        // exercised below, not an incidental failure.
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IERC20Errors.ERC20InsufficientBalance.selector, address(dry), 0, 500_000_000
-            )
-        );
+        // The standard path therefore proceeds past the maxRedeem check and
+        // fails deeper in, inside the swap itself: the fresh adapter holds
+        // neither leg, so it has nothing to send back for the cash it is
+        // asked to convert. That is the real failure this test is about --
+        // still the precondition for the emergency exit exercised below, not
+        // an incidental one.
+        vm.expectPartialRevert(IERC20Errors.ERC20InsufficientBalance.selector);
         vault.redeem(shares, alice, alice);
 
         uint256 assetLeg = wbtc.balanceOf(address(vault));
@@ -611,7 +619,7 @@ contract SpotVaultFeeTest is Test {
         vault = new SpotVaultMinimal(
             address(wbtc), address(usdc), address(oracle), 1 hours,
             "Zorpha BTC Vault", "sqBTC",
-            0, 100, 2000,                       // 20% performance fee, unlike the main suite
+            0, 100, 100, 2000,                  // 20% performance fee, unlike the main suite
             address(this), address(this),
             1 hours
         );
@@ -776,7 +784,7 @@ contract SpotVaultWriteDownTest is Test {
         adapter = new MockSpotAdapter(address(wbtc), address(usdc), address(oracle));
         vault = new SpotVaultMinimal(
             address(wbtc), address(usdc), address(oracle), 1 hours,
-            "Zorpha BTC Vault", "sqBTC", 0, 100, 2000,
+            "Zorpha BTC Vault", "sqBTC", 0, 100, 100, 2000,
             address(this), address(this), 1 hours
         );
         vault.setSwapAdapter(address(adapter));

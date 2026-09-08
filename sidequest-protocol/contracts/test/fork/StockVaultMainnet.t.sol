@@ -254,7 +254,7 @@ contract StockVaultMainnetForkTest is Test {
         SpotVaultMinimal vault = new SpotVaultMinimal(
             NVDA, USDG, address(adapter), 3600,
             "Zorpha NVDA Long/Flat", "zqNVDA",
-            100, 100, 1000,
+            100, 100, 100, 1000,
             address(this), address(this), 0
         );
 
@@ -283,7 +283,7 @@ contract StockVaultMainnetForkTest is Test {
         SpotVaultMinimal vault = new SpotVaultMinimal(
             NVDA, USDG, address(adapter), 60, // 60s vault against an 1800s TWAP
             "Zorpha NVDA Long/Flat", "zqNVDA",
-            100, 100, 1000,
+            100, 100, 100, 1000,
             address(this), address(this), 0
         );
         assertEq(vault.maxOracleStaleness(), 60);
@@ -303,6 +303,7 @@ contract StockVaultMainnetForkTest is Test {
             "Zorpha NVDA Long/Flat", "zqNVDA",
             100,   // rebalanceThresholdBps
             100,   // maxSlippageBps
+            100,   // exitCostBps
             1000,  // performanceFeeBps
             address(this), address(this), 0
         );
