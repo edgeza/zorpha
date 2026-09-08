@@ -281,7 +281,7 @@ contract ExitCapacityTest is Test {
         vault = new SpotVaultMinimal(
             address(stock), address(cash), address(oracle), 1 hours,
             "Zorpha NVDA Long/Flat", "zqNVDA",
-            0, 100, 0,
+            0, 100, 100, 0,
             address(this), address(this),
             0
         );
@@ -1025,7 +1025,7 @@ contract ExitInvariantsTest is StdInvariant, Test {
         vault = new SpotVaultMinimal(
             address(stock), address(cash), address(oracle), 365 days,
             "Zorpha NVDA Long/Flat", "zqNVDA",
-            0, 100, 0,
+            0, 100, 100, 0,
             address(this), address(this),
             0
         );
@@ -1137,7 +1137,9 @@ git commit -m "test(vault): assert the advertised maximums are executable"
 - Consumes: the fixed `SpotVaultMinimal`.
 - Produces: a deployed vault address, needed by Tasks 9, 10 and 11.
 
-**Background.** Reuse the existing TWAP oracle `0xaBefb351777d8E68FCafa4D2F8A5848F326298cA` and the existing swap adapter `0x8E50FC336f87b454cc44a89dA3a7267412B045dc`; only the vault is redeployed. Admin lands on the **Safe**, not the Timelock, so the role batch in Task 10 can complete atomically. Deploying straight to the Timelock would need three separate 48-hour proposals while the vault sits on chain unable to trade.
+**Background.** Reuse the existing TWAP oracle `0xaBefb351777d8E68FCafa4D2F8A5848F326298cA` and the existing swap adapter `0x8E50FC336f87b454cc44a89dA3a7267412B045dc`; only the vault is redeployed. That is why this is a NEW script rather than a re-run of `script/DeployStockVault.s.sol`, which deploys all three.
+
+`DeployStockVault.s.sol` was updated during Tasks 1 to 7 and is the reference for `EXIT_COST_BPS` and its derivation; copy the value, not the whole file. Admin lands on the **Safe**, not the Timelock, so the role batch in Task 10 can complete atomically. Deploying straight to the Timelock would need three separate 48-hour proposals while the vault sits on chain unable to trade.
 
 Slice-1 parameters, from `script/DeployStockVault.s.sol`: `MAX_ORACLE_STALENESS = 3600`, `REBALANCE_THRESHOLD_BPS = 100`, `MAX_SLIPPAGE_BPS = 100`, `PERFORMANCE_FEE_BPS = 1000`, `EMERGENCY_REDEEM_COOLDOWN = 0`, `feeRecipient = TREASURY`.
 
@@ -1182,7 +1184,7 @@ contract StockVaultV2LiveTest is Test {
         v = new SpotVaultMinimal(
             NVDA, USDG, ORACLE, 3600,
             "Zorpha NVDA Long/Flat", "zqNVDA",
-            100, 100, 1000,
+            100, 100, 250, 1000,
             TREASURY, SAFE, 0
         );
         vm.startPrank(SAFE);
@@ -1221,10 +1223,12 @@ contract StockVaultV2LiveTest is Test {
             uint256 held = v.balanceOf(SAFE);
             uint256 mr = v.maxRedeem(SAFE);
             assertGt(mr, 0, "a solvent vault must advertise capacity at every target");
-            // The spec's table: 10000 gives 100%, 5000 gives 99.50%, 0 gives
-            // 98.99%. Assert the floor rather than the exact figure, which
-            // moves with the pool.
-            assertGe((mr * 10000) / held, 9800, "capacity floor");
+            // Capacity is 100% at every position now that the exiting holder
+            // bears their own conversion cost: the old 98.99-to-100 band was
+            // measured before that fix. Assert the full holding, not a floor,
+            // because anything less means the exit-cost haircut and the
+            // deliverable haircut have started compounding.
+            assertEq(mr, held, "capacity must be the whole holding at every target");
 
             vm.prank(SAFE);
             v.redeem(mr, SAFE, SAFE);
@@ -1311,12 +1315,22 @@ contract DeployStockVaultV2 is Script {
     uint256 constant PERFORMANCE_FEE_BPS = 1000;
     uint256 constant EMERGENCY_REDEEM_COOLDOWN = 0;
 
+    // NEW in this slice, and immutable, so getting it wrong means redeploying.
+    // 250 is derived: the adapter answers with a price up to
+    // maxSpotDivergenceBps (200) away from spot, and measured impact at
+    // 100,000 USDG is 7bps, so the worst conversion the oracle will still
+    // price costs 207. Below that, an exit reverts on minOut AFTER maxRedeem
+    // advertised it. Read the full derivation on EXIT_COST_BPS in
+    // script/DeployStockVault.s.sol, and re-run
+    // test/fork/ExitCostCalibration.t.sol before broadcasting: drift moves.
+    uint16 constant EXIT_COST_BPS = 250;
+
     function run() external {
         vm.startBroadcast();
         SpotVaultMinimal vault = new SpotVaultMinimal(
             NVDA, USDG, ORACLE, MAX_ORACLE_STALENESS,
             "Zorpha NVDA Long/Flat", "zqNVDA",
-            REBALANCE_THRESHOLD_BPS, MAX_SLIPPAGE_BPS, PERFORMANCE_FEE_BPS,
+            REBALANCE_THRESHOLD_BPS, MAX_SLIPPAGE_BPS, EXIT_COST_BPS, PERFORMANCE_FEE_BPS,
             TREASURY, SAFE,
             EMERGENCY_REDEEM_COOLDOWN
         );
