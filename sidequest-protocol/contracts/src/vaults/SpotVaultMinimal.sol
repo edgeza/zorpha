@@ -94,7 +94,6 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
     error BadWeight();
     error StaleOracle(uint256 updatedAt, uint256 nowTs);
     error InvalidOraclePrice(int256 answer);
-    error EmergencyBreakerActive();
     error EmergencyCooldownActive(uint256 nextAllowedAt);
 
     constructor(
@@ -596,7 +595,10 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         nonReentrant
         returns (uint256 paid, uint256 paidCash)
     {
-        if (isCircuitBreakerActive) revert EmergencyBreakerActive();
+        // Deliberately NOT gated on isCircuitBreakerActive. This is the only
+        // path that reads no oracle and calls no venue, and it pays both legs
+        // exactly pro-rata, so it is the one thing a breaker should preserve
+        // rather than remove. The per-owner cooldown below still applies.
         require(shares > 0, "SpotVaultMinimal: zero shares");
         require(receiver != address(0) && owner != address(0), "SpotVaultMinimal: zero addr");
 

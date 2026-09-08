@@ -147,4 +147,27 @@ contract ExitCapacityTest is Test {
         assertEq(vault.maxRedeem(alice), 0, "and the same for the exit side");
         assertEq(vault.maxWithdraw(alice), 0, "and the same for the exit side");
     }
+
+    /// A breaker must not remove the one exit that cannot misprice. It exists
+    /// to suspend the paths that can.
+    function test_BreakerSuspendsTheStandardPathButNotTheInKindOne() public {
+        vault.grantRole(vault.RISK_COUNCIL_ROLE(), address(this));
+        vm.prank(keeper);
+        vault.rebalanceTo(5000);
+        vault.setCircuitBreaker(true);
+
+        assertEq(vault.maxRedeem(alice), 0, "standard path must be shut");
+        assertEq(vault.maxDeposit(alice), 0, "deposits must be shut");
+
+        uint256 held = vault.balanceOf(alice);
+        uint256 stockBefore = stock.balanceOf(alice);
+        uint256 cashBefore = cash.balanceOf(alice);
+
+        vm.prank(alice);
+        vault.redeemEmergency(held, alice, alice);
+
+        assertEq(vault.balanceOf(alice), 0, "the in-kind exit must still work");
+        assertGt(stock.balanceOf(alice) - stockBefore, 0, "paid the asset leg");
+        assertGt(cash.balanceOf(alice) - cashBefore, 0, "and the cash leg, in kind");
+    }
 }
