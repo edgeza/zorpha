@@ -170,4 +170,42 @@ contract ExitCapacityTest is Test {
         assertGt(stock.balanceOf(alice) - stockBefore, 0, "paid the asset leg");
         assertGt(cash.balanceOf(alice) - cashBefore, 0, "and the cash leg, in kind");
     }
+
+    /// The lockout case. When the oracle refuses, the standard path must close
+    /// itself rather than advertise shares it cannot pay, and the in-kind path
+    /// must still work, because it reads no oracle.
+    function test_RefusingOracle_ClosesTheStandardPathAndLeavesTheInKindOne() public {
+        vm.prank(keeper);
+        vault.rebalanceTo(5000);
+        oracle.setRevertOnRead(true);
+
+        assertEq(vault.maxRedeem(alice), 0, "must not advertise a path that reverts");
+        assertEq(vault.maxWithdraw(alice), 0, "same");
+
+        uint256 shares = vault.balanceOf(alice);
+        vm.prank(alice);
+        (bool ok,) = address(vault).call(abi.encodeCall(vault.redeem, (shares, alice, alice)));
+        assertFalse(ok, "and the standard path must indeed be shut");
+
+        // Read the balance BEFORE pranking: an argument that is itself a call
+        // consumes the prank.
+        uint256 held = vault.balanceOf(alice);
+        vm.prank(alice);
+        vault.redeemEmergency(held, alice, alice);
+        assertEq(vault.balanceOf(alice), 0, "the in-kind exit must always work");
+    }
+
+    /// A vault holding NO cash needs no oracle to serve an exit, and must not
+    /// be gated on one. This is why _cashLegValue short-circuits at zero.
+    function test_RefusingOracle_ZeroCashVaultStillExits() public {
+        vm.prank(keeper);
+        vault.rebalanceTo(10000);
+        assertEq(cash.balanceOf(address(vault)), 0, "fixture must reach a zero cash leg");
+        oracle.setRevertOnRead(true);
+
+        uint256 held = vault.balanceOf(alice);
+        assertEq(vault.maxRedeem(alice), held, "no cash leg means no oracle dependency");
+        vm.prank(alice);
+        vault.redeem(held, alice, alice);
+    }
 }
