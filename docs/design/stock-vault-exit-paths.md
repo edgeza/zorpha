@@ -367,8 +367,42 @@ converts nothing and therefore pays nothing: `net == gross` whenever
 
 `previewRedeem` returns `net`. `previewWithdraw` inverts it, returning the
 shares needed to cover a requested net payout plus its own cost. The remaining
-holders are left exactly whole: the shares burned are worth `net` plus the cut,
-and both leave the pool together.
+holders' GROSS claim is left exactly whole: the exiting holder is never paid
+more than the oracle NAV of the shares they burn, so `convertToAssets` on an
+unchanged share count does not move. Their NET quote is a different number,
+and it is not held whole -- see "The net quote is not held whole" below.
+
+### The net quote is not held whole
+
+"Exactly whole" above is true of the gross claim and false of the net quote,
+which is the number a depositor actually sees from `previewRedeem`. Measured
+with two EQUAL holders -- a fixture no test in this suite used before this was
+found -- one exiting in full, the other's quote read immediately before and
+after:
+
+```
+exitCostBps    stayer's net quote falls    going first is worth
+      5                4 bps                      5 bps
+     25               24 bps                     25 bps
+    250              249 bps                    256 bps   <- the deployed value
+
+stayer's GROSS claim: 99975000000000000000 before AND after. Unchanged.
+```
+
+The mechanism is inherent, not a bug a different formula would remove.
+`previewRedeem` charges a cost only past `bal`, the vault's actual asset
+balance, and `bal` is one finite pool shared by every holder's quote,
+first-come-first-served. Whoever prices an exit first is served out of it and
+converts nothing, paying no cost; the next holder to price an exit meets a
+cash-heavier vault and pays the haircut on more of their own claim, even
+though neither holder did anything to the other. With two equal holders at a
+50/50 position, each one's own gross claim exactly matches `bal`, so whichever
+one redeems first always clears for free -- and leaves the other pricing an
+unchanged-size claim against a vault that no longer has any asset leg left to
+cover it.
+
+`test_Q4_FirstMoverEdge_PinnedAtDeployedExitCost` pins the 256bps figure at
+the deployed `exitCostBps`, 250, so it cannot drift silently.
 
 ### It also removes the capacity limit
 

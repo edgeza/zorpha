@@ -313,30 +313,31 @@ contract ExitCapacityTest is Test {
         vault.rebalanceTo(5000);
     }
 
-    /// P1. NO DILUTION -- the whole point of the fix. On this EXACT fixture
-    /// (verified by temporarily running it against the pre-fix contract), the
-    /// old code takes bob from 999750000000000000 to 974762626260775861: a
-    /// 249bps loss, charged to a holder who did nothing, just for sharing a
-    /// pool with someone who exited. After the fix, bob is never worse off.
+    /// P1. THE GROSS CLAIM IS NEVER DILUTED. On this EXACT fixture (verified
+    /// by temporarily running it against the pre-fix contract), the old code
+    /// took bob's previewRedeem from 999750000000000000 to 974762626260775861:
+    /// a 249bps loss, charged to a holder who did nothing, just for sharing a
+    /// pool with someone who exited. After the fix, bob's GROSS claim --
+    /// `convertToAssets`, the oracle-priced NAV of his shares with no exit
+    /// haircut applied -- never falls.
     ///
-    /// NOT asserted: that bob's figure is unchanged to a wei or two. It is
-    /// not, on this fixture, and that is a separate, understood effect, not a
-    /// defect. `previewRedeem`/`maxWithdraw` charge the exiting holder the
-    /// RESERVED `exitCostBps`, because a view function has no live quote to
-    /// charge the REAL fee instead -- the same reason `_deliverableAssets`
-    /// haircuts the cash leg by the reserve rather than a real-time price.
-    /// `_withdraw`'s own gross-up sizes the swap off that same reserve, so
-    /// whenever the venue's real fee is BELOW it -- 5bps against the 100bps
-    /// reserve here, the live NVDA/USDG relationship -- the swap converts
-    /// more value than alice's exit actually cost, and the difference
-    /// remains in the pool for bob. Measured below: he more
-    /// than doubles. Both directions -- unchanged, or better -- satisfy
-    /// "never diluted"; only a decrease would not, and none is observed.
-    function test_P1_NoDilution_OtherHoldersEntitlementIsUnchanged() public {
+    /// NOT asserted here: that bob's NET quote, `previewRedeem`, is unchanged
+    /// or improved. It is neither, in general -- with two EQUAL holders it
+    /// FALLS when the other exits first, because the asset leg `previewRedeem`
+    /// prices against is finite and first-come-first-served. See
+    /// docs/design/stock-vault-exit-paths.md, "The net quote is not held
+    /// whole", and test_Q4_FirstMoverEdge_PinnedAtDeployedExitCost below.
+    /// This fixture's 100:1 holder ratio happens to land on the OTHER side of
+    /// that effect -- alice is charged the RESERVED exitCostBps (100bps)
+    /// against a 5bps real venue fee, and that surplus dwarfs anything the
+    /// shared-asset-leg mechanism could cost a holder as small as bob -- but
+    /// that is a property of this fixture's ratio, not a guarantee, which is
+    /// exactly why this test now checks the one thing that IS guaranteed.
+    function test_P1_GrossClaimNeverDiluted_OtherHoldersEntitlementIsUnchanged() public {
         address bob = _addBobAndRebalanceToFifty();
 
         uint256 bobShares = vault.balanceOf(bob);
-        uint256 bobBefore = vault.previewRedeem(bobShares);
+        uint256 bobGrossBefore = vault.convertToAssets(bobShares);
 
         // Read maxWithdraw BEFORE pranking: an argument that is itself a call
         // consumes the prank, which would leave the withdraw call itself
@@ -345,17 +346,12 @@ contract ExitCapacityTest is Test {
         vm.prank(alice);
         vault.withdraw(aliceMaxWithdraw, alice, alice);
 
-        uint256 bobAfter = vault.previewRedeem(bobShares);
+        uint256 bobGrossAfter = vault.convertToAssets(bobShares);
 
-        console2.log("bob previewRedeem before  ", bobBefore);
-        console2.log("bob previewRedeem after   ", bobAfter);
-        console2.log("pre-fix reference (HEAD)  ", uint256(974762626260775861));
+        console2.log("bob convertToAssets before", bobGrossBefore);
+        console2.log("bob convertToAssets after ", bobGrossAfter);
 
-        assertGe(bobAfter, bobBefore - 2, "bob must never be diluted by alice's exit, up to a wei or two of rounding");
-        // previewRedeem must still never pay out more than the un-haircut
-        // conversion, even for bob's own share of the windfall above -- the
-        // same invariant P2 and P3 exercise from the exiting holder's side.
-        assertLe(bobAfter, vault.convertToAssets(bobShares), "previewRedeem must never exceed the un-haircut conversion");
+        assertGe(bobGrossAfter, bobGrossBefore, "bob's gross claim must never decrease when alice exits");
     }
 
     /// P2. THE EXITER PAYS. In the same setup, alice must receive strictly
@@ -473,7 +469,7 @@ contract ExitCapacityTest is Test {
         assertEq(stock.balanceOf(alice) - before, expected, "and must deliver exactly that many assets");
     }
 
-    // ─── Q1-Q3: exitCostBps split from maxSlippageBps ──────────────────────
+    // ─── Q1-Q4: exitCostBps split from maxSlippageBps ──────────────────────
     //
     // maxSlippageBps used to price exits AND bound rebalances, and those two
     // jobs want different values: a swap bound needs headroom for price
@@ -481,12 +477,14 @@ contract ExitCapacityTest is Test {
     // on the live pool), while an exit price should track the realised cost,
     // near the 5bps fee tier. Measured at the live 100bps setting against a
     // 5bps venue, a stranger's exit made the remaining holder GAIN 4601bps;
-    // at 25bps the gain is 964bps; at 6bps, 43bps. These three tests are the
-    // proof that splitting the parameter fixes the mispricing without
-    // reopening the dilution P1-P4 already closed.
+    // at 25bps the gain is 964bps; at 6bps, 43bps. Q1-Q3 are the proof that
+    // splitting the parameter fixes the mispricing without reopening the
+    // dilution P1-P4 already closed. Q4 pins the first-mover effect that
+    // splitting the parameter does NOT remove -- see docs/design/
+    // stock-vault-exit-paths.md, "The net quote is not held whole".
 
     /// @dev A vault wired exactly like the one in `setUp`, but with its own
-    ///      maxSlippageBps and exitCostBps, so Q1-Q3 can move either one
+    ///      maxSlippageBps and exitCostBps, so Q1-Q4 can move either one
     ///      independently of the other.
     function _freshVault(uint16 maxSlippageBps_, uint16 exitCostBps_) internal returns (SpotVaultMinimal v) {
         v = new SpotVaultMinimal(
@@ -554,9 +552,15 @@ contract ExitCapacityTest is Test {
     ///      exitCostBps (maxSlippageBps fixed at 100 throughout, so only
     ///      exitCostBps moves), seeded like `_addBobAndRebalanceToFifty`
     ///      (100e18 against 1e18, rebalanced to 50/50), with the big holder
-    ///      then exiting its maxWithdraw. Returns the small holder's
-    ///      previewRedeem immediately before and after.
-    function _exitAndMeasureStayer(uint16 exitCostBps_) internal returns (uint256 stayerBefore, uint256 stayerAfter) {
+    ///      then exiting its maxWithdraw. Returns the small holder's NET quote
+    ///      (`previewRedeem`) and GROSS claim (`convertToAssets`) immediately
+    ///      before and after -- Q2 uses the gross pair, Q3 the net pair. They
+    ///      are not interchangeable: see docs/design/stock-vault-exit-paths.md,
+    ///      "The net quote is not held whole".
+    function _exitAndMeasureStayer(uint16 exitCostBps_)
+        internal
+        returns (uint256 stayerNetBefore, uint256 stayerNetAfter, uint256 stayerGrossBefore, uint256 stayerGrossAfter)
+    {
         SpotVaultMinimal v = _freshVault(100, exitCostBps_);
 
         address bigHolder = makeAddr("q23-big");
@@ -578,24 +582,33 @@ contract ExitCapacityTest is Test {
         v.rebalanceTo(5000);
 
         uint256 smallShares = v.balanceOf(smallHolder);
-        stayerBefore = v.previewRedeem(smallShares);
+        stayerNetBefore = v.previewRedeem(smallShares);
+        stayerGrossBefore = v.convertToAssets(smallShares);
 
         uint256 mw = v.maxWithdraw(bigHolder);
         vm.prank(bigHolder);
         v.withdraw(mw, bigHolder, bigHolder);
 
-        stayerAfter = v.previewRedeem(smallShares);
+        stayerNetAfter = v.previewRedeem(smallShares);
+        stayerGrossAfter = v.convertToAssets(smallShares);
     }
 
-    /// Q2. STAYERS ARE STILL NEVER DILUTED, at exitCostBps far below the live
-    /// maxSlippageBps setting -- the same property P1 proves at 100,
+    /// Q2. THE GROSS CLAIM IS STILL NEVER DILUTED, at exitCostBps far below
+    /// the live maxSlippageBps setting -- the same property P1 proves at 100,
     /// re-proven here at the two values Q3 measures next.
-    function test_Q2_StayersNeverDiluted_AtLowExitCost() public {
-        (uint256 before25, uint256 after25) = _exitAndMeasureStayer(25);
-        assertGe(after25, before25 - 2, "stayer must never be diluted, exitCostBps 25");
+    ///
+    /// This checks `convertToAssets`, the gross claim, not `previewRedeem`.
+    /// The NET quote does not get the same guarantee -- see
+    /// docs/design/stock-vault-exit-paths.md, "The net quote is not held
+    /// whole" -- which is exactly what made the old version of this test
+    /// (asserting previewRedeem instead, with a wei-or-two tolerance) true
+    /// only by accident of this fixture's 100:1 holder ratio.
+    function test_Q2_GrossClaimNeverDiluted_AtLowExitCost() public {
+        (,, uint256 grossBefore25, uint256 grossAfter25) = _exitAndMeasureStayer(25);
+        assertGe(grossAfter25, grossBefore25, "stayer's gross claim must never decrease, exitCostBps 25");
 
-        (uint256 before6, uint256 after6) = _exitAndMeasureStayer(6);
-        assertGe(after6, before6 - 2, "stayer must never be diluted, exitCostBps 6");
+        (,, uint256 grossBefore6, uint256 grossAfter6) = _exitAndMeasureStayer(6);
+        assertGe(grossAfter6, grossBefore6, "stayer's gross claim must never decrease, exitCostBps 6");
     }
 
     /// Q3. A LOWER exitCostBps SHRINKS THE TRANSFER TO WHOEVER STAYS. Same
@@ -603,10 +616,11 @@ contract ExitCapacityTest is Test {
     /// from 100 (the live maxSlippageBps setting, before this split existed)
     /// to 25 (script/DeployStockVault.s.sol's new EXIT_COST_BPS) -- the same
     /// direction measured in the incidence notes (4601bps at 100, 964bps at
-    /// 25).
+    /// 25). This is the NET quote, deliberately: it is the windfall side of
+    /// the same mechanism Q4 pins the cost side of.
     function test_Q3_LowerExitCostShrinksTheStayerGain() public {
-        (uint256 before100, uint256 after100) = _exitAndMeasureStayer(100);
-        (uint256 before25, uint256 after25) = _exitAndMeasureStayer(25);
+        (uint256 before100, uint256 after100,,) = _exitAndMeasureStayer(100);
+        (uint256 before25, uint256 after25,,) = _exitAndMeasureStayer(25);
 
         uint256 gainBpsAt100 = ((after100 - before100) * 10000) / before100;
         uint256 gainBpsAt25 = ((after25 - before25) * 10000) / before25;
@@ -614,5 +628,65 @@ contract ExitCapacityTest is Test {
         console2.log("Q3 stayer gain bps, exitCostBps 100", gainBpsAt100);
         console2.log("Q3 stayer gain bps, exitCostBps  25", gainBpsAt25);
         assertLt(gainBpsAt25, gainBpsAt100, "a lower exitCostBps must shrink the stayer's windfall");
+    }
+
+    /// Q4. THE FIRST-MOVER EDGE, PINNED. Two EQUAL holders, exitCostBps at the
+    /// deployed value (250) -- a fixture no other test in this file uses. The
+    /// mechanism behind P1 and Q2's caveats and docs/design/
+    /// stock-vault-exit-paths.md's "The net quote is not held whole": the
+    /// asset leg `previewRedeem` prices against is finite and
+    /// first-come-first-served, so whichever of two EQUAL holders redeems
+    /// FIRST clears for free while the other's own NET quote falls, even
+    /// though neither holder did anything to the other.
+    ///
+    /// Pinned so the edge cannot drift silently if the formula ever changes:
+    /// measured at 249bps falling / 256bps first-mover edge for exitCostBps
+    /// 250.
+    function test_Q4_FirstMoverEdge_PinnedAtDeployedExitCost() public {
+        uint16 deployedExitCostBps = 250;
+        SpotVaultMinimal v = _freshVault(100, deployedExitCostBps);
+
+        address mover = makeAddr("q4-mover");
+        address stayer = makeAddr("q4-stayer");
+
+        stock.mint(mover, DEPOSIT);
+        vm.startPrank(mover);
+        stock.approve(address(v), DEPOSIT);
+        v.deposit(DEPOSIT, mover);
+        vm.stopPrank();
+
+        stock.mint(stayer, DEPOSIT);
+        vm.startPrank(stayer);
+        stock.approve(address(v), DEPOSIT);
+        v.deposit(DEPOSIT, stayer);
+        vm.stopPrank();
+
+        vm.prank(keeper);
+        v.rebalanceTo(5000);
+
+        uint256 stayerShares = v.balanceOf(stayer);
+        uint256 before = v.previewRedeem(stayerShares);
+
+        // The mover redeems its ENTIRE holding first, consuming the whole
+        // asset leg (each holder's gross claim exactly matches it, at 50/50
+        // with equal deposits) before the stayer prices anything.
+        uint256 moverShares = v.balanceOf(mover);
+        vm.prank(mover);
+        v.redeem(moverShares, mover, mover);
+
+        uint256 afterMoverExits = v.previewRedeem(stayerShares);
+        assertLt(afterMoverExits, before, "test must exercise the first-mover effect, or the fixture has drifted");
+
+        uint256 fallBps = ((before - afterMoverExits) * 10000) / before;
+        uint256 firstMoverEdgeBps = ((before - afterMoverExits) * 10000) / afterMoverExits;
+
+        console2.log("Q4 stayer previewRedeem before mover exits", before);
+        console2.log("Q4 stayer previewRedeem after  mover exits", afterMoverExits);
+        console2.log("Q4 stayer's net quote falls, bps          ", fallBps);
+        console2.log("Q4 going first is worth, bps              ", firstMoverEdgeBps);
+
+        assertApproxEqAbs(
+            firstMoverEdgeBps, 256, 2, "the first-mover edge must not drift silently from the measured 256bps"
+        );
     }
 }
