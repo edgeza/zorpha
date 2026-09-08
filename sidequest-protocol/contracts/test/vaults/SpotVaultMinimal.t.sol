@@ -329,6 +329,12 @@ contract SpotVaultMinimalTest is Test {
         // advertised bound and the standard path is rejected there rather
         // than deeper inside the failed swap -- still the precondition for
         // the emergency exit exercised below, not an incidental failure.
+        // NOTE: this first assertion no longer depends on the venue being dry.
+        // maxRedeem never consults swapAdapter, so the same
+        // ERC4626ExceededMaxRedeem fires against a fully funded venue too; what
+        // it exercises now is the generic deliverable-assets cap, which
+        // test/vaults/ExitCapacity.t.sol covers directly. The dry venue below
+        // is load-bearing only for the redeemEmergency half of this test.
         vm.expectRevert(
             abi.encodeWithSelector(
                 ERC4626.ERC4626ExceededMaxRedeem.selector, alice, shares, vault.maxRedeem(alice)
