@@ -353,18 +353,24 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
     ///         share of the conversion cost, i.e. the `gross` for which
     ///         `previewRedeem` would answer exactly `assets`:
     ///
-    ///             gross = assets                                    if assets <= bal
-    ///             gross = (assets * 10000 - bal * h) / (10000 - h)   otherwise
+    ///             gross = assets                                          if assets <= bal
+    ///             gross = ceil((assets * 10000 - bal * h) / (10000 - h))   otherwise
     ///
-    ///         converted to shares with `Ceil`, so the vault is never left a
-    ///         wei short of the net payout it just promised.
+    ///         Both the inverse and the final share conversion round UP, so
+    ///         the vault is never left a wei short of the net payout it just
+    ///         promised. The inverse used to floor, which rounded AGAINST the
+    ///         vault instead of in its favour: measured,
+    ///         `previewRedeem(previewWithdraw(a)) == a - 1` for every `a`
+    ///         above `bal` tried, i.e. `withdraw` paid one wei more than the
+    ///         shares it burned were worth. See
+    ///         test_PreviewWithdraw_RoundsInTheVaultsFavour.
     function previewWithdraw(uint256 assets) public view override returns (uint256) {
         uint256 bal = IERC20(asset()).balanceOf(address(this));
         uint256 gross;
         if (assets <= bal) {
             gross = assets;
         } else {
-            gross = (assets * 10000 - bal * exitCostBps) / (10000 - exitCostBps);
+            gross = Math.ceilDiv(assets * 10000 - bal * exitCostBps, 10000 - exitCostBps);
         }
         return _convertToShares(gross, Math.Rounding.Ceil);
     }

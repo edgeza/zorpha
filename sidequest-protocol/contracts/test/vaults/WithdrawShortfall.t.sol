@@ -126,6 +126,51 @@ contract WithdrawShortfallTest is Test {
         assertEq(stock.balanceOf(alice) - before, owed, "and actually transfer it");
     }
 
+    /// ERC-4626 requires rounding to favour the vault. `previewWithdraw`'s
+    /// inverse formula floored its gross computation, which rounds AGAINST
+    /// the vault instead: measured, `previewRedeem(previewWithdraw(a)) ==
+    /// a - 1` for every `a` above `bal` tried, and `withdraw(bal + 1e15)`
+    /// burned shares worth `50000999999999999999` for a `50001000000000000000`
+    /// payout -- one wei cheaper than what it actually delivered.
+    function test_PreviewWithdraw_RoundsInTheVaultsFavour() public {
+        uint256 bal = stock.balanceOf(address(vault));
+
+        uint256[4] memory extra = [uint256(1e15), 1e18, 10e18, 40e18];
+        for (uint256 i = 0; i < extra.length; i++) {
+            uint256 a = bal + extra[i];
+            uint256 shares = vault.previewWithdraw(a);
+            uint256 worth = vault.previewRedeem(shares);
+            console2.log("a                                 ", a);
+            console2.log("   previewWithdraw(a)              ", shares);
+            console2.log("   previewRedeem(previewWithdraw(a))", worth);
+            assertGe(worth, a, "the shares previewWithdraw asks for must be worth at least the requested payout");
+        }
+
+        // And on an ACTUAL withdraw, not just the paired preview: the shares
+        // burned must be exactly what previewWithdraw predicted, and worth at
+        // least the payout that was just delivered. `withdraw` returns SHARES
+        // burned, not assets -- that is `redeem`'s job -- so assets delivered
+        // is read from the balance delta.
+        uint256 payout = bal + 1e15;
+        uint256 sharesNeeded = vault.previewWithdraw(payout);
+        uint256 worthBeforeBurn = vault.previewRedeem(sharesNeeded);
+
+        uint256 aliceSharesBefore = vault.balanceOf(alice);
+        uint256 aliceAssetsBefore = stock.balanceOf(alice);
+        vm.prank(alice);
+        uint256 sharesReturned = vault.withdraw(payout, alice, alice);
+        uint256 sharesBurned = aliceSharesBefore - vault.balanceOf(alice);
+        uint256 assetsReceived = stock.balanceOf(alice) - aliceAssetsBefore;
+
+        console2.log("payout             ", payout);
+        console2.log("shares burned worth", worthBeforeBurn);
+
+        assertEq(assetsReceived, payout, "withdraw must deliver exactly the requested payout");
+        assertEq(sharesReturned, sharesNeeded, "withdraw's return value must match previewWithdraw's prediction");
+        assertEq(sharesBurned, sharesNeeded, "withdraw must burn exactly what previewWithdraw predicted");
+        assertGe(worthBeforeBurn, payout, "withdraw must burn shares worth at least the payout it delivers");
+    }
+
     /// A full exit now succeeds through the standard path, typed refusal and
     /// all removed. It used to be refused here IN ADVANCE, with the typed
     /// ERC-4626 error rather than a raw ERC-20 revert, because the withdrawer
