@@ -133,4 +133,18 @@ contract ExitCapacityTest is Test {
         vm.prank(alice);
         vault.withdraw(mw, alice, alice);
     }
+
+    /// An integrator must be able to ask whether the vault is open, even when
+    /// the oracle is refusing. Both of these reach totalAssets() today and
+    /// revert rather than answering.
+    function test_DepositMaximumsAnswerWhenTheOracleRefuses() public {
+        vm.prank(keeper);
+        vault.rebalanceTo(5000);
+        oracle.setRevertOnRead(true);
+
+        assertEq(vault.maxDeposit(alice), 0, "closed, not unanswerable");
+        assertEq(vault.maxMint(alice), 0, "closed, not unanswerable");
+        assertEq(vault.maxRedeem(alice), 0, "and the same for the exit side");
+        assertEq(vault.maxWithdraw(alice), 0, "and the same for the exit side");
+    }
 }

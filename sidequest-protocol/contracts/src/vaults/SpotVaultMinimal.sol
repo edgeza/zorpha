@@ -290,15 +290,26 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         return byShares < deliverable ? byShares : deliverable;
     }
 
-    /// @notice Refuse deposits when halted or when share price is undefined.
+    /// @notice Refuse deposits when halted, when the share price is undefined,
+    ///         or when the cash leg cannot be priced.
+    ///
+    ///         The last case used to REVERT rather than answer, because
+    ///         `totalAssets()` reads the oracle and the oracle is built to
+    ///         refuse. A caller could not find out whether the vault was open.
+    ///         Returning zero says "closed right now", which is the truth and
+    ///         is a thing an integrator can act on.
     function maxDeposit(address) public view override returns (uint256) {
         if (isCircuitBreakerActive) return 0;
+        (, bool priced) = _cashLegValue();
+        if (!priced) return 0;
         if (totalSupply() > 0 && totalAssets() == 0) return 0;
         return type(uint256).max;
     }
 
     function maxMint(address) public view override returns (uint256) {
         if (isCircuitBreakerActive) return 0;
+        (, bool priced) = _cashLegValue();
+        if (!priced) return 0;
         if (totalSupply() > 0 && totalAssets() == 0) return 0;
         return type(uint256).max;
     }
