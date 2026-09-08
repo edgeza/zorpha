@@ -77,6 +77,36 @@ contract ExitCapacityTest is Test {
         }
     }
 
+    /// The gross-up in `_withdraw` must be the INVERSE of the haircut
+    /// `_deliverableAssets` applies to the cash leg -- `10000/(10000-h)`, not
+    /// `(10000+h)/10000`. The two agree to first order and only diverge once
+    /// the venue's real cost gets close to `h`, so a fixed venue fee never
+    /// catches this; the fee itself has to sweep up toward the bound.
+    ///
+    /// Held at a 50/50 position (h = maxSlippageBps = 100 here), the wrong
+    /// formula clears every fill up to 99bps and reverts at exactly 100bps:
+    /// the breakeven is 10000h/(10000+h) = 99.0099bps, so 99 rounds down to
+    /// "still clears" and 100 is the first integer past it.
+    function test_MaxRedeemExecutesAsVenueFeeApproachesMaxSlippage() public {
+        vm.prank(keeper);
+        vault.rebalanceTo(5000);
+
+        uint256[5] memory venueFeesBps = [uint256(96), 97, 98, 99, 100];
+        for (uint256 i = 0; i < venueFeesBps.length; i++) {
+            uint256 snap = vm.snapshotState();
+            venue.setFee(venueFeesBps[i]);
+
+            uint256 mr = vault.maxRedeem(alice);
+            assertGt(mr, 0, "a solvent vault must advertise some capacity");
+
+            vm.prank(alice);
+            vault.redeem(mr, alice, alice);
+
+            console2.log("venue fee bps", venueFeesBps[i]);
+            vm.revertToState(snap);
+        }
+    }
+
     /// A vault holding no cash at all must be fully redeemable. This is the
     /// virtual-share offset trap: deriving the bound by conversion alone comes
     /// out 501 wei short of the supply and refuses this exit.

@@ -112,7 +112,12 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
     ) ERC20(name_, symbol_) ERC4626(IERC20(asset_)) {
         require(asset_ != address(0) && cashAsset_ != address(0) && oracle_ != address(0), "zero addr");
         require(feeRecipient_ != address(0) && admin_ != address(0), "zero addr");
-        require(rebalanceThresholdBps_ <= 10000 && maxSlippageBps_ <= 10000 && performanceFeeBps_ <= 10000, "bad bps");
+        // maxSlippageBps is strictly LESS than 10000, not merely bounded by it:
+        // _withdraw grosses up a shortfall by 10000/(10000-maxSlippageBps), which
+        // divides by zero at the boundary. A vault promising to tolerate its
+        // whole cash leg as slippage cannot function regardless, so excluding
+        // the boundary here costs nothing real.
+        require(rebalanceThresholdBps_ <= 10000 && maxSlippageBps_ < 10000 && performanceFeeBps_ <= 10000, "bad bps");
         require(maxOracleStaleness_ > 0, "zero staleness");
         // Must not be TIGHTER than the oracle's own window, or a report living
         // in the gap drags updatedAt past what this vault accepts. See
@@ -427,11 +432,15 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         // position came up 9,181,117,677 wei short on a 0.0277 NVDA leg.
         //
         // Three changes. Round the cash input UP, so the dust case cannot ask
-        // the venue for zero. Gross it up by the slippage allowance, so the
-        // venue's cut is paid out of the cash leg rather than out of the
-        // depositor's delivery. And set minOut to the whole shortfall, so a
-        // fill that cannot cover fails inside _swap instead of at the transfer
-        // with ERC20InsufficientBalance.
+        // the venue for zero. Gross it up by the INVERSE of the haircut
+        // `_deliverableAssets` applies to the cash leg -- 10000/(10000-h), not
+        // (10000+h)/10000 -- so the venue's actual cut is paid out of the cash
+        // leg rather than out of the depositor's delivery. The two formulas
+        // agree to first order and diverge by h^2/1e8, which is why a fixed
+        // low-fee venue never caught this: the wrong one only fails once the
+        // venue's real cost passes 10000h/(10000+h), 99.0099bps at h=100. And
+        // set minOut to the whole shortfall, so a fill that cannot cover fails
+        // inside _swap instead of at the transfer with ERC20InsufficientBalance.
         //
         // minOut is the guarantee, not the gross-up. _swap ends in
         // require(received >= minOut, "slippage"), so under-delivery is
@@ -444,7 +453,7 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
             uint256 shortfall = assets - bal;
             uint256 cashIn = assetToCash(shortfall);
             if (cashToAsset(cashIn) < shortfall) cashIn += 1;
-            cashIn = (cashIn * (10000 + maxSlippageBps)) / 10000 + 1;
+            cashIn = (cashIn * 10000) / (10000 - maxSlippageBps) + 1;
             uint256 cashBal = cashAsset.balanceOf(address(this));
             if (cashIn > cashBal) cashIn = cashBal;
             _swap(address(cashAsset), asset(), cashIn, shortfall);
