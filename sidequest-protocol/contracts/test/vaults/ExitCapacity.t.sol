@@ -164,6 +164,63 @@ contract ExitCapacityTest is Test {
         vault.withdraw(mw, alice, alice);
     }
 
+    /// `withdraw` calls `_evaluateFees()` before OpenZeppelin re-reads
+    /// `maxWithdraw` to check the caller's request against it, so a fee that
+    /// accrues in between shrinks totalAssets() out from under the very bound
+    /// a caller just read. The live vault runs a 1000bps performance fee
+    /// (script/DeployStockVault.s.sol); every fixture in this file and in
+    /// ExitInvariants.t.sol runs zero, which is how this survived: netting
+    /// nothing against a fee that is always zero is indistinguishable from
+    /// netting correctly.
+    ///
+    /// Two holders, a 50/50 position, and a price drop from 232 to 200: the
+    /// cash leg re-prices to more NVDA than before, so NAV climbs past the
+    /// high-water mark and a fee is pending the instant `withdraw` calls
+    /// `_evaluateFees()`. maxRedeem is untouched by this -- accrual only
+    /// relaxes both of its branches -- so this is maxWithdraw-specific.
+    function test_MaxWithdrawExecutesUnderPendingPerformanceFee() public {
+        MockOracle feeOracle = new MockOracle(232 * 1e8, 8);
+        SlippingSpotAdapter feeVenue = new SlippingSpotAdapter(address(stock), address(cash), address(feeOracle));
+        feeVenue.setFee(5);
+
+        SpotVaultMinimal feeVault = new SpotVaultMinimal(
+            address(stock), address(cash), address(feeOracle), 1 hours,
+            "Zorpha NVDA Long/Flat", "zqNVDA",
+            0, 100, 1000, // performanceFeeBps: the live figure, not the fixture's zero
+            address(this), address(this),
+            0
+        );
+        feeVault.setSwapAdapter(address(feeVenue));
+        feeVault.grantRole(feeVault.KEEPER_ROLE(), keeper);
+
+        stock.mint(address(feeVenue), 1_000_000e18);
+        cash.mint(address(feeVenue), 1_000_000_000e6);
+
+        address bob = makeAddr("bob");
+        stock.mint(alice, DEPOSIT);
+        stock.mint(bob, DEPOSIT);
+
+        vm.startPrank(alice);
+        stock.approve(address(feeVault), DEPOSIT);
+        feeVault.deposit(DEPOSIT, alice);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        stock.approve(address(feeVault), DEPOSIT);
+        feeVault.deposit(DEPOSIT, bob);
+        vm.stopPrank();
+
+        vm.prank(keeper);
+        feeVault.rebalanceTo(5000);
+
+        feeOracle.setPrice(200 * 1e8);
+
+        uint256 mw = feeVault.maxWithdraw(alice);
+        assertGt(mw, 0, "a solvent vault must advertise some capacity");
+        vm.prank(alice);
+        feeVault.withdraw(mw, alice, alice);
+    }
+
     /// An integrator must be able to ask whether the vault is open, even when
     /// the oracle is refusing. Both of these reach totalAssets() today and
     /// revert rather than answering.

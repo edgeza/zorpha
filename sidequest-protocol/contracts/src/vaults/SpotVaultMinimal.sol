@@ -295,12 +295,50 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         return _convertToShares(deliverable, Math.Rounding.Floor);
     }
 
+    /// @dev The performance fee `_evaluateFees` would accrue if it ran right
+    ///      now, without mutating any state. Mirrors that function's
+    ///      computation exactly (the `fee` derivation and the room cap), so it
+    ///      must be kept in sync by hand if `_evaluateFees` ever changes.
+    ///
+    ///      Skips `_reconcileFeeClaimWhenEmpty`, which only matters while
+    ///      `totalSupply() == 0`; every holder's balance is 0 in that state too,
+    ///      so `maxWithdraw` returns 0 regardless of what this helper answers.
+    function _pendingPerformanceFee() internal view returns (uint256) {
+        uint256 nav = getNavPerShare();
+        if (nav <= highWaterMark) return 0;
+        uint256 alpha = nav - highWaterMark;
+        uint256 shareUnit = 10 ** decimals();
+        uint256 fee = (alpha * totalSupply() * performanceFee) / (shareUnit * 10000);
+        if (fee == 0) return 0;
+
+        uint256 gross = grossValue();
+        uint256 room = gross > performanceFeeAccrued + 1 ? gross - performanceFeeAccrued - 1 : 0;
+        return fee > room ? room : fee;
+    }
+
     /// @notice Assets this owner can withdraw through the standard path.
+    ///
+    ///         `withdraw` accrues fees via `_evaluateFees()` BEFORE OpenZeppelin
+    ///         re-reads this function to check the caller's request against it.
+    ///         That accrual lowers `totalAssets()`, so a caller who read this
+    ///         view first and then withdrew exactly that amount could have the
+    ///         floor drop out from under them mid-call: measured, a pending
+    ///         1000bps performance fee made `withdraw(maxWithdraw(owner))`
+    ///         revert `ERC4626ExceededMaxWithdraw` on a 0.74% gap.
+    ///
+    ///         `maxRedeem` needs no equivalent treatment: accrual only relaxes
+    ///         both of its branches, so it never becomes stale in the direction
+    ///         that matters. This function's asset-denominated bound moves the
+    ///         other way, so it nets the pending fee here instead.
     function maxWithdraw(address owner) public view override returns (uint256) {
         if (isCircuitBreakerActive) return 0;
         (uint256 deliverable, bool priced) = _deliverableAssets();
         if (!priced) return 0;
-        uint256 byShares = _convertToAssets(balanceOf(owner), Math.Rounding.Floor);
+        uint256 netAssets = totalAssets();
+        uint256 pendingFee = _pendingPerformanceFee();
+        netAssets = netAssets > pendingFee ? netAssets - pendingFee : 0;
+        uint256 byShares =
+            Math.mulDiv(balanceOf(owner), netAssets + 1, totalSupply() + 10 ** _decimalsOffset(), Math.Rounding.Floor);
         return byShares < deliverable ? byShares : deliverable;
     }
 
