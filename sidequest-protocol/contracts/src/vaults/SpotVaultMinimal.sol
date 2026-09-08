@@ -8,6 +8,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {ISpotSwapAdapter} from "../adapters/RobinhoodChainRouterAdapter.sol";
 import {AggregatorV3Interface} from "../oracle/MedianOracle.sol";
@@ -233,6 +234,60 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         uint256 supply = totalSupply();
         if (supply == 0) return 10 ** _assetDec;
         return (totalAssets() * (10 ** decimals())) / supply;
+    }
+
+    /// @dev Value the cash leg, or report that the oracle is refusing to price
+    ///      it. The zero short-circuit matters: a vault holding no cash needs
+    ///      no oracle to answer and must not be gated on one.
+    function _cashLegValue() internal view returns (uint256 value, bool priced) {
+        uint256 cashBal = cashAsset.balanceOf(address(this));
+        if (cashBal == 0) return (0, true);
+        try this.cashToAsset(cashBal) returns (uint256 v) {
+            return (v, true);
+        } catch {
+            return (0, false);
+        }
+    }
+
+    /// @dev What an exit could actually realise: the asset leg outright, plus
+    ///      the cash leg net of the venue's cut for converting it.
+    ///
+    ///      `totalAssets()` values the cash leg at the oracle price, and
+    ///      realising that value means crossing a venue that charges. The gap
+    ///      between those two numbers is the whole defect this fixes, so the
+    ///      bounds are computed from the realisable figure and never from
+    ///      `totalAssets()`.
+    function _deliverableAssets() internal view returns (uint256 amount, bool priced) {
+        (uint256 cashValue, bool ok) = _cashLegValue();
+        if (!ok) return (0, false);
+        uint256 realisable = (cashValue * (10000 - maxSlippageBps)) / 10000;
+        return (IERC20(asset()).balanceOf(address(this)) + realisable, true);
+    }
+
+    /// @notice Shares this owner can redeem through the standard path right now.
+    ///
+    ///         Previously inherited, which returned `balanceOf(owner)` and
+    ///         reported shares as redeemable while `redeem` reverted.
+    function maxRedeem(address owner) public view override returns (uint256) {
+        if (isCircuitBreakerActive) return 0;
+        (uint256 deliverable, bool priced) = _deliverableAssets();
+        if (!priced) return 0;
+        uint256 held = balanceOf(owner);
+        // Exact case first, and this is not an optimisation. Deriving the bound
+        // by conversion alone loses wei to the virtual-share offset: measured
+        // 501 wei below the supply, which refused a full exit on a vault
+        // holding no cash at all.
+        if (previewRedeem(held) <= deliverable) return held;
+        return _convertToShares(deliverable, Math.Rounding.Floor);
+    }
+
+    /// @notice Assets this owner can withdraw through the standard path.
+    function maxWithdraw(address owner) public view override returns (uint256) {
+        if (isCircuitBreakerActive) return 0;
+        (uint256 deliverable, bool priced) = _deliverableAssets();
+        if (!priced) return 0;
+        uint256 byShares = _convertToAssets(balanceOf(owner), Math.Rounding.Floor);
+        return byShares < deliverable ? byShares : deliverable;
     }
 
     /// @notice Refuse deposits when halted or when share price is undefined.

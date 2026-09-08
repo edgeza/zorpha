@@ -3,13 +3,13 @@ pragma solidity ^0.8.28;
 
 import {Test, Vm} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {SpotVaultMinimal} from "../../src/vaults/SpotVaultMinimal.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockOracle} from "../mocks/MockOracle.sol";
 import {MockSpotAdapter} from "../mocks/MockSpotAdapter.sol";
 import {ReceiptRenderer} from "../../src/lib/ReceiptRenderer.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
-import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 
 contract SpotVaultMinimalTest is Test {
     MockERC20 wbtc;
@@ -323,11 +323,15 @@ contract SpotVaultMinimalTest is Test {
 
         vm.prank(alice);
         // The fresh adapter holds neither leg, so the ordinary redeem cannot
-        // settle its swap -- which is the precondition for the emergency exit
-        // exercised below, not an incidental failure.
+        // settle its swap. maxRedeem now prices that shortfall in advance
+        // (it has no way to know the venue is empty, only that converting the
+        // cash leg costs something), so the full balance is already above the
+        // advertised bound and the standard path is rejected there rather
+        // than deeper inside the failed swap -- still the precondition for
+        // the emergency exit exercised below, not an incidental failure.
         vm.expectRevert(
             abi.encodeWithSelector(
-                IERC20Errors.ERC20InsufficientBalance.selector, address(dry), 0, 500_000_000
+                ERC4626.ERC4626ExceededMaxRedeem.selector, alice, shares, vault.maxRedeem(alice)
             )
         );
         vault.redeem(shares, alice, alice);
