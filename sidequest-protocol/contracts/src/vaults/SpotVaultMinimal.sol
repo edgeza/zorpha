@@ -594,10 +594,11 @@ contract SpotVaultMinimal is ERC4626, AccessControl, ReentrancyGuard {
         // the venue for zero. Gross it up by the INVERSE of the haircut
         // `_deliverableAssets` applies to the cash leg -- 10000/(10000-h), not
         // (10000+h)/10000 -- so the venue's actual cut is paid out of the cash
-        // leg rather than out of the depositor's delivery. The two formulas
-        // agree to first order and diverge by h^2/1e8, which is why a fixed
-        // low-fee venue never caught this: the wrong one only fails once the
-        // venue's real cost passes 10000h/(10000+h), 99.0099bps at h=100. And
+        // leg rather than out of the depositor's delivery. The breakeven this
+        // buys is exitCostBps itself: cover holds while the venue's REALISED
+        // cost -- fee plus price impact -- is at most exitCostBps, and the
+        // measured cliff sits exactly one basis point above that, at
+        // exitCostBps + 1. The deployed value is 250. And
         // set minOut to the whole shortfall, so a fill that cannot cover fails
         // inside _swap's slippage check rather than at the transfer below --
         // true whenever there is a cash leg to attempt a swap with. When the

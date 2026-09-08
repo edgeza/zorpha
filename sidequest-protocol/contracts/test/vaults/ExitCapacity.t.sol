@@ -87,7 +87,7 @@ contract ExitCapacityTest is Test {
     /// formula clears every fill up to 99bps and reverts at exactly 100bps:
     /// the breakeven is 10000h/(10000+h) = 99.0099bps, so 99 rounds down to
     /// "still clears" and 100 is the first integer past it.
-    function test_MaxRedeemExecutesAsVenueFeeApproachesMaxSlippage() public {
+    function test_MaxRedeemExecutesAsVenueFeeApproachesExitCost() public {
         vm.prank(keeper);
         vault.rebalanceTo(5000);
 
