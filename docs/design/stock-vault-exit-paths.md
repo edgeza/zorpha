@@ -102,8 +102,16 @@ super._withdraw(caller, receiver, owner, assets, shares);
 Three changes from the deployed version: the conversion rounds up rather than
 down, the input is grossed up so the venue's cut is paid out of the cash leg
 rather than out of the depositor's delivery, and `minOut` is the whole shortfall
-so a fill that cannot cover reverts at the swap with a typed venue error instead
-of at the transfer with `ERC20InsufficientBalance`.
+so a fill that cannot cover reverts inside `_swap` instead of at the transfer
+with `ERC20InsufficientBalance`. That revert is
+`require(received >= minOut, "slippage")`, a plain `Error(string)` and not a
+custom error, which is worth knowing because it is the failure an integrator
+will actually see.
+
+Note which line carries the guarantee. It is `minOut`, not the gross-up: the
+gross-up only makes the fill likely to clear the bound, while `_swap` refusing
+below `minOut` is what makes under-delivery impossible. Simplifying the gross-up
+away would cost nothing visible until a wider spread arrived.
 
 ### The bounds must be deliverable, not aspirational
 

@@ -90,14 +90,30 @@ Add to `test/vaults/WithdrawShortfall.t.sol`. The existing fixture in that file 
     /// A withdrawal that needs the cash leg converted must be delivered in
     /// full. The venue's cut comes out of the cash leg, not out of the
     /// depositor's payment.
-    function test_HalfExit_ConvertsAndDeliversInFull() public {
+    ///
+    /// WHY 70% AND NOT HALF. An exact-half redeem does NOT enter the shortfall
+    /// branch, so a test built on it passes with or without this fix and proves
+    /// nothing. After rebalanceTo(5000) the asset leg is 50e18 while
+    /// totalAssets is 99.975e18, because the rebalance paid the venue fee out
+    /// of the position: half of NAV is therefore LESS than half of the original
+    /// position, and the asset leg covers it outright. Measured against this
+    /// fixture, pre-fix against post-fix:
+    ///
+    ///     45%, 50%      pass / pass    no conversion needed
+    ///     55% .. 80%    FAIL / pass    conversion needed
+    ///
+    /// 70% sits well inside the band at both ends.
+    function test_SeventyPercentExit_ConvertsAndDeliversInFull() public {
         uint256 shares = vault.balanceOf(alice);
-        uint256 half = shares / 2;
-        uint256 owed = vault.previewRedeem(half);
-        uint256 before = stock.balanceOf(alice);
+        uint256 want = (shares * 70) / 100;
+        uint256 owed = vault.previewRedeem(want);
 
+        // Confirm the test is not vacuous: this exit MUST need a conversion.
+        assertGt(owed, stock.balanceOf(address(vault)), "test must exercise the shortfall branch");
+
+        uint256 before = stock.balanceOf(alice);
         vm.prank(alice);
-        uint256 got = vault.redeem(half, alice, alice);
+        uint256 got = vault.redeem(want, alice, alice);
 
         assertEq(got, owed, "redeem must return what previewRedeem promised");
         assertEq(stock.balanceOf(alice) - before, owed, "and actually transfer it");
@@ -108,10 +124,10 @@ Add to `test/vaults/WithdrawShortfall.t.sol`. The existing fixture in that file 
 
 ```bash
 cd sidequest-protocol/contracts
-forge test --match-test test_HalfExit_ConvertsAndDeliversInFull -vv
+forge test --match-test test_SeventyPercentExit_ConvertsAndDeliversInFull -vv
 ```
 
-Expected: FAIL with `ERC20InsufficientBalance`, the vault short by a few units of cash granularity.
+Expected: FAIL with `ERC20InsufficientBalance`, the vault short by a few units of cash granularity. If it PASSES, the fixture is not reaching the shortfall branch and the test is worthless: check the `assertGt` above, which exists to catch exactly that.
 
 - [ ] **Step 3: Replace the shortfall block**
 
@@ -162,7 +178,7 @@ Replace with:
 - [ ] **Step 4: Run it and confirm it passes**
 
 ```bash
-forge test --match-test test_HalfExit_ConvertsAndDeliversInFull -vv
+forge test --match-test test_SeventyPercentExit_ConvertsAndDeliversInFull -vv
 ```
 
 Expected: PASS.
@@ -173,7 +189,7 @@ Expected: PASS.
 forge test --match-path 'test/vaults/WithdrawShortfall.t.sol' -vv
 ```
 
-Expected: `test_ExitableFractionIsExactlyTheAssetLeg` now FAILS with "some exit size must fail" (the cliff moved past every tested size), and the two dust tests still fail. That is correct at this point: Task 5 rewrites them. Do not touch them yet.
+Expected: exactly three failures, all in this file: `test_ExitableFractionIsExactlyTheAssetLeg` with "some exit size must fail" (the cliff moved past every tested size), `test_FullRedeem_RevertsWhenCashMustBeConverted` and `test_FullyLongVault_OneUnitOfDust_CannotFullyExit` with a changed revert selector. `test_FullyLongVault_OneUnitOfDust_StrandsOnlyDust` keeps passing. Any OTHER failure is a real defect. That is correct at this point: Task 5 rewrites them. Do not touch them yet.
 
 - [ ] **Step 6: Commit**
 
