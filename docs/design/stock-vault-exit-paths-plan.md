@@ -160,8 +160,15 @@ Replace with:
         // the venue for zero. Gross it up by the slippage allowance, so the
         // venue's cut is paid out of the cash leg rather than out of the
         // depositor's delivery. And set minOut to the whole shortfall, so a
-        // fill that cannot cover fails at the swap with a typed venue error
-        // instead of at the transfer with ERC20InsufficientBalance.
+        // fill that cannot cover fails inside _swap instead of at the transfer
+        // with ERC20InsufficientBalance.
+        //
+        // minOut is the guarantee, not the gross-up. _swap ends in
+        // require(received >= minOut, "slippage"), so under-delivery is
+        // impossible whatever the arithmetic above does; the gross-up only
+        // makes the fill LIKELY to clear that bound. Note the revert is a plain
+        // Error(string) and not a custom error, which is what an integrator
+        // will actually see.
         uint256 bal = IERC20(asset()).balanceOf(address(this));
         if (bal < assets) {
             uint256 shortfall = assets - bal;
